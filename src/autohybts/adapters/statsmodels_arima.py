@@ -1,0 +1,154 @@
+"""ARIMA through statsmodels (optional extra ``stats``).
+
+``order="auto"`` picks ``d`` by successive KPSS tests and ``(p, q)`` by AIC, using the
+training vector only. Forecasting from a different context re-runs the state-space
+filter on the observed values with the fitted parameters fixed (``apply(refit=False)``),
+so new observations update the state without re-estimation.
+"""
+
+from __future__ import annotations
+
+import itertools
+import warnings
+from typing import Any
+
+import numpy as np
+
+from autohybts.adapters.base import FloatArray, ForecasterBase
+from autohybts.exceptions import (
+    CandidateFitError,
+    ConfigurationError,
+    UnsupportedCapabilityError,
+)
+
+__all__ = ["ArimaForecaster"]
+
+# statsmodels only accepts trend terms of order >= d: constant at d=0, drift at d=1.
+TREND_BY_D = {0: "c", 1: "t", 2: "n"}
+
+
+class ArimaForecaster(ForecasterBase):
+    def __init__(
+        self,
+        order: tuple[int, int, int] | str = "auto",
+        max_p: int = 2,
+        max_d: int = 2,
+        max_q: int = 2,
+    ) -> None:
+        super().__init__()
+        if order != "auto":
+            if (
+                not isinstance(order, tuple | list)
+                or len(order) != 3
+                or any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in order)
+            ):
+                raise ConfigurationError(f"order deve ser 'auto' ou (p, d, q); recebido {order!r}.")
+            if order[1] > 2:
+                raise ConfigurationError("Diferenciação acima de 2 não é suportada.")
+        for name, value in (("max_p", max_p), ("max_d", max_d), ("max_q", max_q)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ConfigurationError(f"{name} deve ser inteiro >= 0; recebido {value!r}.")
+        self.order = order
+        self.max_p = max_p
+        self.max_d = min(max_d, 2)
+        self.max_q = max_q
+
+    @property
+    def min_train_size(self) -> int:
+        return 10
+
+    @property
+    def min_history(self) -> int:
+        if not self.is_fitted:
+            return 1
+        p, d, _ = self.order_
+        return p + d + 1
+
+    def fitted_values(self) -> FloatArray:
+        """In-sample one-step fitted values; the first ``d`` points are filter start-up."""
+
+        if not self.is_fitted:
+            raise ConfigurationError("ArimaForecaster precisa de fit antes de fitted_values.")
+        return np.asarray(self.result_.fittedvalues, dtype=np.float64)
+
+    def one_step_path(self, y: FloatArray, start: int) -> FloatArray:
+        """One-step forecasts of ``y[start:]``, each conditioned on ``y[:t]``, parameters fixed.
+
+        Equivalent to ``predict(1, context(y[:t]))`` for every ``t`` (the Kalman filter at
+        ``t - 1`` only uses ``y[:t]``), in a single filter pass.
+        """
+
+        if not self.is_fitted:
+            raise ConfigurationError("ArimaForecaster precisa de fit antes de one_step_path.")
+        values = np.asarray(y, dtype=np.float64)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = self.result_.apply(values, refit=False)
+            path = result.predict(start=start, end=values.size - 1)
+        return np.asarray(path, dtype=np.float64)
+
+    def _fit(self, y: FloatArray) -> None:
+        arima = _arima_class()
+        self.fit_warnings_: list[str] = []
+        if isinstance(self.order, str):
+            d = self._choose_d(y)
+            grid = itertools.product(range(self.max_p + 1), range(self.max_q + 1))
+            orders = [(p, d, q) for p, q in grid]
+        else:
+            p, d, q = self.order
+            orders = [(int(p), int(d), int(q))]
+        best: tuple[float, tuple[int, int, int], Any] | None = None
+        errors = []
+        for order in orders:
+            try:
+                result = self._fit_one(arima, y, order)
+            except (ValueError, np.linalg.LinAlgError) as error:
+                errors.append(f"{order}: {error}")
+                continue
+            if np.isfinite(result.aic) and (best is None or result.aic < best[0]):
+                best = (float(result.aic), order, result)
+        if best is None:
+            raise CandidateFitError(f"Nenhuma ordem ARIMA pôde ser ajustada: {errors[:3]}")
+        _, self.order_, self.result_ = best
+        self.train_ = y.copy()
+
+    def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
+        result = self.result_
+        if not (history.shape == self.train_.shape and np.array_equal(history, self.train_)):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = result.apply(history, refit=False)
+        return np.asarray(result.forecast(horizon), dtype=np.float64)
+
+    def _fit_one(self, arima: Any, y: FloatArray, order: tuple[int, int, int]) -> Any:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = arima(y, order=order, trend=TREND_BY_D[order[1]]).fit()
+        self.fit_warnings_.extend(f"{order}: {w.message}" for w in caught)
+        return result
+
+    def _choose_d(self, y: FloatArray) -> int:
+        from statsmodels.tsa.stattools import kpss
+
+        series = y
+        for d in range(self.max_d + 1):
+            if d == self.max_d or series.size < 8:
+                return d
+            with warnings.catch_warnings():
+                # KPSS warns when the p-value is outside its lookup table; the bound is fine.
+                warnings.simplefilter("ignore")
+                p_value = kpss(series, regression="c", nlags="auto")[1]
+            if p_value >= 0.05:
+                return d
+            series = np.diff(series)
+        raise AssertionError("unreachable: the loop returns at d == max_d")  # pragma: no cover
+
+
+def _arima_class() -> Any:
+    try:
+        from statsmodels.tsa.arima.model import ARIMA
+    except ModuleNotFoundError as error:
+        raise UnsupportedCapabilityError(
+            'ARIMA requer o extra `stats`: pip install "autohybts[stats]".'
+        ) from error
+    return ARIMA
