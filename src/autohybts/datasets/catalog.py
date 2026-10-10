@@ -27,6 +27,13 @@ __all__ = [
 ]
 
 _BENCHMARKS = ("m4", "m3")
+# M5 is hierarchical, with calendar and prices, and its official score (WRMSSE) needs the
+# aggregation levels; a univariate loader would be a partial benchmark (§32.4, D09).
+M5_UNSUPPORTED = (
+    "O M5 está fora do escopo desta versão: é hierárquico (vendas, calendário, preços), "
+    "exige arquivos com aceite de termos e o score oficial WRMSSE não está implementado. "
+    "Nenhum resultado desta biblioteca deve ser apresentado como benchmark M5 oficial."
+)
 
 
 def _cache(cache: CacheManager | None, cache_dir: str | Path | None, offline: bool) -> CacheManager:
@@ -54,6 +61,7 @@ def list_datasets(
         return pd.DataFrame(
             [
                 {"provider": "synthetic", "kind": "séries sintéticas offline", "license": "MIT"},
+                {"provider": "m5", "kind": "não suportado (sem WRMSSE oficial)", "license": None},
                 *(
                     {"provider": name, "kind": _kind(item), "license": item.license}
                     for name, item in PROVIDERS.items()
@@ -122,6 +130,8 @@ def load_benchmark(
     reaches the search or the selection.
     """
 
+    if name == "m5":
+        raise UnsupportedCapabilityError(M5_UNSUPPORTED)
     if name not in _BENCHMARKS:
         raise ConfigurationError(f"Benchmark desconhecido {name!r}; opções: {_BENCHMARKS}.")
     if split != "official":
@@ -181,6 +191,8 @@ def raw_dataset(
 
 
 def _provider(name: str) -> M4Provider | M3Provider | RdatasetsProvider:
+    if name.lower() == "m5":
+        raise UnsupportedCapabilityError(M5_UNSUPPORTED)
     try:
         return PROVIDERS[name.lower()]
     except KeyError:

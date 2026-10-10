@@ -335,7 +335,7 @@ def test_catalogue_functions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     manager, _ = cache(tmp_path)
     monkeypatch.setitem(catalog.PROVIDERS, "m4", M4)
     providers = catalog.list_datasets()
-    assert set(providers["provider"]) == {"synthetic", "m4", "m3", "rdatasets"}
+    assert set(providers["provider"]) == {"synthetic", "m5", "m4", "m3", "rdatasets"}
     assert len(catalog.list_datasets("m4", subset="daily", cache=manager)) == 2
     descriptor = catalog.describe_dataset("m4", "daily", cache=manager)
     assert descriptor.horizon == 3
@@ -345,7 +345,7 @@ def test_catalogue_functions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     raw = catalog.raw_dataset("rdatasets", package="datasets", name="iris", cache=manager)
     assert list(raw.columns) == ["rownames", "Sepal.Length", "Species"]
     with pytest.raises(ConfigurationError, match="Benchmark"):
-        catalog.load_benchmark("m5", "daily", cache=manager)
+        catalog.load_benchmark("m6", "daily", cache=manager)
     with pytest.raises(ConfigurationError, match="Provedor"):
         catalog.list_datasets("kaggle", cache=manager)
     with pytest.raises(ConfigurationError, match="search"):
@@ -390,3 +390,18 @@ def test_real_m4_series_downloads_and_loads(tmp_path: Path) -> None:
     assert len(series.test) == 14  # type: ignore[union-attr]
     manifest = json.loads((tmp_path / "m4" / "Daily-test.csv.manifest.json").read_text())
     assert manifest["pinned"] is True
+
+
+def test_m5_is_declared_unsupported_without_official_wrmsse() -> None:
+    # D09: no partial M5 presented as the official benchmark.
+    from autohybts.exceptions import UnsupportedCapabilityError
+
+    for call in (
+        lambda: catalog.load_benchmark("m5", "bottom"),
+        lambda: catalog.list_datasets("m5"),
+        lambda: catalog.load_dataset("m5"),
+    ):
+        with pytest.raises(UnsupportedCapabilityError, match="WRMSSE"):
+            call()
+    listed = catalog.list_datasets().set_index("provider")
+    assert "WRMSSE" in listed.loc["m5", "kind"]
