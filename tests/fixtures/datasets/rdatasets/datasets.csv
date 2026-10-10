@@ -1,0 +1,3 @@
+"Package","Item","Title","Rows","Cols","n_binary","n_character","n_factor","n_logical","n_numeric","CSV","Doc"
+"datasets","AirPassengers","Monthly Airline Passenger Numbers (fixture)",6,2,0,0,0,0,2,"https://vincentarelbundock.github.io/Rdatasets/csv/datasets/AirPassengers.csv","https://vincentarelbundock.github.io/Rdatasets/doc/datasets/AirPassengers.html"
+"datasets","iris","Edgar Anderson Iris Data (fixture)",3,5,0,0,1,0,4,"https://vincentarelbundock.github.io/Rdatasets/csv/datasets/iris.csv","https://vincentarelbundock.github.io/Rdatasets/doc/datasets/iris.html"
