@@ -97,6 +97,13 @@ Estratégias
 .. automodule:: autohybts.reporting.strategies
    :members: complexity, pareto_front, strategy_table
 
+Ablação
+-------
+
+.. automodule:: autohybts.benchmarks.ablation
+   :members: run_ablation, run_case, ablation_report, synthetic_cases, benchmark_cases,
+             AblationCase
+
 Exceções
 --------
 
