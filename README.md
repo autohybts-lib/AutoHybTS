@@ -106,7 +106,7 @@ A biblioteca já traz datasets nomeados, prontos para usar — os nomes abaixo f
 | `m3:N1402` e demais do catálogo | M3 | 3.003 séries nos subconjuntos `yearly` (645), `quarterly` (756), `monthly` (1428) e `other` (174); exige o extra `datasets` |
 | `datasets::AirPassengers` e demais `<pacote>::<nome>` | Rdatasets | séries reais dos pacotes R (ex.: passageiros aéreos mensais) |
 
-Nas séries de benchmark (M4/M3) o teste oficial da competição vem no final, selado. O **M5 não é suportado**: é hierárquico e o score oficial (WRMSSE) não está implementado — nenhum resultado desta biblioteca deve ser apresentado como benchmark M5.
+Nas séries de benchmark (M4/M3) o teste oficial da competição vem no final, selado.
 
 ```python
 from autohybts.datasets import get_data, list_datasets, load_benchmark, load_dataset
@@ -154,7 +154,7 @@ pytest -m "not slow"
 
 ## Limitações atuais
 
-- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada é só para uma série; a seleção dinâmica (`dynamic`) só existe na variante B; o M5 não é suportado.
+- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada é só para uma série; a seleção dinâmica (`dynamic`) só existe na variante B.
 - `compare_models` com o orçamento padrão (`small`) e o espaço completo leva alguns minutos numa série de ~700 pontos, sobretudo por causa do ARIMA com ordem automática; use `budget="smoke"` ou `base_models=[...]` para explorar.
 - A regra de aceite do protocolo (ganho mediano ≥ 1 %, vitórias ≥ 60 %, variabilidade ≥ 0,05) não é controle de erro estatístico: em ruído branco ela aceitou híbridos espúrios em parte das sementes testadas.
 
