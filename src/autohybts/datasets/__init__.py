@@ -13,14 +13,17 @@ from autohybts.datasets.catalog import (
     raw_dataset,
 )
 from autohybts.datasets.descriptor import BenchmarkDataset, BenchmarkSeries, DatasetDescriptor
+from autohybts.datasets.named import NAMED_SERIES, NamedSeries
 from autohybts.datasets.synthetic import SYNTHETIC, get_data
 
 __all__ = [
+    "NAMED_SERIES",
     "SYNTHETIC",
     "BenchmarkDataset",
     "BenchmarkSeries",
     "CacheManager",
     "DatasetDescriptor",
+    "NamedSeries",
     "describe_dataset",
     "get_data",
     "list_datasets",

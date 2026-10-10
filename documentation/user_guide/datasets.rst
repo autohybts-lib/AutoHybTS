@@ -1,15 +1,98 @@
 Datasets e benchmarks
 =====================
 
-Séries de exemplo offline e benchmarks baixáveis sob demanda.
+Copie o nome e passe para ``get_data``; o resultado é uma ``pd.Series`` com
+``DatetimeIndex`` regular, pronta para o ``fit``.
 
 .. code-block:: python
 
-   from autohybts.datasets import get_data, list_datasets, load_benchmark, load_dataset
+   from autohybts.datasets import get_data
+
+   y = get_data("ozone")
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 56 12 10
+
+   * - Nome
+     - O que é
+     - Frequência
+     - Pontos
+   * - ``synthetic_daily``
+     - sintética: tendência, sazonalidade semanal e ruído AR(1)
+     - diária
+     - 730
+   * - ``white_noise_daily``
+     - sintética: nível + ruído branco (controle negativo)
+     - diária
+     - 730
+   * - ``air_passengers``
+     - passageiros aéreos, 1949–1960
+     - mensal
+     - 144
+   * - ``nottem``
+     - temperatura em Nottingham, 1920–1939
+     - mensal
+     - 240
+   * - ``us_acc_deaths``
+     - mortes acidentais nos EUA, 1973–1978
+     - mensal
+     - 72
+   * - ``sunspots_monthly``
+     - manchas solares, 1749–1983
+     - mensal
+     - 2820
+   * - ``uk_gas``
+     - consumo de gás no Reino Unido, 1960–1986
+     - trimestral
+     - 108
+   * - ``johnson_johnson``
+     - lucro por ação da Johnson & Johnson, 1960–1980
+     - trimestral
+     - 84
+   * - ``ozone``
+     - ozônio total em Halley Bay (Antártida), 1956–2000
+     - anual
+     - 45
+   * - ``nile``
+     - vazão do rio Nilo, 1871–1970
+     - anual
+     - 100
+   * - ``lynx``
+     - linces capturados no Canadá, 1821–1934
+     - anual
+     - 114
+   * - ``lake_huron``
+     - nível do lago Huron, 1875–1972
+     - anual
+     - 98
+   * - ``sunspots``
+     - manchas solares, 1700–1988
+     - anual
+     - 289
+   * - ``m4:D1``
+     - M4; troque ``D1`` por ``Y…``, ``Q…``, ``M…``, ``W…``, ``D…`` ou ``H…``
+     - várias
+     - —
+   * - ``m3:N1402``
+     - M3; exige o extra ``datasets``
+     - várias
+     - —
+
+As sintéticas são geradas na hora, offline. As outras são baixadas na primeira vez e
+ficam em cache; as reais vêm do `Rdatasets <https://vincentarelbundock.github.io/Rdatasets/>`_.
+Maiúsculas e minúsculas não importam (``get_data("Ozone")`` também funciona). A lista
+está em ``autohybts.datasets.NAMED_SERIES``.
+
+Para ver o catálogo completo de cada provedor:
+
+.. code-block:: python
+
+   from autohybts.datasets import list_datasets
 
    list_datasets()                                  # provedores (sem download)
-   get_data("synthetic_daily")                      # offline
-   get_data("m4:D1")                                # série M4 completa (teste oficial no fim)
+   list_datasets("m4", subset="daily")
+   list_datasets("rdatasets", search="ozone")
 
 Cache e segurança
 -----------------
@@ -56,20 +139,41 @@ Do pacote R ``Mcomp`` (CRAN, GPL-3). Ler o arquivo R requer o extra ``datasets``
    m3 = load_benchmark("m3", subset="monthly")      # BenchmarkDataset
    panel = m3.panel(m3.series_ids[:5])              # PanelFrame, testes oficiais no fim
 
-Rdatasets
----------
+Outras séries do Rdatasets
+--------------------------
 
-Catálogo heterogêneo: não há inferência de tempo nem de alvo.
+Fora da tabela acima, o Rdatasets é um catálogo heterogêneo: a biblioteca não adivinha
+qual coluna é o tempo nem qual é o alvo. Olhe a tabela bruta e diga as duas, com a
+frequência:
 
 .. code-block:: python
 
-   list_datasets("rdatasets", search="passenger")
-   raw_dataset("rdatasets", package="datasets", name="AirPassengers")
+   from autohybts.datasets import load_dataset, raw_dataset
+
+   raw_dataset("rdatasets", package="datasets", name="AirPassengers")   # colunas: time, value
    air = load_dataset("rdatasets", package="datasets", name="AirPassengers",
                       target="value", time_col="time", frequency="MS")
+   y = air.full()                                   # load_dataset devolve um BenchmarkSeries
 
 Tempo em anos decimais (objetos ``ts`` do R) é convertido para ``YS``, ``QS`` ou ``MS``
 e conferido; datas em texto passam por ``pd.to_datetime``.
+
+Tabelas sem coluna de data, como ``airquality`` (só ``Month`` e ``Day``), são montadas
+à mão a partir da tabela bruta:
+
+.. code-block:: python
+
+   import pandas as pd
+
+   d = raw_dataset("rdatasets", package="datasets", name="airquality")
+   idx = pd.to_datetime(dict(year=1973, month=d["Month"], day=d["Day"]))
+   oz = pd.Series(d["Ozone"].to_numpy(), index=idx, name="Ozone").asfreq("D")
+   oz = oz.interpolate(limit_direction="both")      # 37 dias faltando: escolha como tratar
+
+.. note::
+
+   A biblioteca não preenche valores ausentes. Uma série com ``NaN`` é recusada no
+   ``fit`` (``DataValidationError``); trate os faltantes antes.
 
 .. warning::
 
