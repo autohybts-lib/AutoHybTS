@@ -48,6 +48,7 @@ Extra           Para quê
 ``stats``       statsmodels: ARIMA e decomposição STL
 ``plot``        matplotlib: todos os gráficos (``plot_data``, ``plot_model``, Pareto …)
 ``optuna``      sampler TPE do ``tune_model`` (sem ele, busca aleatória com semente)
+``datasets``    ler o benchmark M3 (arquivo R do pacote Mcomp)
 ``yaml``        configuração em YAML
 ``notebook``    rodar os tutoriais (ipykernel, nbclient)
 ``docs``        gerar esta documentação (Sphinx, Furo, myst-nb)

@@ -21,9 +21,6 @@ estratégias de montar sistemas híbridos:
 * **decomposição** em parte suave e volátil (``ma(linear-mlp)``, ``stl(...)``);
 * **combinação fixa** de bases (``comb(arima,knn)``).
 
-Desenvolvida no **PPGEC — Programa de Pós-Graduação em Engenharia da Computação** da
-**Escola Politécnica de Pernambuco (POLI), Universidade de Pernambuco (UPE)**.
-
 .. code-block:: python
 
    from autohybts import AutoHybridExperiment
@@ -58,6 +55,7 @@ Desenvolvida no **PPGEC — Programa de Pós-Graduação em Engenharia da Comput
    :caption: Guia do usuário
 
    user_guide/temporal_validation
+   user_guide/datasets
    user_guide/strategies
    user_guide/selection
    user_guide/comparison
@@ -76,4 +74,5 @@ Desenvolvida no **PPGEC — Programa de Pós-Graduação em Engenharia da Comput
    :maxdepth: 1
    :caption: Projeto
 
+   releasing
    about

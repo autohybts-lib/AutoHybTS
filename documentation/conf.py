@@ -18,8 +18,8 @@ sys.path.insert(0, str(ROOT / "src"))
 import autohybts  # noqa: E402
 
 project = "AutoHybTS"
-author = "PPGEC/POLI/UPE"
-copyright = "2026, PPGEC — Escola Politécnica de Pernambuco, Universidade de Pernambuco"
+author = "AutoHybTS contributors"
+copyright = "2026, AutoHybTS contributors"
 release = autohybts.__version__
 version = release
 language = "pt_BR"

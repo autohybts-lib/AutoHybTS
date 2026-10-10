@@ -6,9 +6,9 @@
 
 **Automated Hybrid Time Series Forecasting.** Biblioteca Python que automatiza a comparação de modelos individuais de previsão e a descoberta de **sistemas híbridos residuais** (modelo-base + corretor do erro), aceitando complexidade adicional só quando critérios de validação temporal definidos pelo usuário são satisfeitos.
 
-Desenvolvida no **PPGEC — Programa de Pós-Graduação em Engenharia da Computação** da **Escola Politécnica de Pernambuco (POLI), Universidade de Pernambuco (UPE)**. A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
+A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
 
-> **Status: pré-alfa (0.0.1).** A API abaixo funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Catálogo de benchmarks (M4/M3, Rdatasets) e seleção dinâmica ainda não.
+> **Status: pré-alfa (0.0.1).** A API abaixo funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Ainda não publicada no PyPI.
 
 ## Instalação
 
@@ -40,7 +40,7 @@ python -m venv .venv
 # .venv/bin/python -m pip install -e ".[dev,stats,notebook]"     # Linux/macOS
 ```
 
-Extras: `stats` (statsmodels: ARIMA e STL), `plot` (matplotlib), `optuna` (`tune_model` com TPE), `yaml`, `notebook` (rodar os tutoriais), `docs` (gerar a documentação), `dev` (testes e lint).
+Extras: `stats` (statsmodels: ARIMA e STL), `plot` (matplotlib), `optuna` (`tune_model` com TPE), `datasets` (ler o M3), `yaml`, `notebook` (rodar os tutoriais), `docs` (gerar a documentação), `dev` (testes e lint).
 
 ## Início rápido
 
@@ -89,6 +89,25 @@ cv.plot("critical_difference")  # também: leaderboard, boxplot, win_rate, forec
 exp.nested_cross_validate(outer_folds=3)  # o procedimento inteiro, dobra a dobra
 ```
 
+### Benchmarks (M4, M3, Rdatasets)
+
+```python
+from autohybts.datasets import list_datasets, load_benchmark, load_dataset
+
+series = load_benchmark("m4", subset="daily", series_id="D1")  # baixa uma vez, com checksum
+exp = AutoHybridExperiment(fh=series.descriptor.horizon, test_size=len(series.test)).fit(
+    series.full()
+)  # teste oficial selado
+air = load_dataset(
+    "rdatasets",
+    package="datasets",
+    name="AirPassengers",
+    target="value",
+    time_col="time",
+    frequency="MS",
+)
+```
+
 ### Várias séries
 
 ```python
@@ -116,10 +135,10 @@ pytest -m "not slow"
 
 ## Limitações atuais
 
-- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada é só para uma série; a seleção dinâmica (variante B) ainda não existe.
+- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada é só para uma série; a seleção dinâmica (`dynamic`) só existe na variante B; o M5 não é suportado.
 - `compare_models` com o orçamento padrão (`small`) e o espaço completo leva alguns minutos numa série de ~700 pontos, sobretudo por causa do ARIMA com ordem automática; use `budget="smoke"` ou `base_models=[...]` para explorar.
 - A regra de aceite do protocolo (ganho mediano ≥ 1 %, vitórias ≥ 60 %, variabilidade ≥ 0,05) não é controle de erro estatístico: em ruído branco ela aceitou híbridos espúrios em parte das sementes testadas.
 
 ## Créditos
 
-Desenvolvida no PPGEC/POLI/UPE. Inspirada na ergonomia do [PyCaret](https://pycaret.org); o PyCaret não é dependência.
+Inspirada na ergonomia do [PyCaret](https://pycaret.org); o PyCaret não é dependência.

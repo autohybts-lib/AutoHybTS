@@ -1,10 +1,6 @@
 Sobre
 =====
 
-AutoHybTS foi criada no **PPGEC — Programa de Pós-Graduação em Engenharia da
-Computação** da **Escola Politécnica de Pernambuco (POLI), Universidade de Pernambuco
-(UPE)**.
-
 A ergonomia é inspirada no `PyCaret <https://pycaret.org>`_: um objeto de experimento,
 métodos curtos e resultados prontos para tabela e gráfico. O PyCaret não é dependência.
 O foco da AutoHybTS é reunir, num só fluxo e com validação temporal sem vazamento, os

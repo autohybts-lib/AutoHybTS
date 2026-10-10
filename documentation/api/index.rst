@@ -20,6 +20,19 @@ Dados
    :members: single, from_dict, from_long, series_ids, frequency, to_long
 
 .. autofunction:: autohybts.datasets.get_data
+.. autofunction:: autohybts.datasets.list_datasets
+.. autofunction:: autohybts.datasets.load_benchmark
+.. autofunction:: autohybts.datasets.load_dataset
+.. autofunction:: autohybts.datasets.raw_dataset
+.. autofunction:: autohybts.datasets.describe_dataset
+
+.. autoclass:: autohybts.datasets.BenchmarkSeries
+   :members: full
+.. autoclass:: autohybts.datasets.BenchmarkDataset
+   :members: series_ids, series, panel
+.. autoclass:: autohybts.datasets.DatasetDescriptor
+.. autoclass:: autohybts.datasets.CacheManager
+   :members: fetch, verify
 
 Modelos finalizados e persistência
 ----------------------------------
