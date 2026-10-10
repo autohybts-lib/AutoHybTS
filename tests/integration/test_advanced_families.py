@@ -227,3 +227,24 @@ def test_optuna_sampler_is_seeded(experiment: AutoHybridExperiment) -> None:
     ]
     assert runs[0].sampler == "optuna"
     pd.testing.assert_frame_equal(runs[0].trials, runs[1].trials)
+
+
+def test_corrector_combination_and_stage_settings_through_the_api() -> None:
+    exp = AutoHybridExperiment(**{**FAST, "correctors": ("linear", "knn")}).fit(series())
+    combined = exp.create_hybrid(
+        "seasonal_naive", "linear", combine_correctors=["knn"], combination_weights="equal"
+    )
+    assert combined.candidate.strategy == "residual_combination"
+    staged = exp.create_hybrid(
+        "seasonal_naive", "linear", extra_stages=["linear"], stage_params=[{"window_size": 5}]
+    )
+    assert staged.candidate.options == {"stages": [{"window_size": 5}]}
+    for result in (combined, staged):
+        assert result.evaluation.coverage("MASE") == 1.0
+    with pytest.raises(ConfigurationError, match="não os dois"):
+        exp.create_hybrid("naive", "linear", extra_stages=["linear"], combine_correctors=["knn"])
+    with pytest.raises(ConfigurationError, match="stage_params"):
+        exp.create_hybrid("naive", "linear", stage_params=[{"alpha": 0.5}])
+    result = exp.compare_models(include=("standalone", "residual", "combination"))
+    strategies = {e.strategy for e in result.search.ledger}
+    assert "residual_combination" in strategies

@@ -15,6 +15,7 @@ from autohybts.adapters.naive import NaiveForecaster, SeasonalNaiveForecaster
 from autohybts.adapters.sklearn_regression import LagRegressionForecaster
 from autohybts.domain.specs import MAX_STAGES, CandidateSpec, ModelSpec
 from autohybts.exceptions import ConfigurationError, UnsupportedCapabilityError
+from autohybts.reporting.strategies import complexity as complexity_of
 from autohybts.residuals.correctors import SklearnCorrector
 from autohybts.residuals.generation import local_context
 from autohybts.selection.rank import structure_key
@@ -34,6 +35,7 @@ needs_statsmodels = pytest.mark.skipif(
 LINEAR = ModelSpec.of("linear", {"lags": 7})
 SEASONAL = ModelSpec.of("seasonal_naive", {"season_length": 7})
 CORRECTOR = ModelSpec.of("linear")
+MLP_SPEC = ModelSpec.of("mlp")
 
 
 def series(n: int = 200, seed: int = 0) -> np.ndarray:
@@ -306,3 +308,133 @@ def test_new_fields_enter_identity_only_when_used() -> None:
     assert structure_key(equal) != structure_key(inverse)
     assert structure_key(decomposition()) == structure_key(decomposition(ma_window=5))
     assert structure_key(decomposition()) != structure_key(decomposition("stl", period=7))
+
+
+# ------------------------------------------------------------------ corrector combination
+def test_corrector_combination_weights_and_prediction() -> None:
+    from autohybts.strategies.combination import CorrectorCombination
+
+    rng = np.random.default_rng(0)
+    rows = rng.normal(size=(120, 7))
+    targets = rows @ np.linspace(0.1, 0.7, 7) + rng.normal(0, 0.05, 120)
+    linear, knn = SklearnCorrector(), SklearnCorrector("knn")
+    combined = CorrectorCombination([linear, knn], weights="inverse_mse").fit(rows, targets)
+    # A linear target: the linear corrector errs less on the held-out rows.
+    assert combined.weights_.sum() == pytest.approx(1.0)
+    assert combined.weights_[0] > combined.weights_[1]
+    window = rows[-1]
+    expected = sum(
+        w * m.predict_next(window)
+        for w, m in zip(combined.weights_, combined.members_, strict=True)
+    )
+    assert combined.predict_next(window) == pytest.approx(expected)
+    equal = CorrectorCombination([linear, knn]).fit(rows, targets)
+    np.testing.assert_allclose(equal.weights_, [0.5, 0.5])
+    with pytest.raises(ConfigurationError):
+        CorrectorCombination([linear])
+
+
+def test_residual_combination_spec() -> None:
+    spec = CandidateSpec(
+        "combination",
+        "residual_combination",
+        SEASONAL,
+        CORRECTOR,
+        7,
+        1.0,
+        "historical_oof_1step",
+        members=(MLP_SPEC,),
+        options_json='{"weights": "equal"}',
+    )
+    assert spec.name == "seasonal_naive-comb(linear,mlp)"
+    assert "comb[" in spec.label
+    assert complexity_of(spec) == 3
+    with pytest.raises(ConfigurationError, match="repetidos"):
+        CandidateSpec(
+            "combination",
+            "residual_combination",
+            SEASONAL,
+            CORRECTOR,
+            7,
+            1.0,
+            "historical_oof_1step",
+            members=(CORRECTOR,),
+            options_json='{"weights": "equal"}',
+        )
+    with pytest.raises(ConfigurationError, match="members"):
+        CandidateSpec(
+            "combination",
+            "residual_combination",
+            SEASONAL,
+            CORRECTOR,
+            7,
+            1.0,
+            "historical_oof_1step",
+            options_json='{"weights": "equal"}',
+        )
+
+
+# ------------------------------------------------------------------ per-stage settings
+def test_extra_stages_can_have_their_own_settings() -> None:
+    staged = CandidateSpec(
+        "residual",
+        "residual_multistage",
+        SEASONAL,
+        CORRECTOR,
+        7,
+        1.0,
+        "historical_oof_1step",
+        members=(CORRECTOR,),
+        options_json='{"stages": [{"window_size": 14, "alpha": 0.5}]}',
+    )
+    assert "estágios" in staged.label
+    model = stack_stages(
+        SeasonalNaiveForecaster(season_length=7),
+        [SklearnCorrector(), SklearnCorrector()],
+        window_size=7,
+        alpha=1.0,
+        residual_source="historical_oof_1step",
+        stage_params=staged.options["stages"],
+    )
+    assert (model.window_size, model.alpha) == (14, 0.5)
+    assert (model.base.window_size, model.base.alpha) == (7, 1.0)
+    for bad in ('{"stages": [{"window_size": 0}]}', '{"stages": [{"lags": 3}]}', '{"stages": []}'):
+        with pytest.raises(ConfigurationError):
+            CandidateSpec(
+                "residual",
+                "residual_multistage",
+                SEASONAL,
+                CORRECTOR,
+                7,
+                1.0,
+                "historical_oof_1step",
+                members=(CORRECTOR,),
+                options_json=bad,
+            )
+
+
+def test_per_stage_search_axis() -> None:
+    from autohybts.registry import default_registry
+    from autohybts.search.spaces import SearchSpace
+
+    best = CandidateSpec(
+        "residual", "residual_additive", SEASONAL, CORRECTOR, 7, 1.0, "historical_oof_1step"
+    )
+    shared = SearchSpace(
+        correctors=("linear",), residual_windows=(7, 28), alphas=(0.5, 1.0), max_stages=2
+    )
+    per_stage = SearchSpace(
+        correctors=("linear",),
+        residual_windows=(7, 28),
+        alphas=(0.5, 1.0),
+        max_stages=2,
+        stage_params="per_stage",
+    )
+    registry = default_registry()
+    assert len(shared._stage_proposals(best, registry)) == 1
+    proposals = per_stage._stage_proposals(best, registry)
+    stages = [p.candidate.options.get("stages") for p in proposals]
+    assert stages == [None, [{"window_size": 28}], [{"alpha": 0.5}]]
+    assert per_stage.describe()["stage_params"] == "per_stage"
+    with pytest.raises(ConfigurationError):
+        SearchSpace(stage_params="mixed")

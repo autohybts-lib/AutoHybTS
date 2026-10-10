@@ -10,9 +10,10 @@ from autohybts.domain.identity import derive_seed
 from autohybts.domain.specs import CandidateSpec, ModelSpec
 from autohybts.exceptions import ConfigurationError, UnsupportedCapabilityError
 from autohybts.registry.registry import ModelRegistry
+from autohybts.residuals.correctors import ResidualCorrector
 from autohybts.residuals.generation import ResidualSettings
 from autohybts.strategies.additive_residual import ResidualHybridForecaster
-from autohybts.strategies.combination import FixedCombinationForecaster
+from autohybts.strategies.combination import CorrectorCombination, FixedCombinationForecaster
 from autohybts.strategies.decomposition import DecompositionForecaster
 from autohybts.strategies.dynamic import DynamicSelectionForecaster
 from autohybts.strategies.multistage import stack_stages
@@ -79,6 +80,7 @@ def build_model(
             alpha=float(candidate.alpha if candidate.alpha is not None else 1.0),
             residual_source=str(candidate.residual_source),
             settings=residual_settings,
+            stage_params=candidate.options.get("stages"),
         )
         return model, unit_seed if seeded else None
     if candidate.strategy == "decomposition":
@@ -114,6 +116,29 @@ def build_model(
             members, weights=str(candidate.options["weights"]), settings=residual_settings
         )
         return combination, unit_seed if seeded else None
+    if candidate.strategy == "residual_combination":
+        if candidate.corrector is None:
+            raise ConfigurationError("Combinação de corretores sem corretor.")
+        base, base_seed = _seeded(
+            registry.make_base, candidate.base, derive_seed(unit_seed, "base")
+        )
+        pool: list[ResidualCorrector] = []
+        seeded = base_seed is not None
+        for index, spec in enumerate((candidate.corrector, *candidate.members)):
+            corrector, corrector_seed = _seeded(
+                registry.make_corrector, spec, derive_seed(unit_seed, f"corrector-{index}")
+            )
+            pool.append(corrector)
+            seeded = seeded or corrector_seed is not None
+        combined = ResidualHybridForecaster(
+            base,
+            CorrectorCombination(pool, weights=str(candidate.options["weights"])),
+            window_size=int(candidate.window_size or 0),
+            alpha=float(candidate.alpha if candidate.alpha is not None else 1.0),
+            residual_source=str(candidate.residual_source),
+            settings=residual_settings,
+        )
+        return combined, unit_seed if seeded else None
     if candidate.strategy == "dynamic_selection":
         if candidate.corrector is None:
             raise ConfigurationError("Seleção dinâmica sem corretores.")
@@ -137,6 +162,7 @@ def build_model(
             neighbors=int(options.get("neighbors", 10)),
             lag_size=int(options.get("lag_size", 7)),
             dsel_size=options.get("dsel_size"),
+            local_alpha=float(options.get("local_alpha", 1.0)),
             residual_source=str(candidate.residual_source),
             settings=residual_settings,
         )

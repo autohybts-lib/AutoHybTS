@@ -28,6 +28,7 @@ STRATEGIES: Final = (
     "residual_multistage",
     "decomposition",
     "fixed_combination",
+    "residual_combination",
     "dynamic_selection",
 )
 _RESIDUAL_FIELDS: Final = ("corrector", "window_size", "alpha", "residual_source")
@@ -88,8 +89,9 @@ class CandidateSpec:
     * ``standalone``: ``base`` only.
     * ``residual_additive``: ``base + alpha * corrector`` on residual windows.
     * ``residual_multistage``: as above, then each corrector in ``members`` corrects the
-      residuals of the previous stage (same window, alpha and source); at most
-      ``MAX_STAGES`` stages.
+      residuals of the previous stage; at most ``MAX_STAGES`` stages. Extra stages share
+      window, alpha and source unless ``options["stages"]`` gives, per extra stage, a
+      dict with any of ``window_size``, ``alpha`` and ``residual_source``.
     * ``decomposition``: ``base`` forecasts the smooth part and ``corrector`` the volatile
       part on windows of ``window_size``; ``options`` holds ``method`` (``"ma"`` or
       ``"stl"``, the latter only in variant A), ``ma_window`` (``None``: chosen by
@@ -97,6 +99,8 @@ class CandidateSpec:
     * ``fixed_combination``: ``base`` and ``members`` combined with fixed weights;
       ``options["weights"]`` is ``"equal"`` or ``"inverse_mse"`` (estimated on the
       training vector only).
+    * ``residual_combination``: ``base + alpha * Σ w_j r̂_j``, the corrector and the
+      correctors in ``members`` combined with fixed weights (``options["weights"]``).
 
     ``members`` and ``options`` enter ``candidate_id`` only when non-empty, so identities
     of the other strategies do not change.
@@ -165,7 +169,15 @@ class CandidateSpec:
                     f"Fonte residual desconhecida {self.residual_source!r}; opções: "
                     f"{RESIDUAL_SOURCES}."
                 )
-        if strategy == "residual_multistage":
+        if strategy == "residual_combination":
+            if not self.members:
+                raise ConfigurationError(
+                    "residual_combination exige ao menos um corretor em members."
+                )
+            names = [self.corrector, *self.members]
+            if len(set(names)) != len(names):
+                raise ConfigurationError("Corretores repetidos na combinação.")
+        elif strategy == "residual_multistage":
             if not 1 <= len(self.members) <= MAX_STAGES - 1:
                 raise ConfigurationError(
                     f"residual_multistage tem de 2 a {MAX_STAGES} estágios: informe de 1 a "
@@ -177,12 +189,14 @@ class CandidateSpec:
             names = [self.base, *self.members]
             if len(set(names)) != len(names):
                 raise ConfigurationError("Membros repetidos na combinação.")
-        elif self.members and strategy != "dynamic_selection":
+        elif self.members and strategy not in ("dynamic_selection", "residual_combination"):
             raise ConfigurationError(f"Candidata {strategy} não aceita members.")
         allowed = {
             "decomposition": {"method", "ma_window", "period"},
             "fixed_combination": {"weights"},
-            "dynamic_selection": {"method", "neighbors", "lag_size", "dsel_size"},
+            "residual_combination": {"weights"},
+            "residual_multistage": {"stages"},
+            "dynamic_selection": {"method", "neighbors", "lag_size", "dsel_size", "local_alpha"},
         }.get(strategy, set())
         unknown = set(options) - allowed
         if unknown:
@@ -208,12 +222,17 @@ class CandidateSpec:
                 isinstance(ma_window, bool) or not isinstance(ma_window, int) or ma_window < 1
             ):
                 raise ConfigurationError("ma_window deve ser inteiro >= 1 ou None.")
+        if strategy == "residual_multistage" and "stages" in options:
+            _check_stages(options["stages"], len(self.members))
         if strategy == "dynamic_selection" and options.get("method", "dref") not in (
             "dref",
             "local",
         ):
             raise ConfigurationError("Seleção dinâmica exige method 'dref' ou 'local'.")
-        if strategy == "fixed_combination" and options.get("weights") not in COMBINATION_WEIGHTS:
+        if (
+            strategy in ("fixed_combination", "residual_combination")
+            and options.get("weights") not in COMBINATION_WEIGHTS
+        ):
             raise ConfigurationError(
                 f"fixed_combination exige weights em {COMBINATION_WEIGHTS}; recebido "
                 f"{options.get('weights')!r}."
@@ -234,6 +253,8 @@ class CandidateSpec:
             return 1
         if self.strategy == "residual_multistage":
             return 1 + len(self.members)
+        if self.strategy == "residual_combination":
+            return 1
         return 0
 
     @classmethod
@@ -282,6 +303,9 @@ class CandidateSpec:
         if self.strategy == "dynamic_selection":
             pool = ",".join(s.name for s in (self.corrector, *self.members))
             return f"{self.options.get('method', 'dref')}({self.base.name}-{pool})"
+        if self.strategy == "residual_combination":
+            pool = ",".join(s.name for s in (self.corrector, *self.members))
+            return f"{self.base.name}-comb({pool})"
         return "-".join(s.name for s in (self.base, self.corrector, *self.members))
 
     @property
@@ -296,6 +320,12 @@ class CandidateSpec:
                 window = options.get("ma_window")
                 method = f"ma({'curtose' if window is None else window})"
             return f"{method}: {self.base.label} | {self.corrector.label} [w={self.window_size}]"
+        if self.strategy == "residual_combination" and self.corrector is not None:
+            pool = " | ".join(s.label for s in (self.corrector, *self.members))
+            return (
+                f"{self.base.label} + comb[{pool}; {self.options['weights']}] "
+                f"[w={self.window_size}, alpha={self.alpha}, {self.residual_source}]"
+            )
         if self.strategy == "dynamic_selection" and self.corrector is not None:
             options = self.options
             pool = " | ".join(s.label for s in (self.corrector, *self.members))
@@ -307,10 +337,44 @@ class CandidateSpec:
         if self.strategy == "standalone" or self.corrector is None:
             return self.base.label
         correctors = " + ".join(spec.label for spec in (self.corrector, *self.members))
+        stages = self.options.get("stages")
+        if stages:
+            extra = "; ".join(
+                ", ".join(f"{k}={v}" for k, v in sorted(stage.items())) or "=" for stage in stages
+            )
+            correctors += f" {{estágios: {extra}}}"
         return (
             f"{self.base.label} + {correctors} "
             f"[w={self.window_size}, alpha={self.alpha}, {self.residual_source}]"
         )
+
+
+_STAGE_KEYS: Final = frozenset({"window_size", "alpha", "residual_source"})
+
+
+def _check_stages(stages: object, n_extra: int) -> None:
+    """Per-stage settings: one dict per extra stage, with known keys and valid values."""
+
+    if not isinstance(stages, list) or len(stages) != n_extra:
+        raise ConfigurationError(
+            f"options['stages'] deve ter um dicionário por estágio extra ({n_extra})."
+        )
+    for stage in stages:
+        if not isinstance(stage, dict) or not set(stage) <= _STAGE_KEYS:
+            raise ConfigurationError(
+                f"Cada estágio aceita só {sorted(_STAGE_KEYS)}; recebido {stage!r}."
+            )
+        window = stage.get("window_size")
+        if window is not None and (
+            isinstance(window, bool) or not isinstance(window, int) or window < 1
+        ):
+            raise ConfigurationError("window_size do estágio deve ser inteiro >= 1.")
+        alpha = stage.get("alpha")
+        if alpha is not None and (isinstance(alpha, bool) or not isinstance(alpha, int | float)):
+            raise ConfigurationError("alpha do estágio deve ser numérico.")
+        source = stage.get("residual_source")
+        if source is not None and source not in RESIDUAL_SOURCES:
+            raise ConfigurationError(f"Fonte residual desconhecida no estágio: {source!r}.")
 
 
 def trial_key(

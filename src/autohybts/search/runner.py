@@ -144,7 +144,9 @@ class SearchEngine:
                     reserve=advanced_reserve,
                     family_reserve=0,
                 )
-        dynamic = self.space.dynamic_proposals([r.candidate for r in structures], registry)
+        best_structures = [r.candidate for r in structures]
+        dynamic = self.space.dynamic_proposals(best_structures, registry)
+        dynamic += self.space.corrector_combination_proposals(best_structures, registry)
         if advanced or dynamic:
             self._stage(round_robin([*advanced, *dynamic]), plan, state)
 

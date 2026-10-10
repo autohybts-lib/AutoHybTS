@@ -135,10 +135,15 @@ def test_search_proposes_dynamic_selection_in_s4() -> None:
         "residual", "residual_additive", SEASONAL, LINEAR, 7, 1.0, "historical_oof_1step", "B"
     )
     proposals = space.dynamic_proposals([best], default_registry())
-    assert [p.candidate.name for p in proposals] == [
+    # Legacy grid: dref 3 k x 2 lags, local 3 k x 2 lags x 2 alphas; defaults first.
+    assert len(proposals) == 6 + 12
+    assert [p.candidate.name for p in proposals[:2]] == [
         "dref(seasonal_naive-linear,knn)",
         "local(seasonal_naive-linear)",
     ]
+    assert proposals[0].candidate.options == {"method": "dref", "neighbors": 10, "lag_size": 7}
+    assert proposals[1].candidate.options["local_alpha"] == 1.0
+    assert len({p.candidate.candidate_id for p in proposals}) == 18
     assert {p.stage for p in proposals} == {"S4"}
     assert space.describe()["dynamic_methods"] == ["dref", "local"]
 

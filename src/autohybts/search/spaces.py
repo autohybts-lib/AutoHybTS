@@ -37,6 +37,10 @@ DEFAULT_BASES: Final = (
     "mlp",
 )
 _LAG_MODELS: Final = frozenset({"linear", "knn", "svm", "tree", "random_forest", "mlp"})
+# Dynamic selection grid of the legacy project (Silva et al., 2020); first value = default.
+DYNAMIC_NEIGHBORS: Final = (10, 5, 20)
+DYNAMIC_LAGS: Final = (7, 14)
+LOCAL_ALPHAS: Final = (1.0, 0.1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +77,7 @@ class SearchSpace:
     decomposition_methods: tuple[str, ...] = ()
     combination_weights: tuple[str, ...] = ()
     dynamic_methods: tuple[str, ...] = ()
+    stage_params: str = "shared"
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -97,6 +102,8 @@ class SearchSpace:
             raise ConfigurationError(f"Decomposições desconhecidas: {sorted(unknown_methods)}.")
         if "stl" in self.decomposition_methods and self.variant != "A":
             raise ConfigurationError("A STL só existe na variante A; use decomposition 'ma'.")
+        if self.stage_params not in ("shared", "per_stage"):
+            raise ConfigurationError("stage_params deve ser 'shared' ou 'per_stage'.")
         unknown_dynamic = set(self.dynamic_methods) - {"dref", "local"}
         if unknown_dynamic:
             raise ConfigurationError(f"Seleção dinâmica desconhecida: {sorted(unknown_dynamic)}.")
@@ -122,6 +129,8 @@ class SearchSpace:
             described["combination_weights"] = list(self.combination_weights)
         if self.dynamic_methods:
             described["dynamic_methods"] = list(self.dynamic_methods)
+        if self.stage_params != "shared":
+            described["stage_params"] = self.stage_params
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -241,22 +250,30 @@ class SearchSpace:
         chains += [(other,) for other in others]
         if self.max_stages >= 3:
             chains.append((same, same))
+        variants: list[dict[str, Any] | None] = [None]
+        if self.stage_params == "per_stage":
+            # One axis at a time on the extra stage: other windows, then other alphas.
+            variants += [{"window_size": w} for w in self.residual_windows if w != best.window_size]
+            variants += [{"alpha": float(a)} for a in self.alphas if float(a) != best.alpha]
         proposals = []
-        for chain in chains:
-            for spec in chain:
-                registry.entry(spec.name, "corrector")
-            candidate = CandidateSpec(
-                "residual",
-                "residual_multistage",
-                best.base,
-                same,
-                best.window_size,
-                best.alpha,
-                best.residual_source,
-                variant=self.variant,
-                members=chain,
-            )
-            proposals.append(Proposal(candidate, "S3", best.candidate_id))
+        for variant in variants:
+            for chain in chains:
+                for spec in chain:
+                    registry.entry(spec.name, "corrector")
+                options = {} if variant is None else {"stages": [dict(variant)] * len(chain)}
+                candidate = CandidateSpec(
+                    "residual",
+                    "residual_multistage",
+                    best.base,
+                    same,
+                    best.window_size,
+                    best.alpha,
+                    best.residual_source,
+                    variant=self.variant,
+                    members=chain,
+                    options_json=canonical_json(options),
+                )
+                proposals.append(Proposal(candidate, "S3", best.candidate_id))
         return proposals
 
     def advanced_proposals(
@@ -316,10 +333,15 @@ class SearchSpace:
 
         ``dref`` chooses, at each step, among the structure's corrector, the other
         configured correctors and no correction; ``local`` combines the base and the
-        structure's corrector locally.
+        structure's corrector locally. Grid of the legacy project (Silva et al., 2020):
+        neighbours ``k`` in ``DYNAMIC_NEIGHBORS``, lag size in ``DYNAMIC_LAGS`` and, for
+        ``local``, the kernel ridge ``alpha`` in ``LOCAL_ALPHAS``. The first value of each
+        axis is the default; defaults of every method come first, so a budget cut keeps
+        them.
         """
 
-        proposals = []
+        proposals: list[Proposal] = []
+        rest: list[Proposal] = []
         for best in structures:
             if best.corrector is None or best.window_size is None:
                 continue
@@ -330,19 +352,61 @@ class SearchSpace:
                 members = others if method == "dref" else ()
                 for spec in members:
                     registry.entry(spec.name, "corrector")
+                alphas = LOCAL_ALPHAS if method == "local" else (None,)
+                grid = [
+                    (k, lag, alpha)
+                    for k in DYNAMIC_NEIGHBORS
+                    for lag in DYNAMIC_LAGS
+                    for alpha in alphas
+                ]
+                for index, (k, lag, alpha) in enumerate(grid):
+                    options: dict[str, Any] = {"method": method, "neighbors": k, "lag_size": lag}
+                    if alpha is not None:
+                        options["local_alpha"] = alpha
+                    candidate = CandidateSpec(
+                        "dynamic",
+                        "dynamic_selection",
+                        best.base,
+                        best.corrector,
+                        best.window_size,
+                        best.alpha,
+                        best.residual_source,
+                        variant=self.variant,
+                        members=members,
+                        options_json=canonical_json(options),
+                    )
+                    proposal = Proposal(candidate, "S4", best.candidate_id)
+                    (proposals if index == 0 else rest).append(proposal)
+        return proposals + rest
+
+    def corrector_combination_proposals(
+        self, structures: Sequence[CandidateSpec], registry: ModelRegistry
+    ) -> list[Proposal]:
+        """S4: around each best residual structure, its corrector combined with the others."""
+
+        if len(self.correctors) < 2 or not self.combination_weights:
+            return []
+        proposals = []
+        for best in structures:
+            if best.strategy != "residual_additive" or best.corrector is None:
+                continue
+            others = tuple(
+                ModelSpec.of(name) for name in self.correctors if name != best.corrector.name
+            )
+            for spec in others:
+                registry.entry(spec.name, "corrector")
+            for weights in self.combination_weights:
                 candidate = CandidateSpec(
-                    "dynamic",
-                    "dynamic_selection",
+                    "combination",
+                    "residual_combination",
                     best.base,
                     best.corrector,
                     best.window_size,
                     best.alpha,
                     best.residual_source,
                     variant=self.variant,
-                    members=members,
-                    options_json=canonical_json(
-                        {"method": method, "neighbors": 10, "lag_size": best.window_size}
-                    ),
+                    members=others,
+                    options_json=canonical_json({"weights": weights}),
                 )
                 proposals.append(Proposal(candidate, "S4", best.candidate_id))
         return proposals

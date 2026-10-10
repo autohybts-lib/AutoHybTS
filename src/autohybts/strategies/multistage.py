@@ -12,7 +12,8 @@ residuals), so no observation error acts as a feature before it exists.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from autohybts.adapters.base import BaseForecaster
 from autohybts.domain.specs import MAX_STAGES
@@ -32,19 +33,33 @@ def stack_stages(
     alpha: float,
     residual_source: str,
     settings: ResidualSettings | None = None,
+    stage_params: Sequence[Mapping[str, Any]] | None = None,
 ) -> ResidualHybridForecaster:
-    """Nest one residual hybrid per corrector, the first corrector closest to the base."""
+    """Nest one residual hybrid per corrector, the first corrector closest to the base.
+
+    ``stage_params`` overrides ``window_size``, ``alpha`` or ``residual_source`` of the
+    stages after the first (one mapping per extra stage); missing keys are shared.
+    """
 
     if not 1 <= len(correctors) <= MAX_STAGES:
         raise ConfigurationError(f"De 1 a {MAX_STAGES} estágios; recebidos {len(correctors)}.")
+    overrides = list(stage_params or [])
+    if overrides and len(overrides) != len(correctors) - 1:
+        raise ConfigurationError("stage_params deve ter um item por estágio extra.")
+    shared: dict[str, Any] = {
+        "window_size": window_size,
+        "alpha": alpha,
+        "residual_source": residual_source,
+    }
     model: BaseForecaster = base
-    for corrector in correctors:
+    for index, corrector in enumerate(correctors):
+        params = shared if index == 0 or not overrides else {**shared, **overrides[index - 1]}
         model = ResidualHybridForecaster(
             model,
             corrector,
-            window_size=window_size,
-            alpha=alpha,
-            residual_source=residual_source,
+            window_size=int(params["window_size"]),
+            alpha=float(params["alpha"]),
+            residual_source=str(params["residual_source"]),
             settings=settings,
         )
     assert isinstance(model, ResidualHybridForecaster)

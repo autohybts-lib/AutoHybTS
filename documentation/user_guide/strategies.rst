@@ -12,6 +12,7 @@ Estratégia                  Nome                      Ideia
 ``residual_multistage``     ``arima-mlp-linear``      cada estágio corrige o erro do anterior
 ``decomposition``           ``ma(linear-mlp)``        base na parte suave, corretor na volátil
 ``fixed_combination``       ``comb(arima,knn)``       média ponderada de bases
+``residual_combination``    ``arima-comb(mlp,knn)``   base + média ponderada de corretores
 ``dynamic_selection``       ``dref(arima-mlp,knn)``   escolhe o corretor a cada passo (só B)
 ==========================  ========================  ============================================
 
@@ -37,6 +38,16 @@ O estágio *k* é um híbrido residual cuja base é o estágio *k−1*; o alvo d
 .. code-block:: python
 
    exp.create_hybrid("arima", "mlp", extra_stages=["linear"])
+
+Por padrão os estágios extras repetem janela, alfa e fonte de resíduo do primeiro.
+``stage_params`` muda isso por estágio; na busca,
+``AutoHybridExperiment(stage_params="per_stage")`` também varia a janela e o alfa do
+estágio extra no refinamento.
+
+.. code-block:: python
+
+   exp.create_hybrid("arima", "mlp", extra_stages=["linear"],
+                     stage_params=[{"window_size": 28, "alpha": 0.5}])
 
 Decomposição
 ------------
@@ -66,6 +77,15 @@ erro de um passo fora da amostra, medido no próprio treino).
 
    exp.create_combination(["arima", "knn"], weights="inverse_mse")
 
+Combinação de corretores: vários corretores sobre o mesmo resíduo,
+``ŷ = b + α·Σ wⱼ r̂ⱼ``. Com ``inverse_mse``, os pesos vêm do erro de cada corretor nas
+últimas linhas do seu próprio treino, ajustado nas anteriores.
+
+.. code-block:: python
+
+   exp.create_hybrid("arima", "mlp", combine_correctors=["knn", "linear"],
+                     combination_weights="inverse_mse")
+
 Seleção dinâmica (só variante B)
 --------------------------------
 
@@ -79,6 +99,9 @@ que pontua) e os ``k`` vizinhos mais parecidos decidem:
 ``local``
    ajusta uma Kernel Ridge pequena nos vizinhos, de (previsão da base, correção) para o
    valor observado, só para aquele passo.
+
+Na busca, a grade é a do legado (Silva et al., 2020): ``k ∈ {10, 5, 20}``,
+``lag ∈ {7, 14}`` e, no ``local``, ``alpha ∈ {1, 0.1}``; os valores padrão vêm primeiro.
 
 Sem observação entre os passos não há o que selecionar: na variante A a estratégia é
 recusada.

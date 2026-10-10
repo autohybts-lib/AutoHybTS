@@ -54,6 +54,30 @@ def candidates(variant: str) -> dict[str, CandidateSpec]:
             options_json=json.dumps({"weights": "inverse_mse"}),
         ),
     }
+    found["residual_combination"] = CandidateSpec(
+        "combination",
+        "residual_combination",
+        SEASONAL,
+        CORRECTOR,
+        7,
+        1.0,
+        "historical_oof_1step",
+        variant,  # type: ignore[arg-type]
+        members=(ModelSpec.of("knn"),),
+        options_json=json.dumps({"weights": "inverse_mse"}),
+    )
+    found["multistage_per_stage"] = CandidateSpec(
+        "residual",
+        "residual_multistage",
+        SEASONAL,
+        CORRECTOR,
+        7,
+        1.0,
+        "historical_oof_1step",
+        variant,  # type: ignore[arg-type]
+        members=(CORRECTOR,),
+        options_json=json.dumps({"stages": [{"window_size": 5, "alpha": 0.5}]}),
+    )
     if variant == "B":
         for method, members in (("dref", (ModelSpec.of("knn"),)), ("local", ())):
             found[f"dynamic_{method}"] = CandidateSpec(
