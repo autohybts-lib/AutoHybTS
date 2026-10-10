@@ -1,7 +1,7 @@
 Ablação do procedimento
 =======================
 
-``autohybts.benchmarks`` mede o próprio procedimento de seleção (§30.5): quatro
+``autohybts.benchmarks`` mede o próprio procedimento de seleção: quatro
 procedimentos com o mesmo orçamento e os mesmos testes externos.
 
 =======================  ============================================================

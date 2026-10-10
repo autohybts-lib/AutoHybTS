@@ -2,8 +2,7 @@ Tutoriais
 =========
 
 Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
-``notebooks/`` no repositório e são versionados com as saídas, que aparecem aqui. Para
-rodá-los localmente: ``pip install -e ".[dev,stats,notebook]"``.
+``notebooks/`` no repositório, já com as saídas, que aparecem aqui.
 
 .. toctree::
    :maxdepth: 1

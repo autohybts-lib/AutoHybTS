@@ -27,18 +27,6 @@ Ainda não está no PyPI; instale direto do repositório:
 pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 ```
 
-**A partir do código-fonte** (para desenvolver):
-
-```bash
-git clone https://github.com/jvataidee/AutoHybTS.git
-cd AutoHybTS
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev,stats,notebook]"   # Windows
-# .venv/bin/python -m pip install -e ".[dev,stats,notebook]"     # Linux/macOS
-```
-
-Extras: `stats` (statsmodels: ARIMA e STL), `plot` (matplotlib), `optuna` (`tune_model` com TPE), `datasets` (ler o M3), `yaml`, `notebook` (rodar os tutoriais), `docs` (gerar a documentação), `dev` (testes e lint).
-
 ## Início rápido
 
 ```python
@@ -155,16 +143,6 @@ valores ausentes: trate-os antes do `fit`.
 - Validade temporal antes de automação: nenhuma informação posterior à origem de previsão entra como feature, e o teste selado nunca alimenta busca ou seleção.
 - Seleção incremental guardada: um desafiante só substitui o campeão atual se superar critérios pareados de ganho e vitórias; caso contrário, a estrutura anterior (inclusive um modelo individual) é mantida.
 - Rastreabilidade: candidatas, tentativas e decisões têm identidade estável e ficam registradas, inclusive rejeições e falhas.
-
-## Desenvolvimento
-
-A partir do código-fonte (veja *Instalação*):
-
-```bash
-ruff check . && ruff format --check .
-mypy
-pytest -m "not slow"
-```
 
 ## Limitações atuais
 
