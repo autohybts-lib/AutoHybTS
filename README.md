@@ -89,10 +89,23 @@ cv.plot("critical_difference")  # também: leaderboard, boxplot, win_rate, forec
 exp.nested_cross_validate(outer_folds=3)  # o procedimento inteiro, dobra a dobra
 ```
 
-### Benchmarks (M4, M3, Rdatasets)
+### Dados incluídos
+
+A biblioteca já traz fontes de séries prontas para usar — sem baixar nada além do pacote:
+
+| Fonte | O que é | Como acessar |
+|---|---|---|
+| Sintéticas offline | `synthetic_daily` (tendência + sazonalidade semanal + ruído AR(1)) e `white_noise_daily` (só nível + ruído), geradas deterministicamente | `get_data("synthetic_daily")` |
+| M4 | Competição M4 completa: 100 mil séries nos subconjuntos `yearly`, `quarterly`, `monthly`, `weekly`, `daily`, `hourly`, com o teste oficial no final | `get_data("m4:D1")` ou `load_benchmark("m4", subset="daily")` |
+| M3 | Competição M3: subconjuntos `yearly`, `quarterly`, `monthly`, `other` (exige o extra `datasets`, para ler o arquivo R do Mcomp) | `get_data("m3:N1402")` ou `load_benchmark("m3", subset="monthly")` |
+| Rdatasets | Séries reais dos pacotes R (ex.: `datasets::AirPassengers`) | `load_dataset("rdatasets", package="datasets", name="AirPassengers", ...)` |
+
+Os benchmarks baixam sob demanda, uma única vez, com checksum e cache local (`list_datasets()` mostra o catálogo sem download). O **M5 não é suportado**: é hierárquico e o score oficial (WRMSSE) não está implementado — nenhum resultado desta biblioteca deve ser apresentado como benchmark M5.
 
 ```python
-from autohybts.datasets import list_datasets, load_benchmark, load_dataset
+from autohybts.datasets import get_data, list_datasets, load_benchmark, load_dataset
+
+y = get_data("synthetic_daily")  # offline, na hora
 
 series = load_benchmark("m4", subset="daily", series_id="D1")  # baixa uma vez, com checksum
 exp = AutoHybridExperiment(fh=series.descriptor.horizon, test_size=len(series.test)).fit(
