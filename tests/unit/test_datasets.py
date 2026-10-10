@@ -43,6 +43,7 @@ ROUTES = {
     RD + "datasets.csv": FIXTURES / "rdatasets" / "datasets.csv",
     RD + "csv/datasets/AirPassengers.csv": FIXTURES / "rdatasets" / "AirPassengers.csv",
     RD + "csv/datasets/iris.csv": FIXTURES / "rdatasets" / "iris.csv",
+    RD + "csv/DAAG/ozone.csv": FIXTURES / "rdatasets" / "ozone.csv",
 }
 
 
@@ -445,6 +446,21 @@ def test_get_data_names_benchmarks_and_rejects_unknown(
     assert len(full) == 9
     with pytest.raises(ConfigurationError, match="m4:<id>"):
         get_data("airline")
+
+
+def test_get_data_short_names_load_rdatasets_series(tmp_path: Path) -> None:
+    from autohybts.datasets import NAMED_SERIES, get_data
+
+    manager, opener = cache(tmp_path)
+    ozone = get_data("Ozone", cache=manager)  # case is ignored
+    assert ozone.tolist() == [300.0, 310.0, 305.0, 290.0]
+    assert ozone.index[0] == pd.Timestamp("1956-01-01")
+    assert ozone.index.freq is not None
+    assert get_data("air_passengers", cache=manager).tolist()[:2] == [112.0, 118.0]
+    assert all(name == name.lower() for name in NAMED_SERIES)
+    calls = len(opener.calls)
+    get_data("ozone", cache=manager)
+    assert len(opener.calls) == calls  # second read comes from the cache
 
 
 # ------------------------------------------------------------------ calendars

@@ -8,6 +8,7 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 
+from autohybts.datasets.named import NAMED_SERIES
 from autohybts.exceptions import ConfigurationError
 
 __all__ = ["SYNTHETIC", "get_data"]
@@ -49,10 +50,26 @@ def get_data(name: str, **kwargs: Any) -> pd.Series:
     * Benchmark series: ``"m4:D1"`` or ``"m3:N1402"`` — downloaded once to the cache
       (keywords ``offline``, ``cache_dir``). The official test is at the end; seal it
       with ``test_size`` equal to the benchmark horizon.
+    * Well-known Rdatasets series by short name (``"ozone"``, ``"air_passengers"`` ...,
+      see ``NAMED_SERIES``; case is ignored), downloaded the same way.
     """
 
     if name in SYNTHETIC:
         return SYNTHETIC[name](**kwargs)
+    named = NAMED_SERIES.get(name.lower())
+    if named is not None:
+        from autohybts.datasets.catalog import load_dataset
+
+        loaded = load_dataset(
+            "rdatasets",
+            package=named.package,
+            name=named.name,
+            target=named.target,
+            time_col=named.time_col,
+            frequency=named.frequency,
+            **kwargs,
+        )
+        return loaded.full()  # type: ignore[union-attr]
     provider, _, series_id = name.partition(":")
     if provider in ("m4", "m3") and series_id:
         from autohybts.datasets.catalog import list_datasets, load_benchmark
@@ -68,9 +85,9 @@ def get_data(name: str, **kwargs: Any) -> pd.Series:
         loaded = load_benchmark(provider, subset, series_id=series_id, **kwargs)
         return loaded.full()  # type: ignore[union-attr]
     raise ConfigurationError(
-        f"Dataset {name!r} não disponível; offline: {sorted(SYNTHETIC)}; benchmarks: "
-        "'m4:<id>' (ex.: 'm4:D1') ou 'm3:<id>' (ex.: 'm3:N1402'). Catálogo completo: "
-        "autohybts.datasets.list_datasets()."
+        f"Dataset {name!r} não disponível; offline: {sorted(SYNTHETIC)}; nomes prontos: "
+        f"{sorted(NAMED_SERIES)}; benchmarks: 'm4:<id>' (ex.: 'm4:D1') ou 'm3:<id>' "
+        "(ex.: 'm3:N1402'). Outras séries do Rdatasets: load_dataset('rdatasets', ...)."
     )
 
 

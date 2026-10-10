@@ -90,44 +90,6 @@ cv.plot("critical_difference")  # também: leaderboard, boxplot, win_rate, forec
 exp.nested_cross_validate(outer_folds=3)  # o procedimento inteiro, dobra a dobra
 ```
 
-### Dados incluídos
-
-A biblioteca já traz datasets nomeados, prontos para usar — os nomes abaixo funcionam direto no código:
-
-| Dataset | Fonte | O que é |
-|---|---|---|
-| `synthetic_daily` | sintética (offline) | 730 dias com tendência, sazonalidade semanal e ruído AR(1): estrutura residual que um corretor pode capturar |
-| `white_noise_daily` | sintética (offline) | nível + ruído branco, sem padrão: controle negativo |
-| `m4:Y1` … `m4:Y23000` | M4 yearly | 23.000 séries anuais |
-| `m4:Q1` … `m4:Q24000` | M4 quarterly | 24.000 séries trimestrais |
-| `m4:M1` … `m4:M1480` | M4 monthly | 1.480 séries mensais |
-| `m4:W1` … `m4:W359` | M4 weekly | 359 séries semanais |
-| `m4:D1` … `m4:D4227` | M4 daily | 4.227 séries diárias |
-| `m4:H1` … `m4:H414` | M4 hourly | 414 séries horárias |
-| `m3:N1402` e demais do catálogo | M3 | 3.003 séries nos subconjuntos `yearly` (645), `quarterly` (756), `monthly` (1428) e `other` (174); exige o extra `datasets` |
-| `datasets::AirPassengers` e demais `<pacote>::<nome>` | Rdatasets | séries reais dos pacotes R (ex.: passageiros aéreos mensais) |
-
-Nas séries de benchmark (M4/M3) o teste oficial da competição vem no final, selado.
-
-```python
-from autohybts.datasets import get_data, list_datasets, load_benchmark, load_dataset
-
-y = get_data("synthetic_daily")  # offline, na hora
-
-series = load_benchmark("m4", subset="daily", series_id="D1")  # baixa uma vez, com checksum
-exp = AutoHybridExperiment(fh=series.descriptor.horizon, test_size=len(series.test)).fit(
-    series.full()
-)  # teste oficial selado
-air = load_dataset(
-    "rdatasets",
-    package="datasets",
-    name="AirPassengers",
-    target="value",
-    time_col="time",
-    frequency="MS",
-)
-```
-
 ### Várias séries
 
 ```python
@@ -136,6 +98,52 @@ result = exp.compare_models()  # ranking pela média dos postos entre séries
 model = exp.finalize_model(result.best)  # PanelForecaster: um modelo por série
 exp.evaluate_external(model).metrics  # uma linha por série + média
 ```
+
+## Datasets
+
+Copie o nome e passe para `get_data`; o resultado é uma `pd.Series` pronta para o `fit`.
+
+```python
+from autohybts.datasets import get_data
+
+y = get_data("ozone")
+```
+
+| Nome | O que é | Frequência | Pontos |
+|---|---|---|---|
+| `synthetic_daily` | sintética: tendência, sazonalidade semanal e ruído AR(1) (offline) | diária | 730 |
+| `white_noise_daily` | sintética: nível + ruído branco, controle negativo (offline) | diária | 730 |
+| `air_passengers` | passageiros aéreos, 1949–1960 | mensal | 144 |
+| `nottem` | temperatura em Nottingham, 1920–1939 | mensal | 240 |
+| `us_acc_deaths` | mortes acidentais nos EUA, 1973–1978 | mensal | 72 |
+| `sunspots_monthly` | manchas solares, 1749–1983 | mensal | 2820 |
+| `uk_gas` | consumo de gás no Reino Unido, 1960–1986 | trimestral | 108 |
+| `johnson_johnson` | lucro por ação da Johnson & Johnson, 1960–1980 | trimestral | 84 |
+| `ozone` | ozônio total em Halley Bay (Antártida), 1956–2000 | anual | 45 |
+| `nile` | vazão do rio Nilo, 1871–1970 | anual | 100 |
+| `lynx` | linces capturados no Canadá, 1821–1934 | anual | 114 |
+| `lake_huron` | nível do lago Huron, 1875–1972 | anual | 98 |
+| `sunspots` | manchas solares, 1700–1988 | anual | 289 |
+| `m4:D1` | M4: troque `D1` por `Y…`, `Q…`, `M…`, `W…`, `D…` ou `H…` (100 mil séries) | várias | — |
+| `m3:N1402` | M3: 3.003 séries; exige o extra `datasets` | várias | — |
+
+As sintéticas são geradas na hora. As outras são baixadas na primeira vez e ficam em cache
+(`~/.cache/autohybts/datasets`); as reais vêm do [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/).
+
+Nas séries do M4 e do M3 o teste oficial da competição vem no fim; sele-o com `test_size`:
+
+```python
+from autohybts.datasets import load_benchmark
+
+series = load_benchmark("m4", subset="daily", series_id="D1")
+exp = AutoHybridExperiment(fh=series.descriptor.horizon, test_size=len(series.test)).fit(
+    series.full()
+)
+```
+
+Qualquer outra série do Rdatasets entra por `load_dataset`, dizendo qual coluna é o tempo,
+qual é o alvo e a frequência (veja a documentação, *Datasets*). A biblioteca não preenche
+valores ausentes: trate-os antes do `fit`.
 
 ## Documentação e tutoriais
 
