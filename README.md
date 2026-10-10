@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="figures/AutoHybTS.png" alt="AutoHybTS" width="260">
+  <img src="https://raw.githubusercontent.com/jvataidee/AutoHybTS/main/figures/AutoHybTS.png" alt="AutoHybTS" width="260">
 </p>
 
 # AutoHybTS
