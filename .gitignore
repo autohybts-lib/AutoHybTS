@@ -1,0 +1,32 @@
+*.md
+!README.md
+docs/
+
+.venv/
+.venv-*/
+__pycache__/
+.ipynb_checkpoints/
+
+data/raw/
+artifacts/
+.claude/
+.agents/
+lightning_logs/
+
+# Tooling and build outputs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+runs/
+
+# Documentation build and notebooks copied at build time
+documentation/_build/
+documentation/tutorials/notebooks/

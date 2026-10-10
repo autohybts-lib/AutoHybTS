@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev,stats]"
+      - run: pytest -m "not slow" --cov --cov-report=term-missing
+
+  minimum-versions:
+    # Keeps the dependency floors in pyproject.toml honest (pandas date handling differs by major).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install "numpy==1.26.*" "pandas==2.1.*" "scikit-learn==1.4.*" "statsmodels==0.14.*" pytest hypothesis
+      - run: python -m pip install --no-deps -e .
+      - run: pytest -m "not slow"
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install build
+      - run: python -m build
+      # Clean install without extras: the core must import and work on its own (T20).
+      - name: Smoke test of the wheel without extras
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/clean/bin/python -c "import autohybts, autohybts.exceptions, autohybts.domain.identity; print(autohybts.__version__)"
