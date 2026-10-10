@@ -19,7 +19,10 @@ estratégias de montar sistemas híbridos:
 * **correção aditiva** ``ŷ = b + α·r̂`` (ex.: ``arima-mlp``);
 * **vários estágios**, a correção da correção (``arima-mlp-linear``);
 * **decomposição** em parte suave e volátil (``ma(linear-mlp)``, ``stl(...)``);
-* **combinação fixa** de bases (``comb(arima,knn)``).
+* **combinação fixa** de bases (``comb(arima,knn)``) ou de corretores
+  (``arima-comb(mlp,knn)``);
+* **seleção dinâmica** do corretor a cada passo, na previsão rolling
+  (``dref(arima-mlp,knn)``).
 
 .. code-block:: python
 
@@ -63,6 +66,7 @@ estratégias de montar sistemas híbridos:
    user_guide/variant_b
    user_guide/tuning
    user_guide/persistence
+   user_guide/benchmarks
 
 .. toctree::
    :maxdepth: 1
@@ -74,5 +78,6 @@ estratégias de montar sistemas híbridos:
    :maxdepth: 1
    :caption: Projeto
 
+   security
    releasing
    about
