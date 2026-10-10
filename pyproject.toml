@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -8,7 +8,10 @@ dynamic = ["version"]
 description = "Automated Hybrid Time Series Forecasting: guarded search and incremental selection of standalone and hybrid forecasters."
 readme = "README.md"
 requires-python = ">=3.11"
-authors = [{ name = "AutoHybTS contributors" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "João Ataíde" }]
+keywords = ["time series", "forecasting", "hybrid models", "residual correction", "automl"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Science/Research",
@@ -19,11 +22,18 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Typing :: Typed",
 ]
+
 dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
     "scikit-learn>=1.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jvataidee/AutoHybTS"
+Documentation = "https://autohybts.readthedocs.io/"
+Source = "https://github.com/jvataidee/AutoHybTS"
+Issues = "https://github.com/jvataidee/AutoHybTS/issues"
 
 [project.optional-dependencies]
 stats = ["statsmodels>=0.14"]
@@ -51,9 +61,12 @@ path = "src/autohybts/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/autohybts"]
+# 2.4 is enough for License-Expression; newer hatchling defaults to 2.5 (PEP 794).
+core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/autohybts", "tests", "README.md", "pyproject.toml"]
+core-metadata-version = "2.4"
+include = ["src/autohybts", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 100

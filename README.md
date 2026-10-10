@@ -1,5 +1,13 @@
 <p align="center">
-  <img src="figures/AutoHybTS.png" alt="AutoHybTS" width="260">
+  <img src="https://raw.githubusercontent.com/jvataidee/AutoHybTS/main/figures/AutoHybTS.png" alt="AutoHybTS" width="260">
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/v/autohybts.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/pyversions/autohybts.svg" alt="Python"></a>
+  <a href="https://autohybts.readthedocs.io/"><img src="https://readthedocs.org/projects/autohybts/badge/?version=latest" alt="Documentação"></a>
+  <a href="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/autohybts.svg" alt="Licença MIT"></a>
 </p>
 
 # AutoHybTS
@@ -8,13 +16,13 @@
 
 A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
 
-> **Status: pré-alfa (0.0.1).** A API abaixo funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Ainda não publicada no PyPI.
+> **Status: pré-alfa (0.0.1).** A API abaixo funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Pode mudar entre versões 0.x sem aviso de depreciação.
 
 ## Instalação
 
 Requer Python 3.11 ou mais novo.
 
-**Pelo pip** (quando a versão for publicada no PyPI):
+**Pelo pip:**
 
 ```bash
 pip install autohybts                     # núcleo: NumPy, pandas, scikit-learn
@@ -27,7 +35,7 @@ pip install "autohybts[stats,plot,optuna]"  # + ajuste de hiperparâmetros com O
 ```bash
 pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 # uma versão específica:
-pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git@v0.1.0"
+pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git@v0.0.1"
 ```
 
 **A partir do código-fonte** (para desenvolver):
@@ -140,7 +148,10 @@ model = exp.finalize_model(result.best)  # PanelForecaster: um modelo por série
 exp.evaluate_external(model).metrics  # uma linha por série + média
 ```
 
-Tutoriais em [`notebooks/`](notebooks/README.md); documentação em [`documentation/`](documentation/) (`sphinx-build documentation documentation/_build/html`).
+## Documentação e tutoriais
+
+- Documentação: <https://autohybts.readthedocs.io/>
+- Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/jvataidee/AutoHybTS/tree/main/notebooks)
 
 ## Princípios
 
@@ -148,7 +159,9 @@ Tutoriais em [`notebooks/`](notebooks/README.md); documentação em [`documentat
 - Seleção incremental guardada: um desafiante só substitui o campeão atual se superar critérios pareados de ganho e vitórias; caso contrário, a estrutura anterior (inclusive um modelo individual) é mantida.
 - Rastreabilidade: candidatas, tentativas e decisões têm identidade estável e ficam registradas, inclusive rejeições e falhas.
 
-## Verificação
+## Desenvolvimento
+
+A partir do código-fonte (veja *Instalação*):
 
 ```bash
 ruff check . && ruff format --check .
@@ -165,3 +178,7 @@ pytest -m "not slow"
 ## Créditos
 
 Inspirada na ergonomia do [PyCaret](https://pycaret.org); o PyCaret não é dependência.
+
+## Licença
+
+[MIT](https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE) © João Ataíde.
