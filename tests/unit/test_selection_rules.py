@@ -263,3 +263,50 @@ def test_ranking_averages_tied_ranks_and_requires_every_series() -> None:
         ),
     )  # knn missing in s2: excluded; equal ranks broken by candidate_id
     assert {r.mean_rank for r in ranked} == {1.5}
+
+
+def test_optional_significance_predicate() -> None:
+    from autohybts.selection.policy import paired_p_value
+
+    better = [0.9, 0.8, 0.85, 0.7, 0.9, 0.8, 0.75, 0.82]
+    clear = result(HYBRID, better, ratio=0.3)
+    base = result(BASE, [1.0] * 8)
+    strict = SelectionPolicy(significance_alpha=0.05)
+    accepted = decide("residual", base, clear, strict, "MASE")
+    assert accepted.accepted
+    assert accepted.p_value == pytest.approx(1 / 2**8)  # all 8 units better: exact p
+    # Same gains on only 4 units: the rule passes but p >= 1/16 can never reach 0.05.
+    few = decide(
+        "residual",
+        result(BASE, [1.0] * 4),
+        result(HYBRID, better[:4], ratio=0.3),
+        strict,
+        "MASE",
+    )
+    assert few.reason_codes == ("not_significant",)
+    assert decide("residual", base, clear, STANDARD, "MASE").p_value is None
+    tied = paired_comparison(base, result(BASE, [1.0] * 8), "MASE", 1e-12)
+    assert paired_p_value(tied) == 1.0
+    assert strict.describe()["significance"] == {"test": "wilcoxon_one_sided", "alpha": 0.05}
+    assert "significance" not in STANDARD.describe()
+    with pytest.raises(ConfigurationError):
+        SelectionPolicy(significance_alpha=1.5)
+
+
+def test_significance_alpha_reaches_the_experiment_decisions() -> None:
+    from autohybts import AutoHybridExperiment
+    from autohybts.datasets import get_data
+
+    exp = AutoHybridExperiment(
+        fh=7,
+        fold=5,
+        budget="smoke",
+        base_models=("naive", "seasonal_naive"),
+        correctors=("linear",),
+        residual_windows=(7,),
+        alphas=(1.0,),
+        significance_alpha=0.05,
+    ).fit(get_data("synthetic_daily", n=260))
+    table = exp.compare_models().decisions
+    assert table["p_value"].notna().all()
+    assert exp.policy_.significance_alpha == 0.05

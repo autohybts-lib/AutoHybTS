@@ -16,7 +16,6 @@ from autohybts.evaluation.temporal import TemporalEvaluator
 from autohybts.exceptions import (
     ConfigurationError,
     SealedTestAccessError,
-    UnsupportedCapabilityError,
 )
 from autohybts.forecasting.finalized import PanelForecaster
 from autohybts.registry import default_registry
@@ -242,8 +241,22 @@ def test_panel_reporting_and_limits(
     cv = exp.cross_validate(models=["naive", "seasonal_naive"], folds=2)
     assert len(cv.units) == 4
     assert sorted({unit.split(":")[0] for unit in cv.units.index}) == ["a", "b"]
-    with pytest.raises(UnsupportedCapabilityError):
-        exp.nested_cross_validate()
+
+
+def test_nested_cv_runs_on_the_panel(
+    fitted: tuple[AutoHybridExperiment, object, PanelForecaster],
+) -> None:
+    exp, _, _ = fitted
+    nested = exp.nested_cross_validate(outer_folds=2, baselines=("naive",), budget="smoke")
+    folds = nested.folds
+    assert folds.index.names == ["fold_id", "series_id"]
+    assert len(folds) == 4  # 2 outer folds x 2 series
+    assert set(folds.index.get_level_values("series_id")) == {"a", "b"}
+    assert set(folds["status"]) == {"SUCCEEDED"}
+    assert nested.summary.loc[f"autohybts_{nested.metric}", "n_folds"] == 4
+    # Each series is cut at its own origin; the outer block is never in the inner history.
+    for (_, sid), row in folds.iterrows():
+        assert row["origin"] < exp.panel_[sid].end
 
 
 @pytest.mark.skipif(

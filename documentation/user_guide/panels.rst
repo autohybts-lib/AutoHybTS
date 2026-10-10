@@ -28,3 +28,13 @@ comparação são ``série:dobra``.
    exp.predict_model(model).predictions
    exp.evaluate_external(model).metrics
    exp.plot_model(result.best, "cv_forecasts", series_id="loja_b")
+
+A CV aninhada também funciona no painel: cada série é cortada na sua própria origem
+externa, o experimento interno roda no painel truncado e a tabela tem uma linha por
+dobra e série.
+
+.. code-block:: python
+
+   nested = exp.nested_cross_validate(outer_folds=3)
+   nested.folds        # índice (fold_id, series_id)
+   nested.summary

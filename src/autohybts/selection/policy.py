@@ -24,6 +24,7 @@ __all__ = [
     "SelectionPolicy",
     "VariabilityCriterion",
     "paired_comparison",
+    "paired_p_value",
 ]
 
 DEFAULT_FAMILY_ORDER: Final = (
@@ -103,6 +104,12 @@ class SelectionPolicy:
     * ``research_strict``: like ``standard``; refuses to run without a variability
       criterion or with ``min_coverage < 1``.
     * ``exploratory``: decisions are flagged as exploratory, never as unbiased.
+
+    ``significance_alpha`` (off by default) adds a statistical predicate: the challenger
+    must also beat the champion in a one-sided paired Wilcoxon signed-rank test on the same
+    units, ``p < significance_alpha``. The protocol rule alone is not error control; this
+    option is. With few units it can never pass (with ``n`` units the smallest one-sided
+    p-value is ``1 / 2**n``: at least 5 units for ``alpha = 0.05``).
     """
 
     profile: Profile = "standard"
@@ -112,6 +119,7 @@ class SelectionPolicy:
     min_coverage: float = 1.0
     epsilon: float = 1e-12
     family_order: tuple[str, ...] = DEFAULT_FAMILY_ORDER
+    significance_alpha: float | None = None
 
     def __post_init__(self) -> None:
         if self.profile not in PROFILES:
@@ -122,6 +130,8 @@ class SelectionPolicy:
             raise ConfigurationError("win_rate_threshold deve estar em [0, 1].")
         if not self.epsilon > 0:
             raise ConfigurationError("epsilon deve ser positivo.")
+        if self.significance_alpha is not None and not 0.0 < self.significance_alpha < 1.0:
+            raise ConfigurationError("significance_alpha deve estar em (0, 1) ou ser None.")
         if len(set(self.family_order)) != len(self.family_order) or not self.family_order:
             raise ConfigurationError("family_order deve listar famílias sem repetição.")
         if self.profile == "research_strict":
@@ -141,7 +151,7 @@ class SelectionPolicy:
         return self.profile == "exploratory"
 
     def describe(self) -> dict[str, object]:
-        return {
+        described: dict[str, object] = {
             "profile": self.profile,
             "median_gain_threshold": self.median_gain_threshold,
             "win_rate_threshold": self.win_rate_threshold,
@@ -150,6 +160,13 @@ class SelectionPolicy:
             "epsilon": self.epsilon,
             "family_order": list(self.family_order),
         }
+        # Only when used, so snapshots of earlier selections keep their content.
+        if self.significance_alpha is not None:
+            described["significance"] = {
+                "test": "wilcoxon_one_sided",
+                "alpha": self.significance_alpha,
+            }
+        return described
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +177,18 @@ class PairedComparison:
     gains: tuple[float, ...]
     median_gain: float
     win_rate: float
+
+
+def paired_p_value(paired: PairedComparison) -> float:
+    """One-sided Wilcoxon signed-rank p-value that the challenger errs less (1 if no evidence)."""
+
+    differences = np.asarray(paired.champion_errors) - np.asarray(paired.challenger_errors)
+    differences = differences[differences != 0]
+    if differences.size == 0:
+        return 1.0
+    from scipy import stats
+
+    return float(stats.wilcoxon(differences, alternative="greater").pvalue)
 
 
 def paired_comparison(

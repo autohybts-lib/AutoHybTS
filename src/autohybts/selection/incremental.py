@@ -25,7 +25,7 @@ from autohybts.domain.specs import CandidateSpec
 from autohybts.evaluation.temporal import TemporalEvaluator
 from autohybts.exceptions import ConfigurationError, CoverageError
 from autohybts.search.ledger import SearchResult
-from autohybts.selection.policy import SelectionPolicy, paired_comparison
+from autohybts.selection.policy import SelectionPolicy, paired_comparison, paired_p_value
 from autohybts.selection.rank import RANKING_CONVENTION, RankedStructure, RankingConvention
 
 __all__ = [
@@ -60,6 +60,8 @@ class SelectionDecision:
     # Short names (``arima-mlp``) of both sides, for tables and plots.
     champion_before_name: str = ""
     challenger_name: str = ""
+    # One-sided paired Wilcoxon p-value; None when the significance predicate is off.
+    p_value: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +113,7 @@ class SelectionResult:
             "win_rate",
             "variability_status",
             "variability_value",
+            "p_value",
             "challenger_coverage",
             "challenger_label",
             "champion_before_id",
@@ -127,6 +130,7 @@ class SelectionResult:
                 "win_rate": d.win_rate,
                 "variability_status": d.variability_status,
                 "variability_value": d.variability_value,
+                "p_value": d.p_value,
                 "challenger_coverage": d.challenger_coverage,
                 "challenger_label": d.challenger_label,
                 "champion_before_id": d.champion_before,
@@ -281,6 +285,11 @@ def decide(
             reasons.append("median_gain_below_threshold")
         if not paired.win_rate >= policy.win_rate_threshold:
             reasons.append("win_rate_below_threshold")
+    p_value: float | None = None
+    if policy.significance_alpha is not None and paired.unit_ids:
+        p_value = paired_p_value(paired)
+        if not p_value < policy.significance_alpha:
+            reasons.append("not_significant")
 
     criterion = policy.variability
     value: float | None = None
@@ -317,6 +326,7 @@ def decide(
         thresholds=policy.describe(),
         champion_before_name=champion.candidate.name,
         challenger_name=challenger.candidate.name,
+        p_value=p_value,
     )
 
 

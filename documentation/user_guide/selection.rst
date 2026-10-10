@@ -17,6 +17,12 @@ O desafiante substitui o campeão só se, nas mesmas unidades (origens):
 * **variabilidade** ``correction_std_ratio`` ≥ 0,05 quando houver corretor — um
   corretor que quase não mexe na previsão é inerte.
 
+Opcionalmente, ``AutoHybridExperiment(significance_alpha=0.05)`` acrescenta um critério
+estatístico: o desafiante também precisa vencer num teste de Wilcoxon pareado unilateral
+nas mesmas unidades, ``p < alfa`` (motivo ``not_significant``; o p-valor aparece na
+coluna ``p_value`` das decisões). Com ``n`` unidades o menor p-valor possível é
+``1/2ⁿ``: são precisas ao menos 5 unidades de seleção para ``alfa = 0,05``.
+
 Rejeição mantém o campeão. Cada decisão fica registrada, aceita ou não:
 
 .. code-block:: python
@@ -47,6 +53,6 @@ promediados.
 
 .. warning::
 
-   A regra é um protocolo, não um teste de hipótese: em ruído branco ela aceitou
-   híbridos espúrios em parte das sementes testadas. Use a comparação estatística e a
-   CV aninhada para relatar a incerteza.
+   Sem ``significance_alpha``, a regra é um protocolo, não um teste de hipótese: em ruído
+   branco ela aceitou híbridos espúrios em parte das sementes testadas. Use o critério
+   estatístico, a comparação e a CV aninhada para controlar e relatar a incerteza.

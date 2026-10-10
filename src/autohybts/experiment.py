@@ -40,7 +40,6 @@ from autohybts.exceptions import (
     CoverageError,
     InsufficientHistoryError,
     SealedTestAccessError,
-    UnsupportedCapabilityError,
 )
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster, refit
 from autohybts.forecasting.rolling_one_step_b import rolling_one_step
@@ -132,6 +131,11 @@ class AutoHybridExperiment(Parametrized):
             ``("ma",)`` in variant B.
         combination_weights: weightings tried when ``compare_models`` includes
             ``"combination"``.
+        stage_params: ``"shared"`` (extra stages reuse window, alpha and source) or
+            ``"per_stage"`` (the search also varies the extra stage's window and alpha).
+        significance_alpha: optional extra acceptance predicate: a one-sided paired
+            Wilcoxon test on ``V_select`` must give ``p < significance_alpha`` (off by
+            default; needs at least 5 select units per series for ``0.05``).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -158,6 +162,8 @@ class AutoHybridExperiment(Parametrized):
         max_stages: int = 2,
         decomposition_methods: Sequence[str] | None = None,
         combination_weights: Sequence[str] = ("equal", "inverse_mse"),
+        stage_params: str = "shared",
+        significance_alpha: float | None = None,
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -181,6 +187,8 @@ class AutoHybridExperiment(Parametrized):
         self.max_stages = max_stages
         self.decomposition_methods = decomposition_methods
         self.combination_weights = combination_weights
+        self.stage_params = stage_params
+        self.significance_alpha = significance_alpha
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -241,9 +249,13 @@ class AutoHybridExperiment(Parametrized):
             residual_settings=ResidualSettings(),
         )
         self.policy_ = (
-            SelectionPolicy.quickstart()
+            SelectionPolicy.quickstart(significance_alpha=self.significance_alpha)
             if self.profile == "quickstart"
-            else SelectionPolicy(profile=self.profile, family_order=DEFAULT_FAMILY_ORDER)
+            else SelectionPolicy(
+                profile=self.profile,
+                family_order=DEFAULT_FAMILY_ORDER,
+                significance_alpha=self.significance_alpha,
+            )
         )
         self._externally_evaluated: set[str] = set()
         # Evaluations already computed, per (candidate_id, layer), reused by plots and tables.
@@ -303,24 +315,47 @@ class AutoHybridExperiment(Parametrized):
         base_params: dict[str, Any] | None = None,
         corrector_params: dict[str, Any] | None = None,
         extra_stages: Sequence[str] = (),
+        stage_params: Sequence[Mapping[str, Any]] | None = None,
+        combine_correctors: Sequence[str] = (),
+        combination_weights: str = "inverse_mse",
     ) -> ModelResult:
         """Evaluate one residual hybrid ``base + alpha * corrector`` on every origin.
 
         ``extra_stages`` names correctors of further stages: each one corrects the
-        residuals of the model before it (``residual_multistage``).
+        residuals of the model before it (``residual_multistage``). By default the extra
+        stages share ``window``, ``alpha`` and ``residual_source``; ``stage_params`` gives
+        one dict per extra stage to change them (e.g. ``[{"window_size": 28}]``).
+
+        ``combine_correctors`` instead averages ``corrector`` and these correctors with
+        fixed ``combination_weights`` (``"equal"`` or ``"inverse_mse"``) as one correction.
         """
 
         self._require("VALIDATED")
+        if extra_stages and combine_correctors:
+            raise ConfigurationError("Use extra_stages ou combine_correctors, não os dois.")
+        if stage_params is not None and not extra_stages:
+            raise ConfigurationError("stage_params vale só com extra_stages.")
+        options: dict[str, Any] = {}
+        strategy = "residual_additive"
+        members: tuple[str, ...] = ()
+        if extra_stages:
+            strategy, members = "residual_multistage", tuple(extra_stages)
+            if stage_params is not None:
+                options["stages"] = [dict(stage) for stage in stage_params]
+        elif combine_correctors:
+            strategy, members = "residual_combination", tuple(combine_correctors)
+            options["weights"] = combination_weights
         candidate = CandidateSpec(
-            "residual",
-            "residual_multistage" if extra_stages else "residual_additive",
+            "combination" if strategy == "residual_combination" else "residual",
+            strategy,
             ModelSpec.of(base, base_params),
             ModelSpec.of(corrector, corrector_params),
             window,
             float(alpha),
             residual_source,
             variant=self.variant,
-            members=tuple(ModelSpec.of(name) for name in extra_stages),
+            members=tuple(ModelSpec.of(name) for name in members),
+            options_json=canonical_json(options),
         )
         return self._model_result(candidate, "hybrid.created")
 
@@ -886,63 +921,93 @@ class AutoHybridExperiment(Parametrized):
         development history), a fresh experiment with these parameters searches and selects
         using only the history before that origin; its champion is refitted there and
         scored on the next block, side by side with fixed ``baselines``.
+
+        In a panel every series is cut at its own outer origin, the inner experiment runs
+        on the whole truncated panel and the folds table has one row per fold and series;
+        the summary averages over all of them.
         """
 
         self._require("VALIDATED")
-        if self.is_panel:
-            raise UnsupportedCapabilityError(
-                "A validação cruzada aninhada ainda é por série: rode-a em cada série do painel."
-            )
         outer = TemporalCrossValidation(horizon=self.fh, n_folds=outer_folds, step=self.fh)
-        plan = outer.split(self.history_)
+        outer_plan = plan_panel(outer, self.panel_)
         params = {**self._public_params(), "test_size": 0, "registry": self.registry}
         if budget is not None:
             params["budget"] = budget
         metrics = resolve_metrics(self.evaluator_.metrics)
+        space = self._space(with_residuals=False)
         rows = []
         started = time.perf_counter()
-        for origin in plan:
-            inner = self.history_.head(origin.origin_index + 1)
-            actual = plan.target_values(origin)
-            row: dict[str, Any] = {"fold_id": origin.fold_id, "origin": origin.origin_time}
+        series_ids = self.panel_.series_ids
+        fold_ids = [o.fold_id for o in outer_plan[series_ids[0]].origins()]
+        for fold_id in fold_ids:
+            # Each series is cut at its own origin of this outer fold.
+            origins = {
+                sid: next(o for o in outer_plan[sid].origins() if o.fold_id == fold_id)
+                for sid in series_ids
+            }
+            inner = {
+                sid: self.panel_[sid].head(origins[sid].origin_index + 1) for sid in series_ids
+            }
+            base_row: dict[str, Any] = {"fold_id": fold_id}
             try:
-                inner_exp = AutoHybridExperiment(**params).fit(inner)
+                inner_input = inner[series_ids[0]] if not self.is_panel else PanelFrame(inner)
+                inner_exp = AutoHybridExperiment(**params).fit(inner_input)
                 inner_compare = inner_exp.compare_models()
                 final = inner_exp.finalize_model(inner_compare.best)
             except (InsufficientHistoryError, CoverageError) as error:
-                row.update(status="FAILED", reason=f"{type(error).__name__}: {error}")
-                rows.append(row)
+                for sid in series_ids:
+                    rows.append(
+                        {
+                            **base_row,
+                            "series_id": sid,
+                            "origin": origins[sid].origin_time,
+                            "status": "FAILED",
+                            "reason": f"{type(error).__name__}: {error}",
+                        }
+                    )
                 continue
-            forecast = final.predict(self.fh)["y_pred"].to_numpy()
-            scores = compute_metrics(metrics, actual, forecast, inner.values, self.seasonal_period_)
-            row.update(
-                status="SUCCEEDED",
-                champion=inner_compare.best.label,
-                strategy=inner_compare.best.strategy,
-                inner_selection_gap=inner_compare.audit.selection_gap,
-                **{f"autohybts_{m}": v for m, v in scores.items()},
-            )
-            space = self._space(with_residuals=False)
-            for name in baselines:
-                spec = CandidateSpec.standalone(
-                    name, space.default_params(name), family=self.registry_.entry(name).family
+            for sid in series_ids:
+                history = inner[sid]
+                actual = outer_plan[sid].target_values(origins[sid])
+                member = final[sid] if isinstance(final, PanelForecaster) else final
+                forecast = member.predict(self.fh)["y_pred"].to_numpy()
+                scores = compute_metrics(
+                    metrics, actual, forecast, history.values, self.seasonal_period_
                 )
-                model, _ = refit(
-                    spec,
-                    inner,
-                    self.registry_,
-                    session_seed=self.session_id,
-                    residual_settings=self.evaluator_.residual_settings,
-                )
-                baseline = FinalizedForecaster(spec, model, inner, None, {}, len(inner))
-                predicted = baseline.predict(self.fh)["y_pred"].to_numpy()
-                baseline_scores = compute_metrics(
-                    metrics, actual, predicted, inner.values, self.seasonal_period_
-                )
-                row.update({f"{name}_{m}": v for m, v in baseline_scores.items()})
-            rows.append(row)
+                row = {
+                    **base_row,
+                    "series_id": sid,
+                    "origin": origins[sid].origin_time,
+                    "status": "SUCCEEDED",
+                    "champion": member.spec.label,
+                    "strategy": member.spec.strategy,
+                    "inner_selection_gap": inner_compare.audit.selection_gap,
+                    **{f"autohybts_{m}": v for m, v in scores.items()},
+                }
+                for name in baselines:
+                    spec = CandidateSpec.standalone(
+                        name, space.default_params(name), family=self.registry_.entry(name).family
+                    )
+                    model, _ = refit(
+                        spec,
+                        history,
+                        self.registry_,
+                        session_seed=self.session_id,
+                        residual_settings=self.evaluator_.residual_settings,
+                    )
+                    baseline = FinalizedForecaster(spec, model, history, None, {}, len(history))
+                    predicted = baseline.predict(self.fh)["y_pred"].to_numpy()
+                    baseline_scores = compute_metrics(
+                        metrics, actual, predicted, history.values, self.seasonal_period_
+                    )
+                    row.update({f"{name}_{m}": v for m, v in baseline_scores.items()})
+                rows.append(row)
         self._event("nested_cv.finished", f"{outer_folds} dobras externas", started)
-        folds_table = pd.DataFrame(rows).set_index("fold_id")
+        index = ["fold_id", "series_id"] if self.is_panel else ["fold_id"]
+        folds_table = pd.DataFrame(rows)
+        if not self.is_panel:
+            folds_table = folds_table.drop(columns="series_id")
+        folds_table = folds_table.set_index(index)
         metric = self.evaluator_.metrics[0]
         columns = [f"autohybts_{metric}", *(f"{b}_{metric}" for b in baselines)]
         present = [c for c in columns if c in folds_table.columns]
@@ -1122,6 +1187,7 @@ class AutoHybridExperiment(Parametrized):
             seasonal_period=self.seasonal_period_,
             variant=self.variant,
             max_stages=self.max_stages if "multistage" in include else 1,
+            stage_params=self.stage_params,
             decomposition_methods=tuple(methods),
             combination_weights=tuple(self.combination_weights) if "combination" in include else (),
             dynamic_methods=("dref", "local") if "dynamic" in include else (),
