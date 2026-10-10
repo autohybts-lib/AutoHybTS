@@ -78,8 +78,9 @@ files = ["src/autohybts"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-# No type information shipped by these libraries (optuna: optional extra, may be absent).
-module = ["statsmodels.*", "sklearn.*", "scipy.*", "optuna", "optuna.*", "rdata", "rdata.*"]
+# No type information shipped by these libraries (matplotlib/plot, optuna and
+# rdata/datasets: optional extras, may be absent).
+module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
