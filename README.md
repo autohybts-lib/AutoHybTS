@@ -91,16 +91,22 @@ exp.nested_cross_validate(outer_folds=3)  # o procedimento inteiro, dobra a dobr
 
 ### Dados incluídos
 
-A biblioteca já traz fontes de séries prontas para usar — sem baixar nada além do pacote:
+A biblioteca já traz datasets nomeados, prontos para usar — os nomes abaixo funcionam direto no código:
 
-| Fonte | O que é | Como acessar |
+| Dataset | Fonte | O que é |
 |---|---|---|
-| Sintéticas offline | `synthetic_daily` (tendência + sazonalidade semanal + ruído AR(1)) e `white_noise_daily` (só nível + ruído), geradas deterministicamente | `get_data("synthetic_daily")` |
-| M4 | Competição M4 completa: 100 mil séries nos subconjuntos `yearly`, `quarterly`, `monthly`, `weekly`, `daily`, `hourly`, com o teste oficial no final | `get_data("m4:D1")` ou `load_benchmark("m4", subset="daily")` |
-| M3 | Competição M3: subconjuntos `yearly`, `quarterly`, `monthly`, `other` (exige o extra `datasets`, para ler o arquivo R do Mcomp) | `get_data("m3:N1402")` ou `load_benchmark("m3", subset="monthly")` |
-| Rdatasets | Séries reais dos pacotes R (ex.: `datasets::AirPassengers`) | `load_dataset("rdatasets", package="datasets", name="AirPassengers", ...)` |
+| `synthetic_daily` | sintética (offline) | 730 dias com tendência, sazonalidade semanal e ruído AR(1): estrutura residual que um corretor pode capturar |
+| `white_noise_daily` | sintética (offline) | nível + ruído branco, sem padrão: controle negativo |
+| `m4:Y1` … `m4:Y23000` | M4 yearly | 23.000 séries anuais |
+| `m4:Q1` … `m4:Q24000` | M4 quarterly | 24.000 séries trimestrais |
+| `m4:M1` … `m4:M1480` | M4 monthly | 1.480 séries mensais |
+| `m4:W1` … `m4:W359` | M4 weekly | 359 séries semanais |
+| `m4:D1` … `m4:D4227` | M4 daily | 4.227 séries diárias |
+| `m4:H1` … `m4:H414` | M4 hourly | 414 séries horárias |
+| `m3:N1402` e demais do catálogo | M3 | 3.003 séries nos subconjuntos `yearly` (645), `quarterly` (756), `monthly` (1428) e `other` (174); exige o extra `datasets` |
+| `datasets::AirPassengers` e demais `<pacote>::<nome>` | Rdatasets | séries reais dos pacotes R (ex.: passageiros aéreos mensais) |
 
-Os benchmarks baixam sob demanda, uma única vez, com checksum e cache local (`list_datasets()` mostra o catálogo sem download). O **M5 não é suportado**: é hierárquico e o score oficial (WRMSSE) não está implementado — nenhum resultado desta biblioteca deve ser apresentado como benchmark M5.
+Nas séries de benchmark (M4/M3) o teste oficial da competição vem no final, selado. O **M5 não é suportado**: é hierárquico e o score oficial (WRMSSE) não está implementado — nenhum resultado desta biblioteca deve ser apresentado como benchmark M5.
 
 ```python
 from autohybts.datasets import get_data, list_datasets, load_benchmark, load_dataset
