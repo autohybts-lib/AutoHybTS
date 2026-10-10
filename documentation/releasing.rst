@@ -26,8 +26,11 @@ Checklist de release candidate
 4. ``python -m build`` e ``twine check dist/*``; instalar o wheel num ambiente limpo sem
    extras e rodar um ``compare_models`` pequeno; ``import autohybts`` não pode carregar
    statsmodels, matplotlib, Optuna nem rdata.
-5. Segurança de carga: ``load_model`` só com ``trusted=True`` e checksum conferido;
-   downloads só HTTPS em domínios aprovados, com manifesto e verificação a cada leitura.
+5. Segurança (ver :doc:`security`): ``load_model`` só com ``trusted=True``, checksum,
+   ``sha256=`` e ``signing_key=`` testados; downloads só HTTPS em domínios aprovados
+   (inclusive após redirecionamento), com manifesto e verificação a cada leitura;
+   ``pip-audit`` sem vulnerabilidades conhecidas; notebooks sem caminhos locais nas
+   saídas (``tests/contracts/test_notebook_outputs.py``).
 6. ``sphinx-build -W documentation documentation/_build/html`` sem avisos.
 7. Versão em ``src/autohybts/__init__.py``, data no CHANGELOG, tag ``vX.Y.Z``.
 8. README: trocar ``<organizacao>`` pelo endereço do repositório e usar URL absoluta
@@ -49,10 +52,16 @@ publicado.
 
 .. code-block:: bash
 
-   git add .
+   git status                     # confira: nada de artefatos, caches, .env ou chaves
+   git add <arquivos revisados>
    git commit -m "AutoHybTS 0.1.0rc1"
    git remote add origin https://github.com/<organizacao>/AutoHybTS.git
    git push -u origin main
+
+Evite ``git add .``: o ``.gitignore`` cobre ``artifacts/``, ``.venv/`` e os caches, mas
+não arquivos de credenciais criados por engano. No GitHub, ative em **Settings →
+Code security** o *secret scanning*, a *push protection* e o *private vulnerability
+reporting*, e proteja a branch ``main`` (PR obrigatório, CI verde).
 
 Antes do commit, ajuste no README o endereço do repositório (``<organizacao>``) e a URL
 do logo para uma absoluta, por exemplo
@@ -84,8 +93,11 @@ que roda o mesmo comando e publica ``documentation/_build/html``.
 3. Pacote no PyPI
 ~~~~~~~~~~~~~~~~~
 
-**Primeira vez, manual.** Crie contas em https://test.pypi.org e https://pypi.org e gere
-um *API token* em cada uma.
+**Primeira vez, manual.** Crie contas em https://test.pypi.org e https://pypi.org, ative
+a autenticação em dois fatores e gere um *API token* em cada uma. Na primeira publicação o
+token precisa valer para a conta toda; depois, troque-o por um token restrito ao projeto
+``autohybts``. Guarde-o no ``keyring`` (o ``twine`` lê de lá), nunca no repositório, em
+``.pypirc`` versionado ou em notebooks.
 
 .. code-block:: bash
 
@@ -95,8 +107,9 @@ um *API token* em cada uma.
 
    # TestPyPI primeiro (usuário __token__, senha = token)
    python -m twine upload --repository testpypi dist/*
-   pip install --index-url https://test.pypi.org/simple/ \
-               --extra-index-url https://pypi.org/simple/ autohybts
+   # num ambiente descartável: dependências do PyPI, só o autohybts do TestPyPI
+   pip install numpy pandas scikit-learn
+   pip install --index-url https://test.pypi.org/simple/ --no-deps autohybts
 
    # tudo certo: PyPI
    python -m twine upload dist/*
@@ -104,13 +117,22 @@ um *API token* em cada uma.
 Depois disso, ``pip install autohybts`` funciona para qualquer pessoa.
 
 **Depois, automático (recomendado).** Com *Trusted Publishing* do PyPI não há token
-guardado: cadastre no PyPI (*Publishing*) o repositório e o workflow
-``.github/workflows/release.yml``, que gera o pacote e publica a cada tag:
+guardado: cadastre no PyPI (*Publishing*) o repositório, o workflow
+``.github/workflows/release.yml`` e o ambiente ``pypi``. No GitHub, crie o ambiente
+``pypi`` com revisores obrigatórios: cada tag gera o pacote, mas só publica depois da sua
+aprovação.
 
 .. code-block:: bash
 
    git tag v0.1.0rc1
    git push origin v0.1.0rc1
+
+.. note::
+
+   Com ``--extra-index-url`` o pip escolhe a versão mais alta entre os dois índices, e
+   qualquer pessoa pode publicar no TestPyPI um pacote com o nome de uma dependência
+   (*dependency confusion*). Por isso o teste acima instala as dependências do PyPI e só
+   o ``autohybts`` do TestPyPI, com ``--no-deps``.
 
 .. warning::
 
