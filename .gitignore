@@ -1,5 +1,6 @@
 *.md
 !README.md
+!.github/SECURITY.md
 docs/
 
 .venv/

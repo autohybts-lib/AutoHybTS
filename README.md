@@ -65,8 +65,7 @@ model = load_model(path, trusted=True)  # trusted=True: só para arquivos de con
 
 Carregar um modelo executa código (pickle). Para artefatos que passam por outras mãos,
 assine com `save_model(..., signing_key=chave)` e confira com
-`load_model(..., signing_key=chave)`, ou fixe o hash com `load_model(..., sha256=...)`;
-veja a página *Segurança* da documentação.
+`load_model(..., signing_key=chave)`, ou fixe o hash com `load_model(..., sha256=...)`.
 
 ### Estratégias de montar o sistema híbrido
 

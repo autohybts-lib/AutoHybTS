@@ -78,6 +78,4 @@ estratégias de montar sistemas híbridos:
    :maxdepth: 1
    :caption: Projeto
 
-   security
-   releasing
    about

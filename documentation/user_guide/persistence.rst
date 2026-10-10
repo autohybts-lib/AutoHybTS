@@ -26,8 +26,6 @@ SHA-256 recebido por um canal confiável:
    model = load_model(path, trusted=True, signing_key=key)
    model = load_model(path, trusted=True, sha256="<sha-256 publicado>")
 
-Detalhes em :doc:`../security`.
-
 Evidências do experimento
 -------------------------
 

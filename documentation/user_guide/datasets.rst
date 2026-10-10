@@ -27,7 +27,7 @@ Cache e segurança
   checksum fixado no código.
 * ``offline=True`` usa só o cache e diz o que falta (``DatasetUnavailableError``).
 * Arquivos sem hash fixado são confiados no primeiro download; faça esse download numa
-  rede confiável. Mais em :doc:`../security`.
+  rede confiável.
 
 M4
 --
