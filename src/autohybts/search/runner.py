@@ -29,7 +29,7 @@ from autohybts.search.budgets import SearchGuardConfig
 from autohybts.search.cache import MemoryTrialCache, evaluation_key
 from autohybts.search.ledger import LedgerEntry, LedgerStatus, SearchResult
 from autohybts.search.pruning import eligible, retain_bases, top_structures
-from autohybts.search.spaces import Proposal, SearchSpace
+from autohybts.search.spaces import Proposal, SearchSpace, round_robin
 
 __all__ = ["SearchEngine"]
 
@@ -115,6 +115,8 @@ class SearchEngine:
         # S4 runs on what is left, with one slot kept per advanced family so each one is
         # represented; the slots come from the total budget, not from the residual family.
         advanced_reserve = len({p.candidate.family for p in advanced if p.skip_reason is None})
+        if self.space.dynamic_methods and self.space.correctors:
+            advanced_reserve += 1
         structures: list[EvaluationResult] = []
         if self.space.correctors and self.space.residual_windows and self.space.alphas:
             # Keep room for S3: refinement is the point of the staged search (§8.2).
@@ -142,8 +144,9 @@ class SearchEngine:
                     reserve=advanced_reserve,
                     family_reserve=0,
                 )
-        if advanced:
-            self._stage(advanced, plan, state)
+        dynamic = self.space.dynamic_proposals([r.candidate for r in structures], registry)
+        if advanced or dynamic:
+            self._stage(round_robin([*advanced, *dynamic]), plan, state)
 
         pruned = {e.reason for e in state.ledger if e.status == "PRUNED_BUDGET"}
         if state.stopped:

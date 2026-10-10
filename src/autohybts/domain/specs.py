@@ -177,11 +177,12 @@ class CandidateSpec:
             names = [self.base, *self.members]
             if len(set(names)) != len(names):
                 raise ConfigurationError("Membros repetidos na combinação.")
-        elif self.members:
+        elif self.members and strategy != "dynamic_selection":
             raise ConfigurationError(f"Candidata {strategy} não aceita members.")
         allowed = {
             "decomposition": {"method", "ma_window", "period"},
             "fixed_combination": {"weights"},
+            "dynamic_selection": {"method", "neighbors", "lag_size", "dsel_size"},
         }.get(strategy, set())
         unknown = set(options) - allowed
         if unknown:
@@ -207,6 +208,11 @@ class CandidateSpec:
                 isinstance(ma_window, bool) or not isinstance(ma_window, int) or ma_window < 1
             ):
                 raise ConfigurationError("ma_window deve ser inteiro >= 1 ou None.")
+        if strategy == "dynamic_selection" and options.get("method", "dref") not in (
+            "dref",
+            "local",
+        ):
+            raise ConfigurationError("Seleção dinâmica exige method 'dref' ou 'local'.")
         if strategy == "fixed_combination" and options.get("weights") not in COMBINATION_WEIGHTS:
             raise ConfigurationError(
                 f"fixed_combination exige weights em {COMBINATION_WEIGHTS}; recebido "
@@ -273,6 +279,9 @@ class CandidateSpec:
             return self.base.name
         if self.strategy == "decomposition":
             return f"{self.options['method']}({self.base.name}-{self.corrector.name})"
+        if self.strategy == "dynamic_selection":
+            pool = ",".join(s.name for s in (self.corrector, *self.members))
+            return f"{self.options.get('method', 'dref')}({self.base.name}-{pool})"
         return "-".join(s.name for s in (self.base, self.corrector, *self.members))
 
     @property
@@ -287,6 +296,14 @@ class CandidateSpec:
                 window = options.get("ma_window")
                 method = f"ma({'curtose' if window is None else window})"
             return f"{method}: {self.base.label} | {self.corrector.label} [w={self.window_size}]"
+        if self.strategy == "dynamic_selection" and self.corrector is not None:
+            options = self.options
+            pool = " | ".join(s.label for s in (self.corrector, *self.members))
+            return (
+                f"{options.get('method', 'dref')}: {self.base.label} + {{{pool}}} "
+                f"[w={self.window_size}, k={options.get('neighbors', 10)}, "
+                f"{self.residual_source}]"
+            )
         if self.strategy == "standalone" or self.corrector is None:
             return self.base.label
         correctors = " + ".join(spec.label for spec in (self.corrector, *self.members))

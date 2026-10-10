@@ -258,6 +258,6 @@ def _corrector_names(candidate: CandidateSpec) -> tuple[str, ...]:
 
     if candidate.corrector is None:
         return ()
-    if candidate.strategy == "residual_multistage":
+    if candidate.strategy in ("residual_multistage", "dynamic_selection"):
         return tuple(spec.name for spec in (candidate.corrector, *candidate.members))
     return (candidate.corrector.name,)

@@ -35,6 +35,7 @@ DEFAULT_FAMILY_ORDER: Final = (
     "residual",
     "decomposition",
     "combination",
+    "dynamic",
 )
 Direction: TypeAlias = Literal["gte", "lte"]
 

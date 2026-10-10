@@ -166,9 +166,9 @@ def test_dynamic_selection_is_refused_in_variant_a() -> None:
     with pytest.raises(ConfigurationError, match="variante B"):
         CandidateSpec(*fields, variant="A")
     candidate = CandidateSpec(*fields, variant="B")
+    # Implemented in I13: in variant B it is an ordinary candidate.
     result = TemporalEvaluator(default_registry()).evaluate(candidate, plan_for(values()))
-    assert {t.status for t in result.trials} == {"SKIPPED"}
-    assert "I13" in next(iter(result.failures.values()))
+    assert {t.status for t in result.trials} == {"SUCCEEDED"}
 
 
 def test_models_without_state_update_are_skipped_in_b() -> None:

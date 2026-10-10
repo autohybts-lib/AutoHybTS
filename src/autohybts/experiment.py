@@ -69,7 +69,14 @@ from autohybts.types import Profile, ProtocolVariant
 
 __all__ = ["AutoHybridExperiment", "infer_seasonal_period"]
 
-_INCLUDE: Final = ("standalone", "residual", "multistage", "decomposition", "combination")
+_INCLUDE: Final = (
+    "standalone",
+    "residual",
+    "multistage",
+    "decomposition",
+    "combination",
+    "dynamic",
+)
 
 # Seasonal period by frequency prefix, as commonly used for daily/weekly/monthly data.
 _SEASONALITY: Final = {
@@ -443,7 +450,8 @@ class AutoHybridExperiment(Parametrized):
         ``include`` picks the families: ``"standalone"`` (required: the initial champion
         is a single model), ``"residual"``, ``"multistage"`` (extra correction stages on
         the best residual structures; needs ``"residual"``), ``"decomposition"`` and
-        ``"combination"``.
+        ``"combination"`` and, in variant B, ``"dynamic"`` (dynamic selection of the
+        corrector, ``dref`` and ``local``).
         """
 
         self._require("VALIDATED")
@@ -453,6 +461,12 @@ class AutoHybridExperiment(Parametrized):
                 f"include aceita {list(_INCLUDE)}, com 'standalone' obrigatório (o campeão "
                 f"inicial é individual); recebido {list(include)}."
             )
+        if "dynamic" in include and self.variant != "B":
+            raise ConfigurationError(
+                "'dynamic' só existe na variante B (R07): use AutoHybridExperiment(variant='B')."
+            )
+        if "dynamic" in include and "residual" not in include:
+            raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")
         if "multistage" in include and "residual" not in include:
             raise ConfigurationError("'multistage' refina estruturas residuais: inclua 'residual'.")
         started = time.perf_counter()
@@ -1110,6 +1124,7 @@ class AutoHybridExperiment(Parametrized):
             max_stages=self.max_stages if "multistage" in include else 1,
             decomposition_methods=tuple(methods),
             combination_weights=tuple(self.combination_weights) if "combination" in include else (),
+            dynamic_methods=("dref", "local") if "dynamic" in include else (),
         )
 
     def _snapshot(

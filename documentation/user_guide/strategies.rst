@@ -4,15 +4,16 @@ Estratégias de sistemas híbridos
 Cada candidata tem um **nome curto** que descreve a estrutura (``arima-mlp``) e um
 rótulo completo com a configuração (janela, alfa, fonte de resíduos).
 
-==========================  ======================  ============================================
-Estratégia                  Nome                    Ideia
-==========================  ======================  ============================================
-``standalone``              ``arima``               um modelo
-``residual_additive``       ``arima-mlp``           ``ŷ = b + α·r̂``: o corretor prevê o erro
-``residual_multistage``     ``arima-mlp-linear``    cada estágio corrige o erro do anterior
-``decomposition``           ``ma(linear-mlp)``      base na parte suave, corretor na volátil
-``fixed_combination``       ``comb(arima,knn)``     média ponderada de bases
-==========================  ======================  ============================================
+==========================  ========================  ============================================
+Estratégia                  Nome                      Ideia
+==========================  ========================  ============================================
+``standalone``              ``arima``                 um modelo
+``residual_additive``       ``arima-mlp``             ``ŷ = b + α·r̂``: o corretor prevê o erro
+``residual_multistage``     ``arima-mlp-linear``      cada estágio corrige o erro do anterior
+``decomposition``           ``ma(linear-mlp)``        base na parte suave, corretor na volátil
+``fixed_combination``       ``comb(arima,knn)``       média ponderada de bases
+``dynamic_selection``       ``dref(arima-mlp,knn)``   escolhe o corretor a cada passo (só B)
+==========================  ========================  ============================================
 
 Correção aditiva
 ----------------
@@ -65,6 +66,28 @@ erro de um passo fora da amostra, medido no próprio treino).
 
    exp.create_combination(["arima", "knn"], weights="inverse_mse")
 
+Seleção dinâmica (só variante B)
+--------------------------------
+
+Um grupo de corretores (mais a opção de **não corrigir**). A cada passo, os resíduos
+logo antes da origem são comparados com uma biblioteca de situações passadas (o DSEL,
+formado por erros de um passo **fora da amostra** numa cauda do treino, nunca na janela
+que pontua) e os ``k`` vizinhos mais parecidos decidem:
+
+``dref``
+   usa o corretor de menor erro nesses vizinhos — ou nenhum.
+``local``
+   ajusta uma Kernel Ridge pequena nos vizinhos, de (previsão da base, correção) para o
+   valor observado, só para aquele passo.
+
+Sem observação entre os passos não há o que selecionar: na variante A a estratégia é
+recusada.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=7, variant="B").fit(y)
+   result = exp.compare_models(include=("standalone", "residual", "dynamic"))
+
 Na busca
 --------
 
@@ -82,8 +105,9 @@ S1        retém as 2 melhores por família, o ARIMA e a melhor geral
 S2        grade residual (corretor × janela × alfa × fonte) nas bases retidas
 S3        refina as 2 melhores estruturas residuais: fonte, parâmetros do
           corretor e estágios extras
-S4        decomposições das bases retidas e combinação das 2 melhores de famílias
-          diferentes, com o orçamento que sobrar (uma vaga garantida por família)
+S4        decomposições das bases retidas, combinação das 2 melhores de famílias
+          diferentes e, na variante B, seleção dinâmica em torno das melhores
+          estruturas residuais, com o orçamento que sobrar (uma vaga por família)
 ========  ===================================================================
 
 Todas as propostas — avaliadas, podadas pelo orçamento, puladas por capacidade ou

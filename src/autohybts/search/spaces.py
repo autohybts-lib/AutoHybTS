@@ -72,6 +72,7 @@ class SearchSpace:
     max_stages: int = 1
     decomposition_methods: tuple[str, ...] = ()
     combination_weights: tuple[str, ...] = ()
+    dynamic_methods: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -96,6 +97,14 @@ class SearchSpace:
             raise ConfigurationError(f"Decomposições desconhecidas: {sorted(unknown_methods)}.")
         if "stl" in self.decomposition_methods and self.variant != "A":
             raise ConfigurationError("A STL só existe na variante A; use decomposition 'ma'.")
+        unknown_dynamic = set(self.dynamic_methods) - {"dref", "local"}
+        if unknown_dynamic:
+            raise ConfigurationError(f"Seleção dinâmica desconhecida: {sorted(unknown_dynamic)}.")
+        if self.dynamic_methods and self.variant != "B":
+            raise ConfigurationError(
+                "A seleção dinâmica só existe na variante B: em A não há observação nova entre "
+                "os passos para escolher o corretor (R07)."
+            )
         unknown_weights = set(self.combination_weights) - set(COMBINATION_WEIGHTS)
         if unknown_weights:
             raise ConfigurationError(
@@ -111,6 +120,8 @@ class SearchSpace:
             described["decomposition_methods"] = list(self.decomposition_methods)
         if self.combination_weights:
             described["combination_weights"] = list(self.combination_weights)
+        if self.dynamic_methods:
+            described["dynamic_methods"] = list(self.dynamic_methods)
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -298,6 +309,44 @@ class SearchSpace:
                 combinations.append(Proposal(candidate, "S4", pair[0].candidate_id))
         return _interleave(proposals, combinations)
 
+    def dynamic_proposals(
+        self, structures: Sequence[CandidateSpec], registry: ModelRegistry
+    ) -> list[Proposal]:
+        """S4 (variant B): dynamic selection around the best residual structures.
+
+        ``dref`` chooses, at each step, among the structure's corrector, the other
+        configured correctors and no correction; ``local`` combines the base and the
+        structure's corrector locally.
+        """
+
+        proposals = []
+        for best in structures:
+            if best.corrector is None or best.window_size is None:
+                continue
+            others = tuple(
+                ModelSpec.of(name) for name in self.correctors if name != best.corrector.name
+            )
+            for method in self.dynamic_methods:
+                members = others if method == "dref" else ()
+                for spec in members:
+                    registry.entry(spec.name, "corrector")
+                candidate = CandidateSpec(
+                    "dynamic",
+                    "dynamic_selection",
+                    best.base,
+                    best.corrector,
+                    best.window_size,
+                    best.alpha,
+                    best.residual_source,
+                    variant=self.variant,
+                    members=members,
+                    options_json=canonical_json(
+                        {"method": method, "neighbors": 10, "lag_size": best.window_size}
+                    ),
+                )
+                proposals.append(Proposal(candidate, "S4", best.candidate_id))
+        return proposals
+
     def _decomposition_skip(self, method: str) -> str | None:
         if method != "stl":
             return None
@@ -351,7 +400,16 @@ class SearchSpace:
 
 
 def _interleave(first: list[Proposal], second: list[Proposal]) -> list[Proposal]:
+    return round_robin([*first, *second])
+
+
+def round_robin(proposals: Sequence[Proposal]) -> list[Proposal]:
+    """One proposal per family in turn, keeping each family's order."""
+
+    groups: dict[str, list[Proposal]] = {}
+    for proposal in proposals:
+        groups.setdefault(proposal.candidate.family, []).append(proposal)
     merged: list[Proposal] = []
-    for index in range(max(len(first), len(second))):
-        merged.extend(group[index] for group in (first, second) if index < len(group))
+    for index in range(max((len(g) for g in groups.values()), default=0)):
+        merged.extend(group[index] for group in groups.values() if index < len(group))
     return merged

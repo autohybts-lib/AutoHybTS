@@ -1,4 +1,4 @@
-"""Causality of decomposition, fixed combination and multistage (T05 for I12b operators)."""
+"""Causality of decomposition, combination, multistage and dynamic selection (T05, I12b/I13)."""
 
 from __future__ import annotations
 
@@ -54,6 +54,20 @@ def candidates(variant: str) -> dict[str, CandidateSpec]:
             options_json=json.dumps({"weights": "inverse_mse"}),
         ),
     }
+    if variant == "B":
+        for method, members in (("dref", (ModelSpec.of("knn"),)), ("local", ())):
+            found[f"dynamic_{method}"] = CandidateSpec(
+                "dynamic",
+                "dynamic_selection",
+                SEASONAL,
+                CORRECTOR,
+                7,
+                1.0,
+                "historical_oof_1step",
+                "B",
+                members=members,
+                options_json=json.dumps({"method": method, "neighbors": 5}),
+            )
     if variant == "A" and importlib.util.find_spec("statsmodels") is not None:
         found["decomposition_stl"] = CandidateSpec(
             "decomposition",

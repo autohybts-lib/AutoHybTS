@@ -18,3 +18,5 @@ reajuste: os parâmetros ficam congelados e só o estado (contexto) avança.
 * O resíduo observado ``y − b`` só entra na janela do corretor depois da observação.
 * ``FinalizedForecaster.update_state`` devolve um novo objeto e recusa ``refit=True``.
 * A decomposição ``ma`` funciona em B (é recalculada causalmente); a ``stl`` não.
+* A seleção dinâmica do corretor (``dref``, ``local``) só existe aqui: veja
+  :doc:`strategies`.

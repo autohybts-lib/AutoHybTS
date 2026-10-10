@@ -14,6 +14,7 @@ from autohybts.residuals.generation import ResidualSettings
 from autohybts.strategies.additive_residual import ResidualHybridForecaster
 from autohybts.strategies.combination import FixedCombinationForecaster
 from autohybts.strategies.decomposition import DecompositionForecaster
+from autohybts.strategies.dynamic import DynamicSelectionForecaster
 from autohybts.strategies.multistage import stack_stages
 
 __all__ = ["build_model"]
@@ -113,9 +114,34 @@ def build_model(
             members, weights=str(candidate.options["weights"]), settings=residual_settings
         )
         return combination, unit_seed if seeded else None
-    raise UnsupportedCapabilityError(
-        f"Estratégia {candidate.strategy!r} ainda não implementada (seleção dinâmica: etapa I13)."
-    )
+    if candidate.strategy == "dynamic_selection":
+        if candidate.corrector is None:
+            raise ConfigurationError("Seleção dinâmica sem corretores.")
+        options = candidate.options
+        base, base_seed = _seeded(
+            registry.make_base, candidate.base, derive_seed(unit_seed, "base")
+        )
+        pool = []
+        seeded = base_seed is not None
+        for index, spec in enumerate((candidate.corrector, *candidate.members)):
+            corrector, corrector_seed = _seeded(
+                registry.make_corrector, spec, derive_seed(unit_seed, f"pool-{index}")
+            )
+            pool.append(corrector)
+            seeded = seeded or corrector_seed is not None
+        dynamic = DynamicSelectionForecaster(
+            base,
+            pool,
+            window_size=int(candidate.window_size or 0),
+            method=str(options.get("method", "dref")),
+            neighbors=int(options.get("neighbors", 10)),
+            lag_size=int(options.get("lag_size", 7)),
+            dsel_size=options.get("dsel_size"),
+            residual_source=str(candidate.residual_source),
+            settings=residual_settings,
+        )
+        return dynamic, unit_seed if seeded else None
+    raise UnsupportedCapabilityError(f"Estratégia {candidate.strategy!r} não implementada.")
 
 
 def _seeded(
