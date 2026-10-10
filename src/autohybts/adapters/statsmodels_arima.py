@@ -1,15 +1,20 @@
 """ARIMA through statsmodels (optional extra ``stats``).
 
 ``order="auto"`` picks ``d`` by successive KPSS tests and ``(p, q)`` by AIC, using the
-training vector only. Forecasting from a different context re-runs the state-space
+training vector only. The chosen order and parameters are cached by training vector, so
+candidates that share an origin (standalone, hybrids, out-of-fold prefixes) estimate
+the ARIMA once. Forecasting from a different context re-runs the state-space
 filter on the observed values with the fitted parameters fixed (``apply(refit=False)``),
 so new observations update the state without re-estimation.
 """
 
 from __future__ import annotations
 
+import hashlib
 import itertools
+import threading
 import warnings
+from collections import OrderedDict
 from typing import Any
 
 import numpy as np
@@ -90,6 +95,19 @@ class ArimaForecaster(ForecasterBase):
     def _fit(self, y: FloatArray) -> None:
         arima = _arima_class()
         self.fit_warnings_: list[str] = []
+        key = self._cache_key(y)
+        cached = _FIT_CACHE.get(key)
+        if cached is not None:
+            # Same data and settings: the same order and parameters, without re-estimating.
+            order, params, fit_warnings = cached
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model = arima(y, order=order, trend=TREND_BY_D[order[1]])
+                self.result_ = model.filter(params)
+            self.order_ = order
+            self.fit_warnings_ = list(fit_warnings)
+            self.train_ = y.copy()
+            return
         if isinstance(self.order, str):
             d = self._choose_d(y)
             grid = itertools.product(range(self.max_p + 1), range(self.max_q + 1))
@@ -111,6 +129,13 @@ class ArimaForecaster(ForecasterBase):
             raise CandidateFitError(f"Nenhuma ordem ARIMA pôde ser ajustada: {errors[:3]}")
         _, self.order_, self.result_ = best
         self.train_ = y.copy()
+        _FIT_CACHE.put(
+            key, (self.order_, np.array(self.result_.params, copy=True), tuple(self.fit_warnings_))
+        )
+
+    def _cache_key(self, y: FloatArray) -> str:
+        digest = hashlib.sha256(np.ascontiguousarray(y, dtype=np.float64).tobytes()).hexdigest()
+        return f"{digest}|{self.order}|{self.max_p}|{self.max_d}|{self.max_q}"
 
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         result = self.result_
@@ -142,6 +167,46 @@ class ArimaForecaster(ForecasterBase):
                 return d
             series = np.diff(series)
         raise AssertionError("unreachable: the loop returns at d == max_d")  # pragma: no cover
+
+
+class _BoundedCache:
+    """Thread-safe LRU of fitted ``(order, params, warnings)`` by training vector and settings.
+
+    Only numbers are shared: every model still builds its own statsmodels result, so no
+    fitted state passes between trials. Order selection and estimation are deterministic
+    for a given vector, so a hit gives the same model as a fresh fit.
+    """
+
+    def __init__(self, size: int = 1024) -> None:
+        self.size = size
+        self._items: OrderedDict[str, tuple[tuple[int, int, int], Any, tuple[str, ...]]] = (
+            OrderedDict()
+        )
+        self._lock = threading.Lock()
+        self.hits = 0
+
+    def get(self, key: str) -> tuple[tuple[int, int, int], Any, tuple[str, ...]] | None:
+        with self._lock:
+            item = self._items.get(key)
+            if item is not None:
+                self._items.move_to_end(key)
+                self.hits += 1
+            return item
+
+    def put(self, key: str, item: tuple[tuple[int, int, int], Any, tuple[str, ...]]) -> None:
+        with self._lock:
+            self._items[key] = item
+            self._items.move_to_end(key)
+            while len(self._items) > self.size:
+                self._items.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+            self.hits = 0
+
+
+_FIT_CACHE = _BoundedCache()
 
 
 def _arima_class() -> Any:
