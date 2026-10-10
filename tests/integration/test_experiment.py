@@ -173,6 +173,41 @@ def test_untrusted_or_tampered_artifacts_are_refused(fitted, tmp_path: Path) -> 
         read_manifest(tmp_path / "missing")
 
 
+def test_signed_and_pinned_artifacts_resist_tampering(fitted, tmp_path: Path) -> None:
+    # The manifest checksum alone can be rewritten together with the payload; a pinned hash
+    # or an HMAC key kept outside the artifact cannot.
+    _, _, final = fitted
+    key = b"k" * 32
+    path = save_model(final, tmp_path / "signed", signing_key=key)
+    manifest = read_manifest(path)
+    digest = manifest["payload"]["sha256"]
+    assert manifest["payload"]["hmac_sha256"]
+    assert load_model(path, trusted=True, signing_key=key, sha256=digest).spec == final.spec
+    with pytest.raises(ArtifactCompatibilityError, match="HMAC"):
+        load_model(path, trusted=True, signing_key=b"x" * 32)
+    with pytest.raises(ArtifactCompatibilityError, match="sha256="):
+        load_model(path, trusted=True, sha256="0" * 64)
+    with pytest.raises(ArtifactCompatibilityError, match="16 bytes"):
+        load_model(path, trusted=True, signing_key=b"short")
+    # Payload and manifest rewritten consistently: the plain checksum passes, the key does not.
+    unsigned = save_model(final, tmp_path / "unsigned")
+    for name in ("model.pkl", "manifest.json"):
+        (path / name).write_bytes((unsigned / name).read_bytes())
+    assert load_model(path, trusted=True).spec == final.spec
+    with pytest.raises(ArtifactCompatibilityError, match="HMAC"):
+        load_model(path, trusted=True, signing_key=key)
+
+
+def test_manifest_cannot_point_the_payload_elsewhere(fitted, tmp_path: Path) -> None:
+    _, _, final = fitted
+    path = save_model(final, tmp_path / "m")
+    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["payload"]["file"] = "../other.pkl"
+    (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ArtifactCompatibilityError, match=r"model\.pkl"):
+        load_model(path, trusted=True)
+
+
 def test_invalid_calls_fail_explicitly(fitted) -> None:
     # UX09.
     exp, result, _ = fitted

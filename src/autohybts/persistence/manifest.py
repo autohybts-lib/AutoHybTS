@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import platform
-import subprocess
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +15,8 @@ import autohybts
 __all__ = ["environment", "git_commit", "utc_now"]
 
 _PACKAGES = ("numpy", "pandas", "scikit-learn", "statsmodels", "scipy")
+_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+_REF = re.compile(r"refs/[A-Za-z0-9._/+-]+")
 
 
 def utc_now() -> str:
@@ -38,18 +40,50 @@ def environment() -> dict[str, Any]:
 
 
 def git_commit(cwd: Path | None = None) -> str | None:
-    """Current commit if run inside a git work tree with commits; never raises."""
+    """Commit checked out in the git work tree around ``cwd``; never raises.
+
+    Reads ``.git`` directly instead of running ``git``: on Windows a bare ``git`` would be
+    looked up in the current directory first, so a planted ``git.exe`` next to the user's
+    data would run on every ``save_model``.
+    """
 
     try:
-        output = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=True,
-        )
-    except (OSError, subprocess.SubprocessError):
+        git_dir = _git_dir((cwd or Path.cwd()).resolve())
+        if git_dir is None:
+            return None
+        head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref:"):
+            return head if _SHA.fullmatch(head) else None
+        ref = head[4:].strip()
+        if not _REF.fullmatch(ref) or ".." in ref:
+            return None
+        common = git_dir
+        if (git_dir / "commondir").is_file():
+            common = git_dir / (git_dir / "commondir").read_text(encoding="utf-8").strip()
+        for folder in dict.fromkeys((git_dir, common)):
+            loose = folder / ref
+            if loose.is_file():
+                value = loose.read_text(encoding="utf-8").strip()
+                return value if _SHA.fullmatch(value) else None
+        packed = common / "packed-refs"
+        if packed.is_file():
+            for line in packed.read_text(encoding="utf-8").splitlines():
+                value, _, name = line.partition(" ")
+                if name.strip() == ref and _SHA.fullmatch(value):
+                    return value
+    except (OSError, UnicodeDecodeError, ValueError):
         return None
-    commit = output.stdout.strip()
-    return commit or None
+    return None
+
+
+def _git_dir(start: Path) -> Path | None:
+    for folder in (start, *start.parents):
+        dot_git = folder / ".git"
+        if dot_git.is_dir():
+            return dot_git
+        if dot_git.is_file():  # worktree or submodule: "gitdir: <path>"
+            text = dot_git.read_text(encoding="utf-8").strip()
+            if text.startswith("gitdir:"):
+                return (folder / text[7:].strip()).resolve()
+            return None
+    return None
