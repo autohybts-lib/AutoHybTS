@@ -3,11 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/v/autohybts.svg" alt="PyPI"></a>
-  <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/pyversions/autohybts.svg" alt="Python"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
   <a href="https://autohybts.readthedocs.io/"><img src="https://readthedocs.org/projects/autohybts/badge/?version=latest" alt="Documentação"></a>
   <a href="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/autohybts.svg" alt="Licença MIT"></a>
+  <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg" alt="Licença MIT"></a>
 </p>
 
 # AutoHybTS
@@ -22,20 +21,10 @@ A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, m
 
 Requer Python 3.11 ou mais novo.
 
-**Pelo pip:**
-
-```bash
-pip install autohybts                     # núcleo: NumPy, pandas, scikit-learn
-pip install "autohybts[stats,plot]"       # + ARIMA/STL (statsmodels) e gráficos (matplotlib)
-pip install "autohybts[stats,plot,optuna]"  # + ajuste de hiperparâmetros com Optuna
-```
-
-**Pelo git** (versão em desenvolvimento):
+Ainda não está no PyPI; instale direto do repositório:
 
 ```bash
 pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
-# uma versão específica:
-pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git@v0.0.1"
 ```
 
 **A partir do código-fonte** (para desenvolver):
