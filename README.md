@@ -22,18 +22,18 @@ pip install "autohybts[stats,plot]"       # + ARIMA/STL (statsmodels) e gráfico
 pip install "autohybts[stats,plot,optuna]"  # + ajuste de hiperparâmetros com Optuna
 ```
 
-**Pelo git** (versão em desenvolvimento; troque `<organizacao>` pelo endereço do repositório quando ele for publicado):
+**Pelo git** (versão em desenvolvimento):
 
 ```bash
-pip install "autohybts[stats,plot] @ git+https://github.com/<organizacao>/AutoHybTS.git"
+pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 # uma versão específica:
-pip install "autohybts[stats,plot] @ git+https://github.com/<organizacao>/AutoHybTS.git@v0.1.0"
+pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git@v0.1.0"
 ```
 
 **A partir do código-fonte** (para desenvolver):
 
 ```bash
-git clone https://github.com/<organizacao>/AutoHybTS.git
+git clone https://github.com/jvataidee/AutoHybTS.git
 cd AutoHybTS
 python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev,stats,notebook]"   # Windows

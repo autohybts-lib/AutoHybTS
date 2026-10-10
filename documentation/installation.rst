@@ -18,22 +18,21 @@ Quando a versão estiver publicada no PyPI:
 Pelo git
 --------
 
-Para a versão em desenvolvimento, direto do repositório (troque ``<organizacao>`` pelo
-endereço do repositório publicado):
+Para a versão em desenvolvimento, direto do repositório:
 
 .. code-block:: bash
 
-   pip install "autohybts[stats,plot] @ git+https://github.com/<organizacao>/AutoHybTS.git"
+   pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 
    # uma tag ou um commit específico
-   pip install "autohybts[stats,plot] @ git+https://github.com/<organizacao>/AutoHybTS.git@v0.1.0"
+   pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git@v0.1.0"
 
 A partir do código-fonte
 ------------------------
 
 .. code-block:: bash
 
-   git clone https://github.com/<organizacao>/AutoHybTS.git
+   git clone https://github.com/jvataidee/AutoHybTS.git
    cd AutoHybTS
    python -m venv .venv
    .venv/Scripts/python -m pip install -e ".[dev,stats,notebook]"   # Windows

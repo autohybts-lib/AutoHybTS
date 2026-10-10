@@ -33,8 +33,8 @@ Checklist de release candidate
    saídas (``tests/contracts/test_notebook_outputs.py``).
 6. ``sphinx-build -W documentation documentation/_build/html`` sem avisos.
 7. Versão em ``src/autohybts/__init__.py``, data no CHANGELOG, tag ``vX.Y.Z``.
-8. README: trocar ``<organizacao>`` pelo endereço do repositório e usar URL absoluta
-   para o logo (o PyPI não resolve caminhos relativos de imagem).
+8. README: usar URL absoluta para o logo (o PyPI não resolve caminhos relativos de
+   imagem); o endereço do repositório já está fixado (``jvataidee/AutoHybTS``).
 9. Publicar primeiro no TestPyPI; o nome ``autohybts`` estava livre no PyPI e no TestPyPI
    em 2026-10-10.
 
@@ -55,7 +55,7 @@ publicado.
    git status                     # confira: nada de artefatos, caches, .env ou chaves
    git add <arquivos revisados>
    git commit -m "AutoHybTS 0.1.0rc1"
-   git remote add origin https://github.com/<organizacao>/AutoHybTS.git
+   git remote add origin https://github.com/jvataidee/AutoHybTS.git
    git push -u origin main
 
 Evite ``git add .``: o ``.gitignore`` cobre ``artifacts/``, ``.venv/`` e os caches, mas
@@ -63,9 +63,8 @@ não arquivos de credenciais criados por engano. No GitHub, ative em **Settings 
 Code security** o *secret scanning*, a *push protection* e o *private vulnerability
 reporting*, e proteja a branch ``main`` (PR obrigatório, CI verde).
 
-Antes do commit, ajuste no README o endereço do repositório (``<organizacao>``) e a URL
-do logo para uma absoluta, por exemplo
-``https://raw.githubusercontent.com/<organizacao>/AutoHybTS/main/figures/AutoHybTS.png``,
+Antes do commit, confira no README a URL absoluta do logo, por exemplo
+``https://raw.githubusercontent.com/jvataidee/AutoHybTS/main/figures/AutoHybTS.png``,
 e a versão em ``src/autohybts/__init__.py``.
 
 2. Documentação no Read the Docs
@@ -87,7 +86,7 @@ push:
 
    python -m sphinx -W documentation documentation/_build/html
 
-Alternativa: GitHub Pages (``<organizacao>.github.io/AutoHybTS``) com uma GitHub Action
+Alternativa: GitHub Pages (``jvataidee.github.io/AutoHybTS``) com uma GitHub Action
 que roda o mesmo comando e publica ``documentation/_build/html``.
 
 3. Pacote no PyPI
