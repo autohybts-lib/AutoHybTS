@@ -14,6 +14,7 @@ matters for forecasting.
 from __future__ import annotations
 
 import csv
+import json
 import math
 from collections.abc import Iterator, Mapping, Sequence
 from fractions import Fraction
@@ -23,7 +24,13 @@ from typing import Any, Final
 import numpy as np
 import pandas as pd
 
-from autohybts.datasets.cache import CacheManager, RemoteFile, safe_extract_member
+from autohybts.datasets.cache import (
+    CacheManager,
+    RemoteFile,
+    safe_extract_member,
+    safe_name,
+    sha256_of,
+)
 from autohybts.datasets.descriptor import BenchmarkDataset, BenchmarkSeries, DatasetDescriptor
 from autohybts.exceptions import (
     ConfigurationError,
@@ -285,12 +292,25 @@ class M3Provider:
             license=self.license,
             version=self.version,
         )
-        if not all(path.exists() for path in files):
+        # The parsed CSVs are derived from the verified archive; a missing or altered copy
+        # is rebuilt from it instead of being read.
+        record = folder / "parsed.manifest.json"
+        if not _parsed_intact(record, files, sha256_of(archive)):
             rda = safe_extract_member(archive, "Mcomp/data/M3.rda", cache.path(self.name, "raw"))
             train, test, info = m3_frames(_read_rda(rda))
             folder.mkdir(parents=True, exist_ok=True)
             for frame, path in zip((train, test, info), files, strict=True):
                 frame.to_csv(path, index=False)
+            record.write_text(
+                json.dumps(
+                    {
+                        "archive_sha256": sha256_of(archive),
+                        "files": {path.name: sha256_of(path) for path in files},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         train, test, info = (pd.read_csv(path) for path in files)
         for frame in (train, test):
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], format="ISO8601")
@@ -342,6 +362,17 @@ class M3Provider:
                 f"Subconjunto M3 desconhecido {subset!r}; opções: {self.subsets}."
             )
         return key
+
+
+def _parsed_intact(record: Path, files: Sequence[Path], archive_sha: str) -> bool:
+    try:
+        manifest = json.loads(record.read_text(encoding="utf-8"))
+        return bool(
+            manifest["archive_sha256"] == archive_sha
+            and all(manifest["files"][path.name] == sha256_of(path) for path in files)
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _read_rda(path: Path) -> Mapping[str, Mapping[str, Any]]:
@@ -451,6 +482,9 @@ class RdatasetsProvider:
     def raw(self, cache: CacheManager, package: str, name: str) -> tuple[pd.DataFrame, str]:
         """The CSV as published (no interpretation) and its URL."""
 
+        # Both names become a cache file name: refuse paths before touching the network.
+        safe_name(package, "pacote")
+        safe_name(name, "dataset")
         index = self.index(cache)
         rows = index[(index["Package"] == package) & (index["Item"] == name)]
         if rows.empty:

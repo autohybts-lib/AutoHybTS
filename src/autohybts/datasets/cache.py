@@ -4,11 +4,15 @@
   per provider. Nothing is downloaded on import or install (D10): only an explicit
   ``fetch`` touches the network.
 * Only HTTPS URLs on the provider's approved domains are fetched (D11), with a timeout,
-  a few retries and a size cap.
+  a few retries and a size cap. Redirects are followed only to HTTPS URLs and the final
+  URL must be on the same approved domains.
+* Provider and file names are single path components (letters, digits, ``._+-``), so no
+  name coming from a remote index can write outside the cache folder.
 * Every file gets a manifest (URL, access time, SHA-256, size, license, version). A file
   whose bytes no longer match its manifest, or a pinned checksum, is refused (D03).
 * ``offline=True`` serves from the cache only and says what is missing (D01, D02).
-* Archives are extracted member by member, refusing absolute paths, ``..`` and links.
+* Archives are extracted member by member, refusing absolute paths, ``..``, links and
+  members larger than a size cap.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tarfile
 import time
@@ -40,11 +45,13 @@ __all__ = [
     "RemoteFile",
     "default_cache_dir",
     "safe_extract_member",
+    "safe_name",
     "sha256_of",
 ]
 
 DEFAULT_CACHE_ENV: Final = "AUTOHYBTS_DATA_DIR"
 _CHUNK: Final = 1 << 20
+_SAFE_NAME: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,199}")
 Opener = Callable[[str, float], IO[bytes]]
 
 
@@ -73,9 +80,32 @@ class RemoteFile:
     max_bytes: int = 500 * 1024 * 1024
 
 
+def safe_name(name: str, what: str = "nome") -> str:
+    """``name`` if it is a single, plain path component; raises otherwise."""
+
+    if not isinstance(name, str) or not _SAFE_NAME.fullmatch(name) or ".." in name:
+        raise DatasetIntegrityError(
+            f"{what} inseguro para o cache: {name!r} (use letras, dígitos e '._+-', sem "
+            "separadores de caminho nem '..')."
+        )
+    return name
+
+
+class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuses a redirect that leaves HTTPS; the final host is checked by ``fetch``."""
+
+    def redirect_request(  # type: ignore[no-untyped-def]
+        self, req, fp, code, msg, headers, newurl
+    ):
+        if urlparse(newurl).scheme != "https":
+            raise DatasetIntegrityError(f"Redirecionamento para fora do HTTPS recusado: {newurl}.")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _urlopen(url: str, timeout: float) -> IO[bytes]:
     request = urllib.request.Request(url, headers={"User-Agent": "autohybts-datasets"})
-    response: IO[bytes] = urllib.request.urlopen(request, timeout=timeout)
+    opener = urllib.request.build_opener(_HttpsOnlyRedirects)
+    response: IO[bytes] = opener.open(request, timeout=timeout)
     return response
 
 
@@ -98,16 +128,23 @@ class CacheManager:
         self._open = opener or _urlopen
 
     def path(self, provider: str, filename: str) -> Path:
-        return self.root / provider / filename
+        return self.root / safe_name(provider, "provedor") / safe_name(filename, "arquivo")
 
     def manifest_path(self, provider: str, filename: str) -> Path:
-        return self.root / provider / f"{filename}.manifest.json"
+        return self.path(provider, filename).with_name(f"{filename}.manifest.json")
 
     def read_manifest(self, provider: str, filename: str) -> dict[str, Any] | None:
         path = self.manifest_path(provider, filename)
         if not path.exists():
             return None
-        loaded: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise DatasetIntegrityError(
+                f"Manifesto ilegível em {path}; apague-o ou baixe de novo com refresh=True."
+            ) from error
+        if not isinstance(loaded, dict):
+            raise DatasetIntegrityError(f"Manifesto inválido em {path}.")
         return loaded
 
     def fetch(
@@ -134,7 +171,7 @@ class CacheManager:
             )
         target.parent.mkdir(parents=True, exist_ok=True)
         partial = target.with_name(target.name + ".part")
-        self._download(remote, partial)
+        self._download(remote, partial, allowed_domains)
         digest = sha256_of(partial)
         if remote.sha256 is not None and digest != remote.sha256:
             partial.unlink(missing_ok=True)
@@ -176,7 +213,9 @@ class CacheManager:
                 f"{expected}). Apague-o ou baixe de novo com refresh=True."
             )
 
-    def _download(self, remote: RemoteFile, destination: Path) -> None:
+    def _download(
+        self, remote: RemoteFile, destination: Path, allowed_domains: Collection[str]
+    ) -> None:
         last: Exception | None = None
         for attempt in range(self.retries + 1):
             try:
@@ -184,6 +223,10 @@ class CacheManager:
                     self._open(remote.url, self.timeout) as response,
                     destination.open("wb") as out,
                 ):
+                    # After redirects, the bytes must still come from an approved HTTPS host.
+                    final = getattr(response, "url", None)
+                    if isinstance(final, str) and final:
+                        _check_url(final, allowed_domains)
                     written = 0
                     for chunk in iter(lambda: response.read(_CHUNK), b""):
                         written += len(chunk)
@@ -219,7 +262,9 @@ def _check_url(url: str, allowed_domains: Collection[str]) -> None:
         )
 
 
-def safe_extract_member(archive: Path, member_name: str, destination: Path) -> Path:
+def safe_extract_member(
+    archive: Path, member_name: str, destination: Path, *, max_bytes: int = 200 * 1024 * 1024
+) -> Path:
     """Extract one regular file from a tar archive without escaping ``destination``."""
 
     destination = destination.resolve()
@@ -233,6 +278,10 @@ def safe_extract_member(archive: Path, member_name: str, destination: Path) -> P
             raise DatasetIntegrityError(
                 f"Membro inseguro em {archive.name}: {member.name!r} (caminho absoluto, '..' "
                 "ou link)."
+            )
+        if member.size > max_bytes:
+            raise DatasetIntegrityError(
+                f"{member.name!r} tem {member.size} bytes, acima do limite de {max_bytes}."
             )
         target = (destination / Path(*pure.parts)).resolve()
         if destination not in target.parents:

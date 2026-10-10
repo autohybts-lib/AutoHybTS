@@ -17,12 +17,17 @@ Cache e segurança
 * Os arquivos vão para ``~/.cache/autohybts/datasets`` (ou ``AUTOHYBTS_DATA_DIR``), uma
   pasta por provedor. Nada é baixado na instalação nem no ``import``.
 * Só HTTPS, só domínios aprovados por provedor, com tempo limite, poucas tentativas e
-  tamanho máximo.
+  tamanho máximo. Redirecionamentos também precisam ficar em HTTPS e nos domínios
+  aprovados.
+* Nomes de pacote e de dataset viram nome de arquivo no cache e só aceitam letras,
+  dígitos e ``._+-`` (nada de ``/``, ``\`` ou ``..``).
 * Cada arquivo tem um manifesto (URL, data de acesso, SHA-256, tamanho, licença,
   versão). Um arquivo alterado depois do download é recusado
   (``DatasetIntegrityError``); os arquivos do M4 diário e o pacote ``Mcomp`` têm o
   checksum fixado no código.
 * ``offline=True`` usa só o cache e diz o que falta (``DatasetUnavailableError``).
+* Arquivos sem hash fixado são confiados no primeiro download; faça esse download numa
+  rede confiável. Mais em :doc:`../security`.
 
 M4
 --

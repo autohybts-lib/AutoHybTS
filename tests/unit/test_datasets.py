@@ -156,6 +156,83 @@ def test_archives_cannot_escape_the_destination(tmp_path: Path) -> None:
         safe_extract_member(good, "missing.rda", tmp_path / "out")
 
 
+@pytest.mark.parametrize(
+    ("provider", "filename"),
+    [
+        ("m4", "../escape.csv"),
+        ("m4", "sub/dir.csv"),
+        ("m4", "sub\\dir.csv"),
+        ("m4", "C:evil.csv"),
+        ("m4", ".."),
+        ("m4", ""),
+        ("../m4", "ok.csv"),
+        ("/abs", "ok.csv"),
+    ],
+)
+def test_cache_names_cannot_leave_the_cache_folder(
+    tmp_path: Path, provider: str, filename: str
+) -> None:
+    manager, opener = cache(tmp_path)
+    with pytest.raises(DatasetIntegrityError, match="inseguro"):
+        manager.fetch(provider, RemoteFile(REMOTE.url, filename), allowed_domains=DOMAINS)
+    assert opener.calls == []
+
+
+class Redirected(io.BytesIO):
+    """A response whose final URL differs from the requested one (followed redirect)."""
+
+    def __init__(self, payload: bytes, url: str) -> None:
+        super().__init__(payload)
+        self.url = url
+
+
+def test_redirects_must_stay_on_approved_https_hosts(tmp_path: Path) -> None:
+    def opener(url: str, timeout: float) -> Redirected:
+        return Redirected(b"payload", "https://evil.example.com/x.csv")
+
+    manager = CacheManager(tmp_path, opener=opener, retries=0)
+    with pytest.raises(DatasetIntegrityError, match="não aprovado"):
+        manager.fetch("m4", REMOTE, allowed_domains=DOMAINS)
+    assert not (tmp_path / "m4" / "M4-info.csv").exists()
+    assert not (tmp_path / "m4" / "M4-info.csv.part").exists()
+    # The real opener refuses a redirect that leaves HTTPS before requesting it.
+    import urllib.request
+
+    from autohybts.datasets.cache import _HttpsOnlyRedirects
+
+    request = urllib.request.Request(REMOTE.url)
+    with pytest.raises(DatasetIntegrityError, match="HTTPS"):
+        _HttpsOnlyRedirects().redirect_request(
+            request, None, 302, "Found", {}, "http://raw.githubusercontent.com/x.csv"
+        )
+
+
+def test_corrupt_manifest_is_an_integrity_error(tmp_path: Path) -> None:
+    manager, _ = cache(tmp_path)
+    manager.fetch("m4", REMOTE, allowed_domains=DOMAINS)
+    manager.manifest_path("m4", "M4-info.csv").write_text("{not json", encoding="utf-8")
+    with pytest.raises(DatasetIntegrityError, match="ilegível"):
+        manager.fetch("m4", REMOTE, allowed_domains=DOMAINS)
+    manager.manifest_path("m4", "M4-info.csv").write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(DatasetIntegrityError, match="inválido"):
+        manager.fetch("m4", REMOTE, allowed_domains=DOMAINS)
+
+
+def test_archive_members_are_size_capped(tmp_path: Path) -> None:
+    archive = tar_with(tmp_path, "Mcomp/data/M3.rda", b"x" * 100)
+    with pytest.raises(DatasetIntegrityError, match="limite"):
+        safe_extract_member(archive, "Mcomp/data/M3.rda", tmp_path / "out", max_bytes=10)
+    assert not (tmp_path / "out" / "Mcomp").exists()
+
+
+def test_rdatasets_refuses_path_like_names_before_the_network(tmp_path: Path) -> None:
+    manager, opener = cache(tmp_path)
+    for package, name in (("../..", "x"), ("datasets", "../../evil"), ("a/b", "c")):
+        with pytest.raises(DatasetIntegrityError, match="inseguro"):
+            RdatasetsProvider().raw(manager, package, name)
+    assert opener.calls == []
+
+
 def test_import_never_downloads() -> None:
     # D10: importing the package and the catalogue opens no URL.
     code = (
@@ -278,6 +355,11 @@ def test_m3_provider_reads_the_archive_once(
     assert series.test.tolist() == [4.0, 5.0]
     assert provider.list(manager, "yearly")["series_id"].tolist() == ["N2"]
     assert len(reads) == 1  # parsed once, then served from the cached CSVs
+    # A parsed CSV edited in the cache is rebuilt from the verified archive, never read.
+    test_csv = tmp_path / "cache" / "m3" / "parsed" / "test.csv"
+    test_csv.write_text(test_csv.read_text(encoding="utf-8").replace("4.0", "999.0"))
+    assert provider.load(manager, "monthly", series_id="N1").test.tolist() == [4.0, 5.0]
+    assert len(reads) == 2
 
 
 # ------------------------------------------------------------------ Rdatasets
