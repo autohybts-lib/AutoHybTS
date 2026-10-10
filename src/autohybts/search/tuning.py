@@ -256,7 +256,13 @@ def _run_optuna(
     n_trials: int,
     seed: int,
 ) -> None:
-    import optuna
+    import warnings
+
+    with warnings.catch_warnings():
+        # tqdm warns (with the absolute path of the user's environment) when a notebook has
+        # no ipywidgets; it says nothing about the tuning.
+        warnings.filterwarnings("ignore", message="IProgress not found")
+        import optuna
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=seed))
