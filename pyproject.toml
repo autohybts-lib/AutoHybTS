@@ -121,6 +121,15 @@ markers = [
 [tool.coverage.run]
 source = ["autohybts"]
 branch = true
+omit = [
+    # Wrappers of optional frameworks (extras torch/tensorflow) are only
+    # exercised when those extras are installed (locally and in notebook 10);
+    # the CI coverage gate must not depend on them.
+    "*/models/torch_models.py",
+    "*/models/torch_zoo.py",
+    "*/models/keras_models.py",
+    "*/models/keras_zoo.py",
+]
 
 [tool.coverage.report]
 fail_under = 85
