@@ -40,6 +40,9 @@ stats = ["statsmodels>=0.14"]
 plot = ["matplotlib>=3.10"]
 yaml = ["pyyaml>=6.0"]
 optuna = ["optuna>=3.5"]
+# User models built with PyTorch or TensorFlow/Keras (autohybts.models).
+torch = ["torch>=2.2"]
+tensorflow = ["tensorflow>=2.16"]
 # Reading the M3 benchmark (R data file of the Mcomp package).
 datasets = ["rdata>=0.11"]
 # Building documentation/ with Sphinx.
@@ -93,7 +96,7 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 # No type information shipped by these libraries (matplotlib/plot, optuna and
 # rdata/datasets: optional extras, may be absent).
-module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*"]
+module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*", "keras", "keras.*", "tensorflow", "tensorflow.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

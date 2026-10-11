@@ -18,6 +18,7 @@ import pandas as pd
 
 from autohybts.adapters.base import BaseForecaster
 from autohybts.exceptions import ConfigurationError
+from autohybts.models.requirements import require
 from autohybts.registry.capabilities import Capabilities
 
 __all__ = ["FAMILIES", "ModelEntry", "ModelKind", "ModelRegistry", "default_registry"]
@@ -39,6 +40,26 @@ class ModelEntry:
     capabilities: Capabilities
     description: str = ""
     default_params: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    # Models registered by the user (PyTorch, TensorFlow ...): library versions they need,
+    # the version of the registration (part of every trial key) and a tune_model space.
+    requires: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    version: str | None = None
+    tuning_space: Mapping[str, Any] | None = None
+
+    @property
+    def external(self) -> bool:
+        return self.version is not None
+
+    def describe(self) -> dict[str, Any]:
+        """Identity of a user-registered model, as it enters the evaluator protocol."""
+
+        return {
+            "kind": self.kind,
+            "family": self.family,
+            "version": self.version,
+            "requires": dict(self.requires),
+            "default_params": dict(self.default_params),
+        }
 
 
 class ModelRegistry:
@@ -55,8 +76,17 @@ class ModelRegistry:
         description: str = "",
         default_params: Mapping[str, Any] | None = None,
         replace: bool = False,
+        requires: Mapping[str, str] | None = None,
+        version: str | None = None,
+        tuning_space: Mapping[str, Any] | None = None,
     ) -> None:
-        """Register a base forecaster; the factory output is checked against the contract."""
+        """Register a base forecaster; the factory output is checked against the contract.
+
+        ``requires`` (e.g. ``{"torch": ">=2.2"}``) is checked whenever the model is built:
+        if it is not met the trial is ``SKIPPED`` with the reason. ``version`` names the
+        registration (change it when the model code changes: it enters every trial key).
+        ``tuning_space`` is the default space of ``tune_model`` for this model.
+        """
 
         capabilities = capabilities or Capabilities()
         params = dict(default_params or {})
@@ -76,7 +106,16 @@ class ModelRegistry:
             )
         self._add(
             ModelEntry(
-                name, "base", family, factory, capabilities, description, MappingProxyType(params)
+                name,
+                "base",
+                family,
+                factory,
+                capabilities,
+                description,
+                MappingProxyType(params),
+                MappingProxyType(dict(requires or {})),
+                version,
+                tuning_space,
             ),
             replace,
         )
@@ -90,8 +129,14 @@ class ModelRegistry:
         description: str = "",
         default_params: Mapping[str, Any] | None = None,
         replace: bool = False,
+        requires: Mapping[str, str] | None = None,
+        version: str | None = None,
+        tuning_space: Mapping[str, Any] | None = None,
     ) -> None:
-        """Register a residual corrector; the factory output is checked against the contract."""
+        """Register a residual corrector; the factory output is checked against the contract.
+
+        ``requires``, ``version`` and ``tuning_space`` as in ``register_base``.
+        """
 
         from autohybts.residuals.correctors import ResidualCorrector
 
@@ -111,6 +156,9 @@ class ModelRegistry:
                 capabilities or Capabilities(multi_step=False, online_state_update=False),
                 description,
                 MappingProxyType(params),
+                MappingProxyType(dict(requires or {})),
+                version,
+                tuning_space,
             ),
             replace,
         )
@@ -121,6 +169,7 @@ class ModelRegistry:
         from autohybts.residuals.correctors import ResidualCorrector
 
         entry = self.entry(name, "corrector")
+        require(entry.requires)
         corrector = entry.factory({**entry.default_params, **dict(params or {})})
         if not isinstance(corrector, ResidualCorrector):
             raise ConfigurationError(f"A fábrica de {name!r} não devolveu um ResidualCorrector.")
@@ -130,6 +179,7 @@ class ModelRegistry:
         """A new unfitted instance; ``params`` override the entry's defaults."""
 
         entry = self.entry(name, "base")
+        require(entry.requires)
         model = entry.factory({**entry.default_params, **dict(params or {})})
         if not isinstance(model, BaseForecaster):
             raise ConfigurationError(f"A fábrica de {name!r} não devolveu um BaseForecaster.")
@@ -151,6 +201,15 @@ class ModelRegistry:
             if entry_kind == kind and (family is None or entry.family == family)
         )
 
+    def external(self) -> dict[str, dict[str, Any]]:
+        """User-registered models (those with a ``version``), by ``kind:name``."""
+
+        return {
+            f"{kind}:{name}": entry.describe()
+            for (kind, name), entry in sorted(self._entries.items())
+            if entry.external
+        }
+
     def families(self, kind: ModelKind = "base") -> tuple[str, ...]:
         present = {entry.family for (k, _), entry in self._entries.items() if k == kind}
         known = [family for family in FAMILIES if family in present]
@@ -163,6 +222,10 @@ class ModelRegistry:
         clone._entries = dict(self._entries)
         return clone
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> ModelRegistry:
+        # Entries are immutable; a deep copy is an independent registry of the same entries.
+        return self.copy()
+
     def to_frame(self) -> pd.DataFrame:
         """Catalog shown by ``exp.models()``."""
 
@@ -172,6 +235,8 @@ class ModelRegistry:
                 "name": entry.name,
                 "family": entry.family,
                 **entry.capabilities.as_dict(),
+                "requires": ", ".join(f"{k}{v}" for k, v in entry.requires.items()) or None,
+                "version": entry.version,
                 "description": entry.description,
             }
             for _, entry in sorted(self._entries.items())

@@ -27,6 +27,8 @@ Ainda não está no PyPI; instale direto do repositório:
 pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 ```
 
+Para usar modelos próprios em PyTorch ou TensorFlow, acrescente os extras `torch` e/ou `tensorflow` (ex.: `autohybts[stats,plot,torch]`).
+
 ## Início rápido
 
 ```python
@@ -76,6 +78,36 @@ cv.summary  # média, desvio, posto médio
 cv.tests()  # Wilcoxon e Diebold-Mariano com Holm (relatório)
 cv.plot("critical_difference")  # também: leaderboard, boxplot, win_rate, forecasts
 exp.nested_cross_validate(outer_folds=3)  # o procedimento inteiro, dobra a dobra
+```
+
+### Modelos próprios (PyTorch, TensorFlow, qualquer biblioteca)
+
+```python
+from autohybts.models import keras_model, keras_zoo, torch_model
+from autohybts.models.torch_zoo import LSTMNet, MambaNet
+
+exp.register_model(
+    "lstm",
+    torch_model(LSTMNet, hidden=32, lags=28, differencing=1),
+    family="deep",
+    requires={"torch": ">=2.2"},
+    version="1",
+)
+exp.register_model(
+    "mamba",
+    torch_model(MambaNet, d_model=32, lags=28, differencing=1),
+    family="deep",
+    requires={"torch": ">=2.2"},
+    version="1",
+)
+exp.register_model(
+    "keras_lstm",
+    keras_model(keras_zoo.lstm, units=32, lags=28),
+    family="deep",
+    requires={"tensorflow": ">=2.16"},
+    version="1",
+)
+# depois, os nomes valem em base_models, correctors, create_hybrid, tune_model ...
 ```
 
 ### Várias séries

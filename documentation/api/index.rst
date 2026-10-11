@@ -5,7 +5,7 @@ Experimento
 -----------
 
 .. autoclass:: autohybts.AutoHybridExperiment
-   :members: fit, splits, models, create_model, create_hybrid, create_decomposition,
+   :members: fit, splits, models, register_model, create_model, create_hybrid, create_decomposition,
              create_combination, tune_model, compare_models, finalize_model, predict_model,
              evaluate_external, cross_validate, compare_external, nested_cross_validate,
              data_profile, plot_data, plot_model, get_metrics, export_evidence
@@ -96,6 +96,22 @@ Estratégias
 
 .. automodule:: autohybts.reporting.strategies
    :members: complexity, pareto_front, strategy_table
+
+Modelos próprios
+----------------
+
+``AutoHybridExperiment.register_model`` (acima) registra o modelo no experimento.
+
+.. autofunction:: autohybts.models.torch_model
+.. autoclass:: autohybts.models.TorchForecaster
+.. autoclass:: autohybts.models.TorchCorrector
+.. autofunction:: autohybts.models.keras_model
+.. autoclass:: autohybts.models.KerasForecaster
+.. autoclass:: autohybts.models.KerasCorrector
+.. autoclass:: autohybts.models.CustomForecaster
+.. autoclass:: autohybts.models.RegressorForecaster
+.. autofunction:: autohybts.models.require
+.. autofunction:: autohybts.models.framework_versions
 
 Ablação
 -------

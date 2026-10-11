@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Mapping, Sequence
-from dataclasses import asdict
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, overload
@@ -43,6 +43,8 @@ from autohybts.exceptions import (
 )
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster, refit
 from autohybts.forecasting.rolling_one_step_b import rolling_one_step
+from autohybts.models.requirements import framework_versions
+from autohybts.registry.capabilities import Capabilities
 from autohybts.registry.registry import ModelRegistry, default_registry
 from autohybts.reporting.comparison import ComparisonResult, diebold_mariano, holm
 from autohybts.reporting.evidence import EvidenceBundle, write_evidence
@@ -295,6 +297,62 @@ class AutoHybridExperiment(Parametrized):
         return (self.registry_ if hasattr(self, "registry_") else default_registry()).to_frame()
 
     # ------------------------------------------------------------------ verbs
+    def register_model(
+        self,
+        name: str,
+        factory: Callable[[Mapping[str, Any]], Any] | Any,
+        *,
+        kind: str = "base",
+        family: str = "deep",
+        requires: Mapping[str, str] | None = None,
+        version: str = "1",
+        capabilities: Capabilities | None = None,
+        description: str = "",
+        default_params: Mapping[str, Any] | None = None,
+        tuning_space: Mapping[str, Any] | None = None,
+        replace: bool = False,
+    ) -> AutoHybridExperiment:
+        """Add a model built outside AutoHybTS (PyTorch, TensorFlow, any library).
+
+        ``factory`` receives a parameter mapping and returns a fresh, unfitted model:
+        ``torch_model(...)``/``keras_model(...)`` from ``autohybts.models``, or any
+        callable returning a ``BaseForecaster`` (``kind="base"``) or a
+        ``ResidualCorrector`` (``kind="corrector"``). A model *instance* is also accepted
+        and cloned for every trial. Afterwards the name works everywhere: ``create_model``,
+        ``base_models``/``correctors`` of the search, hybrids, ``tune_model``.
+
+        ``requires`` (e.g. ``{"torch": ">=2.2"}``) is checked when the model is built; a
+        missing or older library makes the trial ``SKIPPED``. ``version`` names the
+        registration and enters every trial key: change it when the model code changes.
+        Can be called before or after ``fit``; returns the experiment for chaining.
+        """
+
+        if kind not in ("base", "corrector"):
+            raise ConfigurationError("kind deve ser 'base' ou 'corrector'.")
+        if not callable(factory) or hasattr(factory, "get_params"):
+            template = factory
+            factory = lambda params: _clone_with(template, params)  # noqa: E731
+        options: dict[str, Any] = {
+            "description": description,
+            "default_params": default_params,
+            "replace": replace,
+            "requires": requires,
+            "version": str(version),
+            "tuning_space": tuning_space,
+            "capabilities": capabilities,
+        }
+        targets = [self.registry if self.registry is not None else default_registry()]
+        self.registry = targets[0]
+        if hasattr(self, "registry_"):
+            targets.append(self.registry_)
+        for registry in targets:
+            if kind == "base":
+                registry.register_base(name, factory, family=family, **options)
+            else:
+                registry.register_corrector(name, factory, **options)
+        self._event("model.registered", f"{kind} {name!r} (versão {version})", None)
+        return self
+
     def create_model(self, name: str, **params: Any) -> ModelResult:
         """Evaluate one standalone model on every origin of both layers."""
 
@@ -457,7 +515,7 @@ class AutoHybridExperiment(Parametrized):
         self._require("VALIDATED")
         candidate = self._candidates([model])[0]
         space = (
-            default_space(candidate.base.name, self.seasonal_period_)
+            self._registered_space(candidate.base.name)
             if search_space is None
             else {name: _as_distribution(name, value) for name, value in search_space.items()}
         )
@@ -516,6 +574,7 @@ class AutoHybridExperiment(Parametrized):
             "search.finished", f"{search.trial_count} tentativas ({search.stop_reason})", started
         )
         started = time.perf_counter()
+        self.policy_ = replace(self.policy_, family_order=self._family_order())
         selection = IncrementalSelector(self.evaluator_, self.policy_).select(
             search, self.work_plan_
         )
@@ -613,6 +672,9 @@ class AutoHybridExperiment(Parametrized):
             else {"size": sealed.size, "fingerprint": sealed.fingerprint},
             "autohybts_version": autohybts.__version__,
         }
+        external = self._external_requirements(spec)
+        if external:
+            manifest["frameworks"] = framework_versions(external)
         final = FinalizedForecaster(spec, model, history, seed, manifest, len(history))
         self._event("model.finalized", f"{spec.label} reajustado até {history.end}", started)
         return final
@@ -1082,6 +1144,32 @@ class AutoHybridExperiment(Parametrized):
         raise ConfigurationError(f"Referência {reference!r} não está entre os modelos comparados.")
 
     # ------------------------------------------------------------------ helpers
+    def _family_order(self) -> tuple[str, ...]:
+        """Default order with families of user-registered bases right before ``residual``."""
+
+        order = list(DEFAULT_FAMILY_ORDER)
+        extra = [f for f in self.registry_.families("base") if f not in order]
+        position = order.index("residual")
+        return (*order[:position], *extra, *order[position:])
+
+    def _registered_space(self, name: str) -> dict[str, Distribution]:
+        entry = self.registry_.entry(name)
+        if entry.tuning_space is None:
+            return default_space(name, self.seasonal_period_)
+        return {key: _as_distribution(key, value) for key, value in entry.tuning_space.items()}
+
+    def _external_requirements(self, spec: CandidateSpec) -> set[str]:
+        names = [("base", spec.base.name)]
+        if spec.corrector is not None:
+            names.append(("corrector", spec.corrector.name))
+        for member in spec.members:
+            kind = "base" if spec.strategy == "fixed_combination" else "corrector"
+            names.append((kind, member.name))
+        packages: set[str] = set()
+        for kind, model in names:
+            packages.update(self.registry_.entry(model, kind).requires)  # type: ignore[arg-type]
+        return packages
+
     def _series(self, series_id: str | None) -> SeriesFrame:
         """Development history of one series (the only one, or the first of a panel)."""
 
@@ -1319,3 +1407,11 @@ def _as_distribution(name: str, value: object) -> Distribution:
     raise ConfigurationError(
         f"Espaço de {name!r}: use Distribution, (mínimo, máximo) ou uma lista de opções."
     )
+
+
+def _clone_with(template: Any, params: Mapping[str, Any]) -> Any:
+    """Fresh copy of a registered model instance, with ``params`` overriding its own."""
+
+    if not params:
+        return template.clone()
+    return type(template)(**{**template.get_params(), **dict(params)})
