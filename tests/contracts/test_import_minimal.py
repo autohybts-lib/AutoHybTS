@@ -35,3 +35,10 @@ def test_core_submodules_do_not_load_heavy_modules() -> None:
         "import autohybts.exceptions, autohybts.types, autohybts.domain.identity"
     )
     assert not {name for name in loaded if name.split(".")[0] in HEAVY_MODULES}
+
+
+def test_model_wrappers_do_not_load_frameworks_or_packaging() -> None:
+    # packaging is an optional extra (ADR-0006): only checking a requirement imports it.
+    loaded = _modules_after_import("import autohybts.models, autohybts.experiment")
+    roots = {name.split(".")[0] for name in loaded}
+    assert not roots & {"torch", "tensorflow", "keras", "packaging"}

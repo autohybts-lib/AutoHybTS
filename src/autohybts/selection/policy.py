@@ -43,10 +43,15 @@ Direction: TypeAlias = Literal["gte", "lte"]
 
 @dataclass(frozen=True, slots=True)
 class VariabilityCriterion:
-    """Variability predicate of R09 as a named, versioned plugin (ADR-0003)."""
+    """Variability predicate of R09 as a named, versioned plugin (ADR-0003).
+
+    Version 2 aggregates per series first (median over the series' compared units), then
+    across series (median of the series values). Version 1 took a single median over all
+    units, which differs in panels; single-series values are the same in both versions.
+    """
 
     name: str = "correction_std_ratio"
-    version: int = 1
+    version: int = 2
     threshold: float = 0.05
     direction: Direction = "gte"
     aggregation: str = "median"
@@ -62,21 +67,29 @@ class VariabilityCriterion:
 
         return result.candidate.corrector is not None
 
-    def value(self, result: EvaluationResult, unit_ids: Sequence[str]) -> float:
-        """Median over the compared units of the per-unit diagnostic; NaN if none is finite.
+    def per_series(self, result: EvaluationResult, unit_ids: Sequence[str]) -> dict[str, float]:
+        """Median of the per-unit diagnostic over each series' compared units.
 
-        With several series the median is taken per series first, then across series;
-        with one series this reduces to the median over its units.
+        Every series with a compared unit is listed; a series without any finite
+        diagnostic is ``NaN`` (kept visible in the decision, ignored by ``value``).
         """
 
         wanted = set(unit_ids)
-        values = [
-            trial.diagnostics.get(self.name, math.nan)
-            for trial in result.trials
-            if trial.unit_id in wanted
-        ]
-        finite = [v for v in values if math.isfinite(v)]
-        return float(np.median(finite)) if finite else math.nan
+        grouped: dict[str, list[float]] = {}
+        for trial in result.trials:
+            if trial.unit_id in wanted:
+                grouped.setdefault(trial.series_id, []).append(
+                    trial.diagnostics.get(self.name, math.nan)
+                )
+        return {series: _finite_median(values) for series, values in sorted(grouped.items())}
+
+    def value(self, result: EvaluationResult, unit_ids: Sequence[str]) -> float:
+        """Median across series of the per-series medians; NaN if no series is finite.
+
+        With one series this is the median over its compared units (ADR-0003).
+        """
+
+        return _finite_median(list(self.per_series(result, unit_ids).values()))
 
     def passes(self, value: float) -> bool:
         if not math.isfinite(value):
@@ -93,6 +106,11 @@ class VariabilityCriterion:
         }
 
 
+def _finite_median(values: Sequence[float]) -> float:
+    finite = [v for v in values if math.isfinite(v)]
+    return float(np.median(finite)) if finite else math.nan
+
+
 @dataclass(frozen=True, slots=True)
 class SelectionPolicy:
     """Profile and thresholds of the incremental guarded selection.
@@ -107,9 +125,20 @@ class SelectionPolicy:
 
     ``significance_alpha`` (off by default) adds a statistical predicate: the challenger
     must also beat the champion in a one-sided paired Wilcoxon signed-rank test on the same
-    units, ``p < significance_alpha``. The protocol rule alone is not error control; this
-    option is. With few units it can never pass (with ``n`` units the smallest one-sided
-    p-value is ``1 / 2**n``: at least 5 units for ``alpha = 0.05``).
+    units, ``p < significance_alpha``. The protocol rule alone is not error control. The
+    test bounds the false acceptance of *one* comparison at ``alpha``, under its
+    assumptions (independent, symmetric paired differences); it does not control the
+    whole chain, where several families challenge a champion that changes with the
+    earlier decisions, nor the dependence between overlapping origins. Measure the
+    chain's behaviour with ``autohybts.benchmarks.calibration``.
+
+    Units with equal errors are dropped before the test, so ``n`` is the number of
+    non-zero paired differences (all series of a panel together). With the exact null
+    distribution the smallest one-sided p-value is ``1 / 2**n``: at least 5 such units
+    for ``alpha = 0.05``; with the default ``fold=3`` on one series the predicate can
+    never pass. The p-value comes from SciPy's default method, which depends on the SciPy
+    version (exact for small ``n`` in recent versions, a normal approximation in some
+    cases), so it can move slightly between environments.
     """
 
     profile: Profile = "standard"

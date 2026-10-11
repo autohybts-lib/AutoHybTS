@@ -148,12 +148,32 @@ class NestedCVResult:
     """Outer rolling-origin evaluation of the whole automated procedure (§30.1, T27).
 
     In each outer fold the search and the selection ran again on the history before the
-    outer origin only; the outer block was never seen by them.
+    outer origin only; the outer block was never seen by them. ``include`` are the
+    families of the inner searches; ``cost`` has one row per outer fold with the work
+    done there: candidates and units (origin x series) of the inner search and
+    selection, configured budget, stop reason and seconds (search, selection, refit,
+    total).
     """
 
     folds: pd.DataFrame
     summary: pd.DataFrame
     metric: str
+    include: tuple[str, ...] = ()
+    cost: pd.DataFrame = field(default_factory=pd.DataFrame)
+
+    @property
+    def total_candidates(self) -> int:
+        """Candidates evaluated by every inner search together."""
+
+        if "search_candidates" not in self.cost:
+            return 0
+        return int(self.cost["search_candidates"].fillna(0).sum())
+
+    @property
+    def total_seconds(self) -> float:
+        if "seconds_total" not in self.cost:
+            return 0.0
+        return float(self.cost["seconds_total"].fillna(0.0).sum())
 
     def __repr__(self) -> str:
         return f"NestedCVResult({len(self.folds)} dobras externas, {self.metric})"

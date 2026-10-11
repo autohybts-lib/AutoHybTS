@@ -237,6 +237,20 @@ def test_rerun_and_snapshot_reproduce_the_selection(fitted) -> None:
         AutoHybridExperiment.from_snapshot({"schema": "other"})
 
 
+def test_wall_clock_deadline_is_opt_in_and_recorded(fitted) -> None:
+    # Presets limit by count only; a deadline is an explicit, recorded parameter.
+    _, result, _ = fitted
+    assert result.snapshot["guard"]["max_wall_time_s"] is None
+    assert result.snapshot["experiment"]["max_wall_time_s"] is None
+    timed = AutoHybridExperiment(**FAST, max_wall_time_s=3600.0).fit(series()).compare_models()
+    assert timed.snapshot["guard"]["max_wall_time_s"] == 3600.0
+    assert timed.search.stop_reason != "max_wall_time"
+    assert timed.best == result.best  # a deadline that never binds changes nothing
+    assert timed.search.elapsed_s > 0
+    with pytest.raises(ConfigurationError, match="max_wall_time_s"):
+        AutoHybridExperiment(**FAST, max_wall_time_s=0.0).fit(series()).compare_models()
+
+
 def test_operational_mode_without_sealed_test() -> None:
     y = series()
     exp = AutoHybridExperiment(**{**FAST, "test_size": 0}).fit(y)

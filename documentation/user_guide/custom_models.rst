@@ -72,13 +72,28 @@ O que o wrapper garante
   são ajustadas só no vetor de treino daquela origem; a parada antecipada usa as
   **últimas linhas do próprio treino** (``validation_fraction``), nunca ``V_select`` nem
   o teste.
+* **Validação interna separada:** a média e o desvio da padronização vêm só das linhas
+  de treino interno, antes da cauda reservada para a parada antecipada; a cauda é
+  escalada com essas estatísticas e não altera o que a rede aprende. Os diagnósticos
+  da tentativa trazem ``train_rows`` e ``validation_rows``. Em séries com tendência
+  forte, use ``differencing=1``: sem diferenciação, a cauda fica fora da faixa vista no
+  treino.
 * **Pesos congelados na previsão:** a previsão de vários passos é recursiva; um contexto
   mais longo (variante B, resíduos fora da amostra) só muda as entradas.
 * **Semente:** ``random_state`` fixa a semente do PyTorch ou do Keras; o mesmo modelo
-  nos mesmos dados dá a mesma previsão na CPU.
-* **Versão exigida:** ``requires`` é conferido quando o modelo é construído para uma
-  tentativa; biblioteca ausente ou antiga torna a tentativa ``SKIPPED`` com o motivo e
-  o comando ``pip`` — o resto do experimento segue.
+  nos mesmos dados dá a mesma previsão na CPU (tolerância numérica de ``1e-5``; GPU e
+  TensorFlow podem ter não determinismo residual). Como essas sementes são globais do
+  processo, o treino das redes é serializado entre threads: com ``n_jobs > 1`` as outras
+  candidatas seguem em paralelo e cada rede dá os mesmos pesos que daria sozinha.
+* **Versão exigida:** ``requires`` segue a PEP 440 (``">=2.2,<3"``, ``"~=2.2"``,
+  ``"!=2.3.*"``), conferida com o pacote ``packaging`` (incluído nos extras ``torch`` e
+  ``tensorflow``). Uma especificação malformada é recusada já no registro
+  (``ConfigurationError``). A versão instalada é conferida quando o modelo é construído
+  para uma tentativa; biblioteca ausente ou fora da faixa torna a tentativa ``SKIPPED``
+  com o motivo e o comando ``pip`` — o resto do experimento segue. Pré-releases vêm
+  antes da versão final: ``2.2.0rc1`` não satisfaz ``>=2.2``, mas ``2.3.0rc1`` sim;
+  ``2.2.0.post1`` não é ``==2.2`` (use ``==2.2.*``); rótulos locais como ``+cu130`` são
+  ignorados por especificações sem rótulo local.
 * **Identidade:** ``version`` da registração entra na chave de cada tentativa (cache e
   snapshot). Mude-a quando mudar o código do modelo.
 * **Persistência:** ``save_model`` guarda os pesos (``state_dict`` do PyTorch, pesos do

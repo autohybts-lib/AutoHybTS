@@ -17,6 +17,7 @@ comparação são ``série:dobra``.
 * **Ranking**: melhor configuração de cada estrutura em cada série, postos por série,
   média dos postos.
 * **Seleção**: ganho mediano e vitórias sobre as unidades de todas as séries juntas;
+  a variabilidade é a mediana por série e depois entre as séries;
   ``result.selection.champion_per_series`` guarda a configuração de cada série.
 * **Finalização**: ``finalize_model`` devolve um :class:`~autohybts.PanelForecaster`,
   um modelo por série, cada um com a sua configuração.

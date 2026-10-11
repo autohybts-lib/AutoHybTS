@@ -25,8 +25,16 @@ def test_presets_are_valid_and_ordered() -> None:
         for name in ("smoke", "small", "medium", "large")
     ]
     assert totals == sorted(totals)
-    assert PRESETS["smoke"]["folds"] == 1
     assert SearchGuardConfig.preset("small", max_trials_total=7).max_trials_total == 7
+
+
+def test_presets_are_reproducible_budgets_by_count() -> None:
+    # No wall clock by default (opt-in, cooperative) and no dead keys: every preset key
+    # is a guard setting, and the number of origins is the experiment's ``fold``.
+    for name, preset in PRESETS.items():
+        assert set(preset) == {"guard"}
+        assert SearchGuardConfig.preset(name).max_wall_time_s is None  # type: ignore[arg-type]
+    assert SearchGuardConfig.preset("smoke", max_wall_time_s=30.0).max_wall_time_s == 30.0
 
 
 def test_test_feedback_to_search_is_refused() -> None:

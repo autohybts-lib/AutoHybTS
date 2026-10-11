@@ -121,6 +121,29 @@ def test_oracle5_gains_conflict_and_the_pooled_decision_is_auditable(
     assert set(selection.champion_per_series) == {"a", "b"}
 
 
+def test_oracle5_variability_is_aggregated_per_series_end_to_end(
+    oracle5: tuple[PanelPlan, SearchResult, SelectionResult],
+) -> None:
+    plan, _, selection = oracle5
+    decision = selection.decisions[-1]
+    hybrid = next(f for f in selection.finalists if f.candidate.strategy != "standalone")
+    assert decision.variability_status in ("passed", "failed")
+    expected = {
+        sid: float(
+            np.median(
+                [
+                    t.diagnostics["correction_std_ratio"]
+                    for t in hybrid.for_series(sid).trials
+                    if np.isfinite(t.diagnostics.get("correction_std_ratio", np.nan))
+                ]
+            )
+        )
+        for sid in plan.series_ids
+    }
+    assert dict(decision.variability_by_series) == pytest.approx(expected)
+    assert decision.variability_value == pytest.approx(float(np.median(list(expected.values()))))
+
+
 def test_oracle5_mean_rank_is_the_average_of_per_series_ranks(
     oracle5: tuple[PanelPlan, SearchResult, SelectionResult],
 ) -> None:
@@ -254,6 +277,10 @@ def test_nested_cv_runs_on_the_panel(
     assert set(folds.index.get_level_values("series_id")) == {"a", "b"}
     assert set(folds["status"]) == {"SUCCEEDED"}
     assert nested.summary.loc[f"autohybts_{nested.metric}", "n_folds"] == 4
+    assert nested.summary.loc[f"best_standalone_{nested.metric}", "n_folds"] == 4
+    assert len(nested.cost) == 2  # one inner experiment per outer fold, for the whole panel
+    # Units of a panel search count every series at every origin.
+    assert (nested.cost["search_units"] >= 2 * nested.cost["search_candidates"]).all()
     # Each series is cut at its own origin; the outer block is never in the inner history.
     for (_, sid), row in folds.iterrows():
         assert row["origin"] < exp.panel_[sid].end

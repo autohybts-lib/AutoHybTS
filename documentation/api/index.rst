@@ -111,14 +111,23 @@ Modelos próprios
 .. autoclass:: autohybts.models.CustomForecaster
 .. autoclass:: autohybts.models.RegressorForecaster
 .. autofunction:: autohybts.models.require
+.. autofunction:: autohybts.models.check_specifier
+.. autofunction:: autohybts.models.validate_requirements
 .. autofunction:: autohybts.models.framework_versions
 
 Ablação
 -------
 
 .. automodule:: autohybts.benchmarks.ablation
-   :members: run_ablation, run_case, ablation_report, synthetic_cases, benchmark_cases,
-             AblationCase
+   :members: run_ablation, run_case, ablation_report, ablation_uncertainty,
+             ablation_protocol, synthetic_cases, benchmark_cases, AblationCase
+
+Calibração da regra de aceite
+-----------------------------
+
+.. automodule:: autohybts.benchmarks.calibration
+   :members: run_calibration, calibration_report, calibration_protocol, control_cases,
+             ControlCase
 
 Exceções
 --------

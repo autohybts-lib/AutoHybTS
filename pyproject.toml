@@ -40,9 +40,10 @@ stats = ["statsmodels>=0.14"]
 plot = ["matplotlib>=3.10"]
 yaml = ["pyyaml>=6.0"]
 optuna = ["optuna>=3.5"]
-# User models built with PyTorch or TensorFlow/Keras (autohybts.models).
-torch = ["torch>=2.2"]
-tensorflow = ["tensorflow>=2.16"]
+# User models built with PyTorch or TensorFlow/Keras (autohybts.models); packaging checks
+# the PEP 440 version requirements of registered models (ADR-0006).
+torch = ["torch>=2.2", "packaging>=22"]
+tensorflow = ["tensorflow>=2.16", "packaging>=22"]
 # Reading the M3 benchmark (R data file of the Mcomp package).
 datasets = ["rdata>=0.11"]
 # Building documentation/ with Sphinx.
@@ -57,6 +58,7 @@ dev = [
     "mypy>=1.10",
     "pandas-stubs>=2.1",
     "build>=1.2",
+    "packaging>=22",
 ]
 
 [tool.hatch.version]

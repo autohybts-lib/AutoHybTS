@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import threading
 import time
-from collections.abc import Iterator
 from dataclasses import replace
 
 import numpy as np
@@ -14,7 +14,12 @@ from autohybts.adapters.base import FloatArray, ForecasterBase
 from autohybts.data.schema import SeriesFrame
 from autohybts.data.splitter import TemporalPlan, TemporalSplitter, split_sealed_test
 from autohybts.evaluation.temporal import TemporalEvaluator
-from autohybts.exceptions import CoverageError, SealedTestAccessError
+from autohybts.exceptions import (
+    ConfigurationError,
+    CoverageError,
+    SealedTestAccessError,
+    TemporalLeakageError,
+)
 from autohybts.registry import ModelRegistry, default_registry
 from autohybts.search.budgets import SearchGuardConfig
 from autohybts.search.cache import MemoryTrialCache
@@ -177,18 +182,150 @@ def test_cache_reuses_evaluations_with_the_same_key() -> None:
     second = engine(guard, cache=cache).run(plan)
     assert comparable(first) == comparable(second)
     assert all(e.cached for e in second.ledger if e.status == "EVALUATED")
+    # Cost accounting: cache hits are counted apart and refit nothing.
+    assert first.cached_count == 0
+    assert first.unit_count == sum(len(r.trials) for r in first.results)
+    assert second.cached_count == second.trial_count > 0
+    assert second.unit_count == 0
     other_plan = make_plan(series(seed=1))
     third = engine(guard, cache=cache).run(other_plan)
     assert not any(e.cached for e in third.ledger)
 
 
-def test_wall_time_limit_stops_new_stages() -> None:
-    ticks: Iterator[float] = iter([0.0, 0.0, 100.0, 100.0, 100.0, 100.0])
-    guard = SearchGuardConfig(max_wall_time_s=10.0)
-    result = engine(guard, clock=lambda: next(ticks)).run(make_plan())
+class FakeClock:
+    """Manual clock shared by the engine and the evaluator (thread-safe)."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self._lock = threading.Lock()
+
+    def __call__(self) -> float:
+        with self._lock:
+            return self.now
+
+    def advance(self, seconds: float) -> None:
+        with self._lock:
+            self.now += seconds
+
+
+class TickingEvaluator:
+    """Evaluator proxy: each candidate takes ``seconds`` on the fake clock; starts recorded."""
+
+    def __init__(self, clock: FakeClock, seconds: float) -> None:
+        self.inner = TemporalEvaluator(default_registry(), seasonal_period=7)
+        self.clock = clock
+        self.seconds = seconds
+        self.starts: list[float] = []
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.inner, name)
+
+    def evaluate(self, candidate: object, plan: object, layer: str = "search") -> object:
+        self.starts.append(self.clock())
+        result = self.inner.evaluate(candidate, plan, layer)  # type: ignore[arg-type]
+        self.clock.advance(self.seconds)
+        return result
+
+
+def ticking_engine(
+    limit: float | None, seconds: float, max_workers: int = 1
+) -> tuple[SearchEngine, TickingEvaluator, FakeClock]:
+    clock = FakeClock()
+    evaluator = TickingEvaluator(clock, seconds)
+    guard = SearchGuardConfig(max_wall_time_s=limit)
+    engine = SearchEngine(
+        evaluator,  # type: ignore[arg-type]
+        FAST_SPACE,
+        guard,
+        max_workers=max_workers,
+        clock=clock,
+    )
+    return engine, evaluator, clock
+
+
+def reconciled(result: SearchResult) -> None:
+    """Every evaluated entry has a result; every result has exactly one evaluated entry."""
+
+    evaluated = [e.candidate_id for e in result.ledger if e.status == "EVALUATED"]
+    assert len(evaluated) == len(set(evaluated))
+    assert set(evaluated) == {r.candidate_id for r in result.results}
+
+
+def test_wall_time_stops_new_candidates_inside_a_stage() -> None:
+    # Each base takes 4 s and the deadline is 10 s: bases start at 0, 4 and 8; none after.
+    search, evaluator, clock = ticking_engine(limit=10.0, seconds=4.0)
+    result = search.run(make_plan())
     assert result.stop_reason == "max_wall_time"
-    assert any(e.status == "STOPPED" for e in result.ledger)
+    assert evaluator.starts == [0.0, 4.0, 8.0]
+    assert result.trial_count == 3
+    stopped = [e for e in result.ledger if e.status == "STOPPED"]
+    assert any(e.reason == "max_wall_time_s atingido antes de iniciar" for e in stopped)
     assert all(e.stage == "S0" for e in result.ledger if e.status == "EVALUATED")
+    # Timings come from the injected clock; the running candidate finished all origins.
+    assert all(e.seconds == 4.0 for e in result.ledger if e.status == "EVALUATED")
+    assert all(r.coverage("MASE") == 1.0 for r in result.results)
+    assert result.elapsed_s == clock.now == 12.0
+    reconciled(result)
+
+
+def test_a_running_candidate_finishes_after_the_deadline_but_nothing_else_starts() -> None:
+    search, evaluator, _ = ticking_engine(limit=10.0, seconds=50.0)
+    result = search.run(make_plan())
+    assert evaluator.starts == [0.0]
+    assert result.trial_count == 1
+    assert result.stop_reason == "max_wall_time"
+    reconciled(result)
+
+
+def test_deadline_before_the_first_evaluation_is_explicit() -> None:
+    clock = FakeClock()
+    evaluator = TickingEvaluator(clock, 1.0)
+    guard = SearchGuardConfig(max_wall_time_s=5.0)
+
+    def late() -> float:  # the start is read at 0, every later reading is past the deadline
+        value = clock()
+        clock.advance(100.0)
+        return value
+
+    with pytest.raises(CoverageError, match="max_wall_time_s"):
+        SearchEngine(evaluator, FAST_SPACE, guard, clock=late).run(make_plan())  # type: ignore[arg-type]
+    assert evaluator.starts == []
+
+
+def test_parallel_queue_does_not_start_candidates_after_the_deadline() -> None:
+    search, evaluator, _ = ticking_engine(limit=10.0, seconds=4.0, max_workers=2)
+    result = search.run(make_plan())
+    assert result.stop_reason == "max_wall_time"
+    assert evaluator.starts
+    assert max(evaluator.starts) < 10.0
+    assert any(e.status == "STOPPED" for e in result.ledger)
+    assert result.trial_count == len(evaluator.starts)
+    reconciled(result)
+
+
+def test_deadline_inside_the_last_stage_is_reported() -> None:
+    # Without a deadline, N candidates start at 0, 1, ..., N-1 (1 s each). A deadline at
+    # N-1 keeps out only the last one, which belongs to the last stage.
+    free, _, _ = ticking_engine(limit=None, seconds=1.0)
+    complete = free.run(make_plan())
+    evaluated = [e for e in complete.ledger if e.status == "EVALUATED"]
+    search, _, _ = ticking_engine(limit=float(len(evaluated) - 1), seconds=1.0)
+    result = search.run(make_plan())
+    assert result.trial_count == len(evaluated) - 1
+    assert result.stop_reason == "max_wall_time"
+    (stopped,) = [e for e in result.ledger if e.status == "STOPPED"]
+    assert stopped.candidate_id == evaluated[-1].candidate_id
+    assert stopped.stage == evaluated[-1].stage != "S0"
+    reconciled(result)
+
+
+def test_without_a_deadline_every_stage_runs() -> None:
+    search, _, _ = ticking_engine(limit=None, seconds=1000.0)
+    result = search.run(make_plan())
+    assert result.stop_reason != "max_wall_time"
+    assert not any(e.status == "STOPPED" for e in result.ledger)
+    assert {e.stage for e in result.ledger if e.status == "EVALUATED"} > {"S0"}
+    reconciled(result)
 
 
 def test_total_failure_is_explicit() -> None:
@@ -218,3 +355,30 @@ def test_smoke_search_is_fast_and_fully_audited() -> None:
     statuses = set(result.counts())
     assert statuses <= {"EVALUATED", "PRUNED_BUDGET", "SKIPPED_CAPABILITY", "DUPLICATE", "STOPPED"}
     assert len(result.protocol["protocol_hash"]) == 64
+
+
+class Leaking:
+    """Evaluator proxy whose evaluation raises a protocol error."""
+
+    def __init__(self, error: Exception) -> None:
+        self.inner = TemporalEvaluator(default_registry(), seasonal_period=7)
+        self.error = error
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.inner, name)
+
+    def evaluate(self, candidate: object, plan: object, layer: str = "search") -> object:
+        raise self.error
+
+
+@pytest.mark.parametrize("workers", [1, 3])
+@pytest.mark.parametrize(
+    "error", [TemporalLeakageError("resíduo posterior"), ConfigurationError("parâmetro inválido")]
+)
+def test_a_deadline_never_hides_configuration_or_leakage_errors(
+    workers: int, error: Exception
+) -> None:
+    guard = SearchGuardConfig(max_wall_time_s=3600.0)
+    engine = SearchEngine(Leaking(error), FAST_SPACE, guard, max_workers=workers)  # type: ignore[arg-type]
+    with pytest.raises(type(error)):
+        engine.run(make_plan())

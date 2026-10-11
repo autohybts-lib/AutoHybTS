@@ -48,6 +48,23 @@ jobs:
       - run: python -m pip install -e ".[dev,stats]"
       - run: pytest -m "not slow" --cov --cov-report=term-missing
 
+  frameworks:
+    # PyTorch and TensorFlow/Keras wrappers (autohybts.models): the framework tests skip
+    # locally without the libraries; here a missing framework fails instead of skipping.
+    runs-on: ubuntu-latest
+    env:
+      AUTOHYBTS_REQUIRE_FRAMEWORKS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev,torch,tensorflow]" --extra-index-url https://download.pytorch.org/whl/cpu
+      - run: python -c "import torch, tensorflow, keras; print(torch.__version__, tensorflow.__version__, keras.__version__)"
+      - run: pytest tests/leakage/test_external_frameworks.py tests/unit/test_external_models.py -rs
+
   minimum-versions:
     # Keeps the dependency floors in pyproject.toml honest (pandas date handling differs by major).
     runs-on: ubuntu-latest
@@ -80,6 +97,15 @@ jobs:
           /tmp/clean/bin/python -m pip install dist/*.whl
           cd /tmp
           /tmp/clean/bin/python -c "import autohybts, autohybts.exceptions, autohybts.domain.identity; print(autohybts.__version__)"
+          # Model wrappers import without torch/tensorflow; a version check without the
+          # optional 'packaging' explains how to install it (ADR-0006).
+          /tmp/clean/bin/python -c "import autohybts.models as m; from autohybts.exceptions import UnsupportedCapabilityError as E
+          try:
+              m.require({'numpy': '>=1'})
+          except E as e:
+              assert 'packaging' in str(e), e
+          else:
+              import importlib.util; assert importlib.util.find_spec('packaging'), 'expected an error'"
 
   audit:
     # Known vulnerabilities in the resolved dependencies (core and every optional extra).

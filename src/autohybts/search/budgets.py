@@ -70,45 +70,41 @@ def _positive(name: str, value: object, *, minimum: int) -> None:
 
 
 # Engineering starting points (§8.3), not experimental results; calibrate per study.
+# Presets limit the search by *count* only, so the same data and seed give the same search
+# on any machine. A wall-clock deadline is opt-in (``max_wall_time_s``, cooperative), and
+# the number of origins per validation layer is the experiment's ``fold``, not the budget:
+# it sets how many paired units the acceptance rule compares (§9.3).
 PRESETS: Final[dict[str, dict[str, Any]]] = {
     "smoke": {
-        "folds": 1,
         "guard": {
             "max_trials_total": 10,
             "max_trials_per_family": 4,
             "max_candidates_per_stage": 6,
             "max_refinements": 1,
-            "max_wall_time_s": 60.0,
         },
     },
     "small": {
-        "folds": 3,
         "guard": {
             "max_trials_total": 50,
             "max_trials_per_family": 15,
             "max_candidates_per_stage": 25,
             "max_refinements": 2,
-            "max_wall_time_s": 900.0,
         },
     },
     "medium": {
-        "folds": 5,
         "guard": {
             "max_trials_total": 200,
             "max_trials_per_family": 40,
             "max_candidates_per_stage": 60,
             "max_refinements": 2,
-            "max_wall_time_s": 7200.0,
         },
     },
     "large": {
-        "folds": 5,
         "guard": {
             "max_trials_total": 1000,
             "max_trials_per_family": 200,
             "max_candidates_per_stage": 300,
             "max_refinements": 3,
-            "max_wall_time_s": None,
         },
     },
 }

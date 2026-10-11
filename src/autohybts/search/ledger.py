@@ -46,10 +46,30 @@ class SearchResult:
     residual_structures: tuple[str, ...]
     stop_reason: str
     protocol: dict[str, object]
+    # Wall-clock seconds of the whole search (measured with the engine's clock).
+    elapsed_s: float = 0.0
 
     @property
     def trial_count(self) -> int:
         return sum(entry.status == "EVALUATED" for entry in self.ledger)
+
+    @property
+    def cached_count(self) -> int:
+        """Evaluated candidates whose result came from the trial cache (nothing refitted)."""
+
+        return sum(entry.status == "EVALUATED" and entry.cached for entry in self.ledger)
+
+    @property
+    def unit_count(self) -> int:
+        """Units (origin x series) actually evaluated, cache hits excluded.
+
+        Each unit is one fresh model trained at one origin; how many model fits a unit
+        needs depends on the strategy (a residual hybrid also fits the base to produce its
+        training residuals), so this counts units, not fits.
+        """
+
+        cached = {e.candidate_id for e in self.ledger if e.status == "EVALUATED" and e.cached}
+        return sum(len(r.trials) for r in self.results if r.candidate_id not in cached)
 
     @property
     def trials_by_family(self) -> dict[str, int]:

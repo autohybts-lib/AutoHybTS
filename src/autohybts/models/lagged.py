@@ -1,19 +1,33 @@
 """Shared plumbing of external models that learn from lag windows.
 
 Every origin gets a fresh model: the training vector of that origin is (optionally)
-differenced and standardized with statistics of that vector only, cut into lag windows
-and handed to the library. When ``validation_fraction > 0`` the *last* rows of those
-windows (in time order) are held out inside the training vector for early stopping;
-nothing after the origin is ever used. Forecasts are recursive: each prediction becomes
-the newest lag of the next step, with the learned weights frozen, so a frozen model also
-forecasts from later contexts (variant B, out-of-fold residuals).
+differenced, cut into lag windows and handed to the library. When
+``validation_fraction > 0`` the *last* rows of those windows (in time order) are held
+out inside the training vector for early stopping; nothing after the origin is ever
+used. The standardization (mean and standard deviation) is fitted on the values the
+*internal training* rows use, before the held-out tail: the tail is scaled with those
+statistics, so it does not influence what the network is trained on and early stopping
+measures how the network extrapolates to it (M01, ADR-0006). The validation windows
+still read the history before each of their targets, as a forecast would. Without a
+held-out tail the statistics come from the whole training vector.
+
+Forecasts are recursive: each prediction becomes the newest lag of the next step, with
+the learned weights and statistics frozen, so a frozen model also forecasts from later
+contexts (variant B, out-of-fold residuals).
 
 Windows are given to the library in time order, oldest first: an array of shape
 ``(rows, n_lags)``. Sequence models read it as ``n_lags`` steps of one feature.
+
+Training holds ``TRAINING_LOCK``: PyTorch and Keras seed process-wide generators
+(``torch.manual_seed``, ``keras.utils.set_random_seed``), so two networks trained at
+the same time in threads (``n_jobs > 1``) would draw from each other's seeds. With the
+lock a seeded network gives the same weights whatever runs beside it; other candidates
+still run in parallel, and inference does not take the lock.
 """
 
 from __future__ import annotations
 
+import threading
 from abc import abstractmethod
 from collections.abc import Mapping
 from typing import Any
@@ -26,7 +40,17 @@ from autohybts.data.windows import lag_matrix, latest_lags, normalize_lags
 from autohybts.exceptions import ConfigurationError, InsufficientHistoryError
 from autohybts.models.requirements import require
 
-__all__ = ["LaggedModelForecaster", "WindowCorrector", "chronological", "split_tail"]
+__all__ = [
+    "TRAINING_LOCK",
+    "LaggedModelForecaster",
+    "WindowCorrector",
+    "chronological",
+    "split_tail",
+    "tail_cut",
+]
+
+# Serializes seeding + training of framework networks across threads (see above).
+TRAINING_LOCK = threading.RLock()
 
 
 def chronological(features: FloatArray) -> FloatArray:
@@ -35,15 +59,27 @@ def chronological(features: FloatArray) -> FloatArray:
     return np.ascontiguousarray(features[:, ::-1])
 
 
+def tail_cut(n_rows: int, fraction: float, minimum: int = 8) -> int | None:
+    """First held-out row when the last ``fraction`` of ``n_rows`` is held out, or ``None``.
+
+    ``None`` when nothing is held out: ``fraction`` is 0, fewer than 2 rows would be held
+    out or fewer than ``minimum`` would be left to train.
+    """
+
+    held = round(n_rows * fraction)
+    if fraction <= 0 or held < 2 or n_rows - held < minimum:
+        return None
+    return n_rows - held
+
+
 def split_tail(
     features: FloatArray, targets: FloatArray, fraction: float, minimum: int = 8
 ) -> tuple[FloatArray, FloatArray, FloatArray | None, FloatArray | None]:
     """Hold out the last rows (in time order) for early stopping; ``None`` if too few."""
 
-    held = round(len(targets) * fraction)
-    if fraction <= 0 or held < 2 or len(targets) - held < minimum:
+    cut = tail_cut(len(targets), fraction, minimum)
+    if cut is None:
         return features, targets, None, None
-    cut = len(targets) - held
     return features[:cut], targets[:cut], features[cut:], targets[cut:]
 
 
@@ -111,16 +147,25 @@ class LaggedModelForecaster(ForecasterBase):
     def _fit(self, y: FloatArray) -> None:
         require(self.requires)
         level = self._differenced(y)
-        self.center_ = float(np.mean(level)) if self.scale else 0.0
-        spread = float(np.std(level)) if self.scale else 1.0
+        max_lag = max(self._lags)
+        rows = max(0, len(level) - max_lag)
+        cut = tail_cut(rows, self.validation_fraction)
+        # Row i reads level[i : i + max_lag] and predicts level[i + max_lag]: the internal
+        # training rows (i < cut) only touch level[: cut + max_lag].
+        seen = level if cut is None else level[: cut + max_lag]
+        self.center_ = float(np.mean(seen)) if self.scale else 0.0
+        spread = float(np.std(seen)) if self.scale else 1.0
         self.spread_ = spread if spread > 0 else 1.0
+        self.train_rows_ = rows if cut is None else cut
+        self.validation_rows_ = 0 if cut is None else rows - cut
         features, targets = lag_matrix(self._standardized(level), self._lags)
         if len(targets) < 4:
             raise InsufficientHistoryError(f"Apenas {len(targets)} janelas para treinar a rede.")
         x_train, y_train, x_val, y_val = split_tail(
             chronological(features), targets, self.validation_fraction
         )
-        self.history_ = self._train(x_train, y_train, x_val, y_val)
+        with TRAINING_LOCK:
+            self.history_ = self._train(x_train, y_train, x_val, y_val)
 
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         anchors = None
@@ -138,8 +183,14 @@ class LaggedModelForecaster(ForecasterBase):
         return forecast if anchors is None else anchors.inverse_forecast(forecast)
 
     def diagnostics(self) -> dict[str, float]:
+        """Training summary plus the internal split (rows, never values)."""
+
         history = getattr(self, "history_", None) or {}
-        return {key: float(value) for key, value in history.items()}
+        summary = {key: float(value) for key, value in history.items()}
+        if hasattr(self, "train_rows_"):
+            summary["train_rows"] = float(self.train_rows_)
+            summary["validation_rows"] = float(self.validation_rows_)
+        return summary
 
     @abstractmethod
     def _train(
@@ -168,7 +219,8 @@ class WindowCorrector(Parametrized):
     """Base of the PyTorch/Keras residual correctors (``ResidualCorrector`` contract).
 
     Residual windows arrive oldest first; targets and windows are standardized with the
-    training residuals of the corrector.
+    corrector's training residuals of the internal training rows only (the held-out tail
+    for early stopping is scaled with them, as in ``LaggedModelForecaster``).
     """
 
     def __init__(
@@ -198,8 +250,10 @@ class WindowCorrector(Parametrized):
             raise ConfigurationError(
                 f"Janelas {features.shape} e alvos {labels.shape} incompatíveis."
             )
-        self.center_ = float(np.mean(labels))
-        spread = float(np.std(labels))
+        cut = tail_cut(len(labels), self.validation_fraction)
+        seen = labels if cut is None else labels[:cut]
+        self.center_ = float(np.mean(seen))
+        spread = float(np.std(seen))
         self.spread_ = spread if spread > 0 else 1.0
         self.n_lags_ = features.shape[1]
         x_train, y_train, x_val, y_val = split_tail(
@@ -207,7 +261,8 @@ class WindowCorrector(Parametrized):
             (labels - self.center_) / self.spread_,
             self.validation_fraction,
         )
-        self.history_ = self._train(x_train, y_train, x_val, y_val)
+        with TRAINING_LOCK:
+            self.history_ = self._train(x_train, y_train, x_val, y_val)
         return self
 
     def predict_next(self, window: Any) -> float:

@@ -62,6 +62,13 @@ class SelectionDecision:
     challenger_name: str = ""
     # One-sided paired Wilcoxon p-value; None when the significance predicate is off.
     p_value: float | None = None
+    # Variability per series (NaN: no finite diagnostic, ignored by the aggregate);
+    # empty when the criterion is disabled or not applicable.
+    variability_by_series: Mapping[str, float] = field(default_factory=dict)
+    # Paired errors and gains per compared unit, aligned with ``unit_ids``.
+    champion_errors: tuple[float, ...] = ()
+    challenger_errors: tuple[float, ...] = ()
+    gains: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +144,43 @@ class SelectionResult:
                 "challenger_id": d.challenger,
             }
             for d in self.decisions
+        ]
+        return pd.DataFrame(rows, columns=columns)
+
+    def decision_units_frame(self) -> pd.DataFrame:
+        """One row per decision and compared unit: both errors, the gain and the win.
+
+        Everything a decision used is here, so median gain and win rate can be recomputed
+        (and resampled by unit or series) outside the library.
+        """
+
+        columns = [
+            "family",
+            "challenger_id",
+            "accepted",
+            "unit_id",
+            "series_id",
+            "champion_error",
+            "challenger_error",
+            "gain",
+            "win",
+        ]
+        rows = [
+            {
+                "family": d.family,
+                "challenger_id": d.challenger,
+                "accepted": d.accepted,
+                "unit_id": unit,
+                "series_id": unit.rsplit(":", 1)[0] if ":" in unit else None,
+                "champion_error": old,
+                "challenger_error": new,
+                "gain": gain,
+                "win": new < old,
+            }
+            for d in self.decisions
+            for unit, old, new, gain in zip(
+                d.unit_ids, d.champion_errors, d.challenger_errors, d.gains, strict=True
+            )
         ]
         return pd.DataFrame(rows, columns=columns)
 
@@ -293,11 +337,13 @@ def decide(
 
     criterion = policy.variability
     value: float | None = None
+    by_series: dict[str, float] = {}
     if criterion is None:
         status = "disabled"
     elif not criterion.applies_to(challenger):
         status = "not_applicable"
     else:
+        by_series = criterion.per_series(challenger, paired.unit_ids)
         value = criterion.value(challenger, paired.unit_ids)
         if not math.isfinite(value):
             status = "undefined"
@@ -327,6 +373,10 @@ def decide(
         champion_before_name=champion.candidate.name,
         challenger_name=challenger.candidate.name,
         p_value=p_value,
+        variability_by_series=by_series,
+        champion_errors=paired.champion_errors,
+        challenger_errors=paired.challenger_errors,
+        gains=paired.gains,
     )
 
 

@@ -153,6 +153,100 @@ def test_variability_uses_the_median_and_ignores_undefined_units() -> None:
     assert criterion.value(mixed, [t.unit_id for t in trials]) == pytest.approx(0.105)
 
 
+def panel_result(
+    candidate: CandidateSpec, ratios: dict[str, list[float]], error: float = 0.8
+) -> EvaluationResult:
+    """One unit per ratio, grouped by series; every unit has the same error."""
+
+    trials = [
+        TrialResult(
+            candidate_id=candidate.candidate_id,
+            series_id=series,
+            fold_id=f"select-{i}",
+            layer="select",
+            origin_index=100 + i,
+            origin_time=pd.Timestamp("2024-01-01") + pd.Timedelta(days=i),
+            horizon=1,
+            status="SUCCEEDED",
+            trial_key=f"{series}-{i}",
+            metrics={"MASE": error},
+            diagnostics={"correction_std_ratio": ratio},
+        )
+        for series, values in ratios.items()
+        for i, ratio in enumerate(values)
+    ]
+    return EvaluationResult(candidate, "plan", "D", 1, ("MASE",), tuple(trials))
+
+
+def test_variability_takes_the_median_per_series_then_across_series() -> None:
+    # Same number of units per series: the global median (0.3) is not the declared value.
+    ratios = {"a": [0.1, 0.1, 100.0], "b": [0.2, 0.2, 100.0], "c": [0.3, 0.3, 100.0]}
+    hybrid = panel_result(HYBRID, ratios)
+    units = hybrid.unit_ids
+    criterion = VariabilityCriterion()
+    assert criterion.per_series(hybrid, units) == pytest.approx({"a": 0.1, "b": 0.2, "c": 0.3})
+    assert criterion.value(hybrid, units) == pytest.approx(0.2)
+    assert float(pd.Series([r for v in ratios.values() for r in v]).median()) == 0.3
+
+
+def test_per_series_aggregation_can_flip_the_decision() -> None:
+    # Per series 0.04 (refused); a single median over the 9 units would give 0.06.
+    ratios = {"a": [0.04, 0.04, 1.0], "b": [0.04, 0.04, 1.0], "c": [0.06, 0.06, 1.0]}
+    hybrid = panel_result(HYBRID, ratios)
+    champion = panel_result(BASE, dict.fromkeys(ratios, [math.nan] * 3), error=1.0)
+    decision = decide("residual", champion, hybrid, STANDARD, "MASE")
+    assert decision.variability_value == pytest.approx(0.04)
+    assert decision.reason_codes == ("variability_below_threshold",)
+    assert dict(decision.variability_by_series) == pytest.approx({"a": 0.04, "b": 0.04, "c": 0.06})
+
+
+def test_series_without_finite_variability_is_kept_visible_and_ignored() -> None:
+    # Unequal unit counts, a NaN unit and a series with no finite diagnostic.
+    ratios = {"a": [0.1, math.nan], "b": [0.2, 0.4, 0.6, 0.8], "c": [math.nan, math.nan]}
+    hybrid = panel_result(HYBRID, ratios)
+    criterion = VariabilityCriterion()
+    per_series = criterion.per_series(hybrid, hybrid.unit_ids)
+    assert per_series["a"] == pytest.approx(0.1)
+    assert per_series["b"] == pytest.approx(0.5)
+    assert math.isnan(per_series["c"])
+    assert criterion.value(hybrid, hybrid.unit_ids) == pytest.approx(0.3)
+    # Only the compared units count.
+    only_b = [u for u in hybrid.unit_ids if u.startswith("b:")][:2]
+    assert criterion.per_series(hybrid, only_b) == pytest.approx({"b": 0.3})
+
+
+def test_variability_does_not_depend_on_the_order_of_series_or_units() -> None:
+    ratios = {"a": [0.1, 0.5, 0.2], "b": [0.9, 0.3], "c": [0.05, 0.07, 0.06, 0.08]}
+    reversed_ratios = {s: list(reversed(v)) for s, v in reversed(list(ratios.items()))}
+    criterion = VariabilityCriterion()
+    forward = panel_result(HYBRID, ratios)
+    backward = panel_result(HYBRID, reversed_ratios)
+    assert criterion.value(forward, forward.unit_ids) == criterion.value(
+        backward, list(reversed(backward.unit_ids))
+    )
+
+
+@pytest.mark.parametrize(
+    ("ratio", "gte_passes", "lte_passes"),
+    [(0.049, False, True), (0.05, True, True), (0.051, True, False)],
+)
+def test_panel_variability_boundaries_in_both_directions(
+    ratio: float, gte_passes: bool, lte_passes: bool
+) -> None:
+    # The middle series sets the value; the others sit on either side of it.
+    hybrid = panel_result(HYBRID, {"a": [0.0, 0.01], "b": [ratio, ratio], "c": [1.0, math.nan]})
+    for direction, expected in (("gte", gte_passes), ("lte", lte_passes)):
+        criterion = VariabilityCriterion(direction=direction)  # type: ignore[arg-type]
+        value = criterion.value(hybrid, hybrid.unit_ids)
+        assert value == pytest.approx(ratio)
+        assert criterion.passes(value) is expected
+
+
+def test_variability_criterion_version_marks_the_per_series_aggregation() -> None:
+    assert VariabilityCriterion().describe()["version"] == 2
+    assert STANDARD.describe()["variability"]["version"] == 2  # type: ignore[index]
+
+
 def test_undefined_variability_rejects() -> None:
     decision = decide(
         "residual", CHAMPION, result(HYBRID, [0.8] * 5, ratio=math.nan), STANDARD, "MASE"
@@ -310,3 +404,25 @@ def test_significance_alpha_reaches_the_experiment_decisions() -> None:
     table = exp.compare_models().decisions
     assert table["p_value"].notna().all()
     assert exp.policy_.significance_alpha == 0.05
+
+
+def test_decisions_keep_the_paired_errors_and_gains_of_every_unit() -> None:
+    from autohybts.selection.incremental import SelectionResult
+
+    challenger = result(LINEAR, [0.5, 1.0, 1.2, 0.9, 0.0])
+    decision = decide("linear", CHAMPION, challenger, STANDARD, "MASE")
+    assert decision.champion_errors == (1.0,) * 5
+    assert decision.challenger_errors == (0.5, 1.0, 1.2, 0.9, 0.0)
+    assert decision.gains == pytest.approx((0.5, 0.0, -0.2, 0.1, 1.0))
+    selection = SelectionResult(
+        champion=challenger.candidate,
+        champion_result=challenger,
+        finalists=(CHAMPION, challenger),
+        decisions=(decision,),
+        audit=None,  # type: ignore[arg-type]
+    )
+    units = selection.decision_units_frame()
+    assert list(units["unit_id"]) == list(decision.unit_ids)
+    assert units["gain"].median() == pytest.approx(decision.median_gain)
+    assert units["win"].mean() == pytest.approx(decision.win_rate)  # ties are not wins
+    assert set(units["series_id"]) == {"s"}  # unit ids are "series:fold"

@@ -22,6 +22,7 @@ from autohybts.models.requirements import (
     framework_versions,
     installed_version,
     require,
+    validate_requirements,
 )
 from autohybts.models.torch_models import TorchCorrector, TorchForecaster, torch_model
 
@@ -40,4 +41,5 @@ __all__ = [
     "keras_model",
     "require",
     "torch_model",
+    "validate_requirements",
 ]

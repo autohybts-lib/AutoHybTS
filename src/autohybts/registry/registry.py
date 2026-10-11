@@ -18,7 +18,7 @@ import pandas as pd
 
 from autohybts.adapters.base import BaseForecaster
 from autohybts.exceptions import ConfigurationError
-from autohybts.models.requirements import require
+from autohybts.models.requirements import require, validate_requirements
 from autohybts.registry.capabilities import Capabilities
 
 __all__ = ["FAMILIES", "ModelEntry", "ModelKind", "ModelRegistry", "default_registry"]
@@ -89,6 +89,7 @@ class ModelRegistry:
         """
 
         capabilities = capabilities or Capabilities()
+        validate_requirements(requires)
         params = dict(default_params or {})
         probe = self._probe(name, factory, params)
         missing = [
@@ -140,6 +141,7 @@ class ModelRegistry:
 
         from autohybts.residuals.correctors import ResidualCorrector
 
+        validate_requirements(requires)
         params = dict(default_params or {})
         probe = self._probe(name, factory, params)
         if not isinstance(probe, ResidualCorrector):

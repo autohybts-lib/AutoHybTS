@@ -78,6 +78,7 @@ _INCLUDE: Final = (
     "combination",
     "dynamic",
 )
+_DEFAULT_INCLUDE: Final = ("standalone", "residual")
 
 # Seasonal period by frequency prefix, as commonly used for daily/weekly/monthly data.
 _SEASONALITY: Final = {
@@ -109,6 +110,18 @@ def infer_seasonal_period(frequency: str) -> int:
     return _SEASONALITY.get(prefix, 1)
 
 
+def _initial_champion(compare: CompareResult) -> CandidateSpec:
+    """The standalone model the incremental chain started from (its first champion)."""
+
+    selection = compare.selection
+    initial = (
+        selection.decisions[0].champion_before
+        if selection.decisions
+        else selection.champion.candidate_id
+    )
+    return next(r.candidate for r in selection.finalists if r.candidate_id == initial)
+
+
 class AutoHybridExperiment(Parametrized):
     """Automated comparison of standalone and residual hybrid forecasters.
 
@@ -124,6 +137,10 @@ class AutoHybridExperiment(Parametrized):
             ``"research_strict"`` or ``"exploratory"`` (§30.3).
         budget: search preset (``"smoke"``, ``"small"``, ``"medium"``, ``"large"``).
         max_trials: overrides the preset's total number of candidates.
+        max_wall_time_s: optional search deadline in seconds (``None``: none, the default).
+            Cooperative: no candidate starts after it, a running one finishes; candidates
+            kept out are ``STOPPED`` in the ledger. With a deadline the searched set can
+            change between machines; budgets by count are the reproducible ones.
         base_models, correctors, residual_windows, alphas, residual_sources: search space
             (``None`` keeps the protocol presets of §8.1).
         max_stages: most correction stages tried when ``compare_models`` includes
@@ -137,7 +154,9 @@ class AutoHybridExperiment(Parametrized):
             ``"per_stage"`` (the search also varies the extra stage's window and alpha).
         significance_alpha: optional extra acceptance predicate: a one-sided paired
             Wilcoxon test on ``V_select`` must give ``p < significance_alpha`` (off by
-            default; needs at least 5 select units per series for ``0.05``).
+            default). It needs at least 5 paired units with different errors, all series
+            together, for ``0.05``: with ``fold=3`` on one series it can never pass. It
+            controls each comparison, not the whole chain (see ``SelectionPolicy``).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -156,6 +175,7 @@ class AutoHybridExperiment(Parametrized):
         variant: ProtocolVariant = "A",
         budget: BudgetPreset = "small",
         max_trials: int | None = None,
+        max_wall_time_s: float | None = None,
         base_models: Sequence[str] | None = None,
         correctors: Sequence[str] | None = None,
         residual_windows: Sequence[int] | None = None,
@@ -181,6 +201,7 @@ class AutoHybridExperiment(Parametrized):
         self.variant = variant
         self.budget = budget
         self.max_trials = max_trials
+        self.max_wall_time_s = max_wall_time_s
         self.base_models = base_models
         self.correctors = correctors
         self.residual_windows = residual_windows
@@ -536,7 +557,7 @@ class AutoHybridExperiment(Parametrized):
         return (result, tuning) if return_tuner else result
 
     def compare_models(
-        self, include: Sequence[str] = ("standalone", "residual"), sort: str | None = None
+        self, include: Sequence[str] = _DEFAULT_INCLUDE, sort: str | None = None
     ) -> CompareResult:
         """Budgeted search on ``V_search``, then incremental selection on ``V_select``.
 
@@ -548,25 +569,10 @@ class AutoHybridExperiment(Parametrized):
         """
 
         self._require("VALIDATED")
-        unknown = set(include) - set(_INCLUDE)
-        if unknown or "standalone" not in include:
-            raise ConfigurationError(
-                f"include aceita {list(_INCLUDE)}, com 'standalone' obrigatório (o campeão "
-                f"inicial é individual); recebido {list(include)}."
-            )
-        if "dynamic" in include and self.variant != "B":
-            raise ConfigurationError(
-                "'dynamic' só existe na variante B (R07): use AutoHybridExperiment(variant='B')."
-            )
-        if "dynamic" in include and "residual" not in include:
-            raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")
-        if "multistage" in include and "residual" not in include:
-            raise ConfigurationError("'multistage' refina estruturas residuais: inclua 'residual'.")
+        include = self._check_include(include)
         started = time.perf_counter()
         space = self._space(with_residuals="residual" in include, include=include)
-        guard = SearchGuardConfig.preset(self.budget)
-        if self.max_trials is not None:
-            guard = SearchGuardConfig.preset(self.budget, max_trials_total=self.max_trials)
+        guard = self._guard()
         search = SearchEngine(self.evaluator_, space, guard, max_workers=self.n_jobs).run(
             self.work_plan_
         )
@@ -581,6 +587,7 @@ class AutoHybridExperiment(Parametrized):
         champion = selection.champion
         self._event("selection.finished", f"campeão: {champion.label}", started)
         self.state_ = "SELECTED"
+        self.include_: tuple[str, ...] = include
         for evaluated in search.results:
             self._evaluations[(evaluated.candidate_id, "search")] = evaluated
         for evaluated in selection.finalists:
@@ -596,7 +603,10 @@ class AutoHybridExperiment(Parametrized):
             audit=selection.audit,
             search=search,
             selection=selection,
-            snapshot=self._snapshot(space, guard, search.protocol, champion),
+            snapshot={
+                **self._snapshot(space, guard, search.protocol, champion),
+                "include": list(include),
+            },
             comparison=self._finalists_comparison(selection.finalists, champion),
             events=self.events,
         )
@@ -976,20 +986,32 @@ class AutoHybridExperiment(Parametrized):
         outer_folds: int = 3,
         baselines: Sequence[str] = ("naive", "seasonal_naive"),
         budget: BudgetPreset | None = None,
+        include: Sequence[str] | None = None,
     ) -> NestedCVResult:
         """Estimate how the whole automated procedure generalizes (§30.1, T27).
 
         For each outer origin (the last ``outer_folds`` blocks of ``fh`` points of the
         development history), a fresh experiment with these parameters searches and selects
         using only the history before that origin; its champion is refitted there and
-        scored on the next block, side by side with fixed ``baselines``.
+        scored on the next block, side by side with fixed ``baselines`` and with
+        ``best_standalone``: the best standalone model *of that inner selection* (its
+        initial champion), chosen without the outer block.
+
+        ``include`` are the families of the inner ``compare_models``; ``None`` repeats the
+        ones of this experiment's last ``compare_models`` (the procedure being estimated),
+        or its default when it has not run. ``result.cost`` has the work done per outer
+        fold (candidates, units, seconds), so the procedure's cost can be reconstructed.
 
         In a panel every series is cut at its own outer origin, the inner experiment runs
         on the whole truncated panel and the folds table has one row per fold and series;
-        the summary averages over all of them.
+        the summary averages over all of them. The inner reference then uses the
+        representative configuration of the standalone finalist in every series.
         """
 
         self._require("VALIDATED")
+        families = self._check_include(
+            include if include is not None else getattr(self, "include_", _DEFAULT_INCLUDE)
+        )
         outer = TemporalCrossValidation(horizon=self.fh, n_folds=outer_folds, step=self.fh)
         outer_plan = plan_panel(outer, self.panel_)
         params = {**self._public_params(), "test_size": 0, "registry": self.registry}
@@ -998,6 +1020,7 @@ class AutoHybridExperiment(Parametrized):
         metrics = resolve_metrics(self.evaluator_.metrics)
         space = self._space(with_residuals=False)
         rows = []
+        costs = []
         started = time.perf_counter()
         series_ids = self.panel_.series_ids
         fold_ids = [o.fold_id for o in outer_plan[series_ids[0]].origins()]
@@ -1011,11 +1034,16 @@ class AutoHybridExperiment(Parametrized):
                 sid: self.panel_[sid].head(origins[sid].origin_index + 1) for sid in series_ids
             }
             base_row: dict[str, Any] = {"fold_id": fold_id}
+            cost: dict[str, Any] = {"fold_id": fold_id, "status": "SUCCEEDED"}
+            fold_started = time.perf_counter()
             try:
                 inner_input = inner[series_ids[0]] if not self.is_panel else PanelFrame(inner)
                 inner_exp = AutoHybridExperiment(**params).fit(inner_input)
-                inner_compare = inner_exp.compare_models()
+                inner_compare = inner_exp.compare_models(include=families)
+                compared = time.perf_counter()
                 final = inner_exp.finalize_model(inner_compare.best)
+                reference = inner_exp.finalize_model(_initial_champion(inner_compare))
+                finalized = time.perf_counter()
             except (InsufficientHistoryError, CoverageError) as error:
                 for sid in series_ids:
                     rows.append(
@@ -1027,7 +1055,26 @@ class AutoHybridExperiment(Parametrized):
                             "reason": f"{type(error).__name__}: {error}",
                         }
                     )
+                cost.update(status="FAILED", seconds_total=time.perf_counter() - fold_started)
+                costs.append(cost)
                 continue
+            search = inner_compare.search
+            finalists = inner_compare.selection.finalists
+            cost.update(
+                {
+                    "search_candidates": search.trial_count,
+                    "search_units": search.unit_count,
+                    "cached_candidates": search.cached_count,
+                    "max_trials_total": inner_compare.snapshot["guard"]["max_trials_total"],
+                    "stop_reason": search.stop_reason,
+                    "select_candidates": len(finalists),
+                    "select_units": sum(len(r.trials) for r in finalists),
+                    "seconds_search": search.elapsed_s,
+                    # validation of the inner history, selection and bookkeeping
+                    "seconds_selection": max(0.0, compared - fold_started - search.elapsed_s),
+                    "seconds_refit": finalized - compared,
+                }
+            )
             for sid in series_ids:
                 history = inner[sid]
                 actual = outer_plan[sid].target_values(origins[sid])
@@ -1036,6 +1083,14 @@ class AutoHybridExperiment(Parametrized):
                 scores = compute_metrics(
                     metrics, actual, forecast, history.values, self.seasonal_period_
                 )
+                standalone = reference[sid] if isinstance(reference, PanelForecaster) else reference
+                reference_scores = compute_metrics(
+                    metrics,
+                    actual,
+                    standalone.predict(self.fh)["y_pred"].to_numpy(),
+                    history.values,
+                    self.seasonal_period_,
+                )
                 row = {
                     **base_row,
                     "series_id": sid,
@@ -1043,8 +1098,10 @@ class AutoHybridExperiment(Parametrized):
                     "status": "SUCCEEDED",
                     "champion": member.spec.label,
                     "strategy": member.spec.strategy,
+                    "best_standalone": standalone.spec.label,
                     "inner_selection_gap": inner_compare.audit.selection_gap,
                     **{f"autohybts_{m}": v for m, v in scores.items()},
+                    **{f"best_standalone_{m}": v for m, v in reference_scores.items()},
                 }
                 for name in baselines:
                     spec = CandidateSpec.standalone(
@@ -1064,6 +1121,8 @@ class AutoHybridExperiment(Parametrized):
                     )
                     row.update({f"{name}_{m}": v for m, v in baseline_scores.items()})
                 rows.append(row)
+            cost["seconds_total"] = time.perf_counter() - fold_started
+            costs.append(cost)
         self._event("nested_cv.finished", f"{outer_folds} dobras externas", started)
         index = ["fold_id", "series_id"] if self.is_panel else ["fold_id"]
         folds_table = pd.DataFrame(rows)
@@ -1071,7 +1130,11 @@ class AutoHybridExperiment(Parametrized):
             folds_table = folds_table.drop(columns="series_id")
         folds_table = folds_table.set_index(index)
         metric = self.evaluator_.metrics[0]
-        columns = [f"autohybts_{metric}", *(f"{b}_{metric}" for b in baselines)]
+        columns = [
+            f"autohybts_{metric}",
+            f"best_standalone_{metric}",
+            *(f"{b}_{metric}" for b in baselines),
+        ]
         present = [c for c in columns if c in folds_table.columns]
         summary = pd.DataFrame(
             {
@@ -1086,7 +1149,8 @@ class AutoHybridExperiment(Parametrized):
                 float((auto < folds_table[c]).mean()) if c != auto.name else float("nan")
                 for c in present
             ]
-        return NestedCVResult(folds_table, summary, metric)
+        cost_table = pd.DataFrame(costs).set_index("fold_id")
+        return NestedCVResult(folds_table, summary, metric, families, cost_table)
 
     def _finalists_comparison(
         self, finalists: Sequence[EvaluationResult], champion: CandidateSpec
@@ -1307,6 +1371,30 @@ class AutoHybridExperiment(Parametrized):
             "champion": {"candidate_id": champion.candidate_id, "label": champion.label},
             "autohybts_version": autohybts.__version__,
         }
+
+    def _check_include(self, include: Sequence[str]) -> tuple[str, ...]:
+        include = tuple(include)
+        unknown = set(include) - set(_INCLUDE)
+        if unknown or "standalone" not in include:
+            raise ConfigurationError(
+                f"include aceita {list(_INCLUDE)}, com 'standalone' obrigatório (o campeão "
+                f"inicial é individual); recebido {list(include)}."
+            )
+        if "dynamic" in include and self.variant != "B":
+            raise ConfigurationError(
+                "'dynamic' só existe na variante B (R07): use AutoHybridExperiment(variant='B')."
+            )
+        if "dynamic" in include and "residual" not in include:
+            raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")
+        if "multistage" in include and "residual" not in include:
+            raise ConfigurationError("'multistage' refina estruturas residuais: inclua 'residual'.")
+        return include
+
+    def _guard(self) -> SearchGuardConfig:
+        overrides: dict[str, Any] = {"max_wall_time_s": self.max_wall_time_s}
+        if self.max_trials is not None:
+            overrides["max_trials_total"] = self.max_trials
+        return SearchGuardConfig.preset(self.budget, **overrides)
 
     def _public_params(self) -> dict[str, Any]:
         params = self.get_params()
