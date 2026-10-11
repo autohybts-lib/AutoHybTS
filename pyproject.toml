@@ -99,6 +99,12 @@ warn_unreachable = true
 module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*", "keras", "keras.*", "tensorflow", "tensorflow.*", "torch", "torch.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# The example architectures subclass nn.Module, which is Any when torch (optional
+# extra) is not installed; subclassing Any is fine here.
+module = ["autohybts.models.torch_zoo"]
+disallow_subclassing_any = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
