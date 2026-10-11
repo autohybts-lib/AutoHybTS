@@ -12,77 +12,132 @@ Copie o nome e passe para ``get_data``; o resultado é uma ``pd.Series`` com
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 56 12 10
+   :widths: 18 40 10 8 24
 
    * - Nome
      - O que é
      - Frequência
      - Pontos
+     - Origem
    * - ``synthetic_daily``
      - sintética: tendência, sazonalidade semanal e ruído AR(1)
      - diária
      - 730
+     - gerada pela AutoHybTS
    * - ``white_noise_daily``
      - sintética: nível + ruído branco (controle negativo)
      - diária
      - 730
+     - gerada pela AutoHybTS
    * - ``air_passengers``
      - passageiros aéreos, 1949–1960
      - mensal
      - 144
+     - ``datasets::AirPassengers``
    * - ``nottem``
      - temperatura em Nottingham, 1920–1939
      - mensal
      - 240
+     - ``datasets::nottem``
    * - ``us_acc_deaths``
      - mortes acidentais nos EUA, 1973–1978
      - mensal
      - 72
+     - ``datasets::USAccDeaths``
    * - ``sunspots_monthly``
      - manchas solares, 1749–1983
      - mensal
      - 2820
+     - ``datasets::sunspots``
    * - ``uk_gas``
      - consumo de gás no Reino Unido, 1960–1986
      - trimestral
      - 108
+     - ``datasets::UKgas``
    * - ``johnson_johnson``
      - lucro por ação da Johnson & Johnson, 1960–1980
      - trimestral
      - 84
+     - ``datasets::JohnsonJohnson``
    * - ``ozone``
      - ozônio total em Halley Bay (Antártida), 1956–2000
      - anual
      - 45
+     - ``DAAG::ozone``
    * - ``nile``
      - vazão do rio Nilo, 1871–1970
      - anual
      - 100
+     - ``datasets::Nile``
    * - ``lynx``
      - linces capturados no Canadá, 1821–1934
      - anual
      - 114
+     - ``datasets::lynx``
    * - ``lake_huron``
      - nível do lago Huron, 1875–1972
      - anual
      - 98
+     - ``datasets::LakeHuron``
    * - ``sunspots``
      - manchas solares, 1700–1988
      - anual
      - 289
+     - ``datasets::sunspot.year``
    * - ``m4:D1``
      - M4; troque ``D1`` por ``Y…``, ``Q…``, ``M…``, ``W…``, ``D…`` ou ``H…``
      - várias
      - —
+     - competição M4 (GitHub)
    * - ``m3:N1402``
      - M3; exige o extra ``datasets``
      - várias
      - —
+     - pacote R ``Mcomp`` (CRAN)
 
-As sintéticas são geradas na hora, offline. As outras são baixadas na primeira vez e
-ficam em cache; as reais vêm do `Rdatasets <https://vincentarelbundock.github.io/Rdatasets/>`_.
 Maiúsculas e minúsculas não importam (``get_data("Ozone")`` também funciona). A lista
 está em ``autohybts.datasets.NAMED_SERIES``.
+
+De onde vêm os dados
+--------------------
+
+A biblioteca não embute nenhuma série real: cada uma é baixada na primeira vez que é
+pedida, guardada em cache e lida dali nas vezes seguintes. São quatro origens:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 48 36
+
+   * - Provedor
+     - Fonte
+     - Licença
+   * - sintéticas
+     - geradas na hora por ``autohybts.datasets.synthetic`` (numpy, ``seed=42``);
+       nada é baixado
+     - parte da AutoHybTS
+   * - ``rdatasets``
+     - `Rdatasets <https://vincentarelbundock.github.io/Rdatasets/>`_: um site que
+       publica em CSV os conjuntos de dados de centenas de pacotes R. O endereço de cada
+       CSV vem do índice ``Rdatasets/datasets.csv``
+     - a do pacote R de origem
+   * - ``m4``
+     - CSVs oficiais da competição M4 no repositório
+       `Mcompetitions/M4-methods <https://github.com/Mcompetitions/M4-methods>`_
+       (pasta ``Dataset``): ``M4-info.csv``, ``<Freq>-train.csv`` e ``<Freq>-test.csv``
+     - dados da competição M4 (Makridakis et al.)
+   * - ``m3``
+     - arquivo do pacote R `Mcomp <https://cran.r-project.org/package=Mcomp>`_ 2.8 no
+       CRAN, lido em Python pela biblioteca ``rdata`` (extra ``datasets``); o R não é
+       necessário
+     - GPL-3 (pacote ``Mcomp``); dados da competição M3 (IIF)
+
+Na coluna *Origem*, ``pacote::nome`` é o pacote R e o nome do objeto, como se escreve no
+R. ``datasets`` é o pacote que já vem com o R; ``DAAG`` é o pacote do livro *Data
+Analysis and Graphics Using R*. Os dois chegam pelo Rdatasets, e o R não precisa estar
+instalado. ``get_data("ozone")`` equivale a
+``load_dataset("rdatasets", package="DAAG", name="ozone", target="Annual",
+time_col="Year", frequency="YS")``. O manifesto de cada arquivo no cache guarda a URL, a
+licença e a versão do provedor.
 
 Para ver o catálogo completo de cada provedor:
 

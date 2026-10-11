@@ -59,6 +59,7 @@ estratégias de montar sistemas híbridos:
 
    user_guide/temporal_validation
    user_guide/datasets
+   user_guide/models
    user_guide/strategies
    user_guide/selection
    user_guide/comparison
