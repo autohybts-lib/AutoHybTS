@@ -40,6 +40,9 @@ stats = ["statsmodels>=0.14"]
 plot = ["matplotlib>=3.10"]
 yaml = ["pyyaml>=6.0"]
 optuna = ["optuna>=3.5"]
+# User models built with PyTorch or TensorFlow/Keras (autohybts.models).
+torch = ["torch>=2.2"]
+tensorflow = ["tensorflow>=2.16"]
 # Reading the M3 benchmark (R data file of the Mcomp package).
 datasets = ["rdata>=0.11"]
 # Building documentation/ with Sphinx.
@@ -91,10 +94,16 @@ files = ["src/autohybts"]
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-# No type information shipped by these libraries (matplotlib/plot, optuna and
-# rdata/datasets: optional extras, may be absent).
-module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*"]
+# No type information shipped by these libraries (matplotlib/plot, optuna,
+# rdata/datasets, keras/tensorflow and torch: optional extras, may be absent).
+module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*", "keras", "keras.*", "tensorflow", "tensorflow.*", "torch", "torch.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The example architectures subclass nn.Module, which is Any when torch (optional
+# extra) is not installed; subclassing Any is fine here.
+module = ["autohybts.models.torch_zoo"]
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -112,6 +121,15 @@ markers = [
 [tool.coverage.run]
 source = ["autohybts"]
 branch = true
+omit = [
+    # Wrappers of optional frameworks (extras torch/tensorflow) are only
+    # exercised when those extras are installed (locally and in notebook 10);
+    # the CI coverage gate must not depend on them.
+    "*/models/torch_models.py",
+    "*/models/torch_zoo.py",
+    "*/models/keras_models.py",
+    "*/models/keras_zoo.py",
+]
 
 [tool.coverage.report]
 fail_under = 85

@@ -16,3 +16,4 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
    notebooks/07_panel
    notebooks/08_advanced_families_and_tuning
    notebooks/09_ablation
+   notebooks/10_external_models

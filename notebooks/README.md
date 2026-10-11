@@ -12,6 +12,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [07_panel](07_panel.ipynb) | Várias séries no mesmo experimento: ranking entre séries, seleção sobre o conjunto, um modelo por série e avaliação externa por série | — |
 | [08_advanced_families_and_tuning](08_advanced_families_and_tuning.ipynb) | Estágios extras, decomposição, combinação fixa, busca com todas as famílias e `tune_model` | — |
 | [09_ablation](09_ablation.ipynb) | Ablação do procedimento de seleção (§30.5): 4 procedimentos, mesmo orçamento e mesmos testes externos, em 12 séries sintéticas × 3 sementes | pesado (≈25 min) |
+| [10_external_models](10_external_models.ipynb) | Modelos próprios: PyTorch (LSTM, Transformer, Mamba, GRU escrito na hora), TensorFlow/Keras (LSTM, Transformer, convolução), Holt-Winters do statsmodels e gradient boosting, como bases, corretores, na busca, no ajuste e na persistência | extras `torch` e `tensorflow`; pesado |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar

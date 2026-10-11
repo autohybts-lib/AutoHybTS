@@ -123,3 +123,10 @@ do uso (``import autohybts`` carrega apenas numpy, pandas e o próprio pacote):
 Sem o extra necessário, o modelo ou recurso falha com ``UnsupportedCapabilityError``
 dizendo o que instalar; na busca automática, a candidata vira ``SKIPPED`` e as outras
 seguem. A origem dos *dados* (Rdatasets, M4, M3) está em :doc:`datasets`.
+
+Modelos próprios
+----------------
+
+Modelos de PyTorch, TensorFlow/Keras ou de qualquer outra biblioteca entram por registro
+(``exp.register_model``) e passam a valer em todo o experimento: veja
+:doc:`custom_models`.

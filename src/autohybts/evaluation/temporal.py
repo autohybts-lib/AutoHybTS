@@ -226,11 +226,15 @@ class TemporalEvaluator:
     def protocol(self) -> dict[str, Any]:
         """Settings shared by every trial; part of each trial key."""
 
-        return {
+        protocol: dict[str, Any] = {
             "metrics": list(self.metrics),
             "seasonal_period": self.seasonal_period,
             "residuals": self.residual_settings.describe(),
         }
+        external = self.registry.external()
+        if external:  # only when present, so keys of built-in models do not change
+            protocol["external_models"] = external
+        return protocol
 
 
 def _reason(error: BaseException) -> str:
