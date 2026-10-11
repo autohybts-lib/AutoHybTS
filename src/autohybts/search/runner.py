@@ -7,6 +7,14 @@ decompositions and fixed combinations of the retained bases. Budgets are applied
 proposal list *before* a stage runs, in a fixed priority order, so the number of
 evaluated candidates never exceeds the limits and does not depend on how fast or in
 which order parallel evaluations finish.
+
+``max_wall_time_s`` is a cooperative deadline (§8.3: best effort, never a hard
+guarantee without process isolation): it is checked before *each* candidate starts, in
+the sequential and in the parallel path, and no candidate starts after it. A candidate
+already running finishes all its origins (a partial candidate would have incomplete
+coverage); admitted candidates that never started are ``STOPPED`` in the ledger. There is
+no per-candidate timeout. Under a deadline the set of evaluated candidates depends on the
+machine; budgets by count are the reproducible ones.
 """
 
 from __future__ import annotations
@@ -39,6 +47,7 @@ LAYER: Final[Layer] = "search"
 @dataclass
 class _State:
     started: float
+    deadline: float | None = None
     ledger: list[LedgerEntry] = field(default_factory=list)
     results: dict[str, EvaluationResult] = field(default_factory=dict)
     seen: set[str] = field(default_factory=set)
@@ -95,10 +104,17 @@ class SearchEngine:
         if not isinstance(plan, TemporalPlan | PanelPlan):
             raise ConfigurationError("A busca exige um TemporalPlan ou PanelPlan.")
         registry = self.evaluator.registry
-        state = _State(started=self.clock())
+        started = self.clock()
+        limit = self.guard.max_wall_time_s
+        state = _State(started=started, deadline=None if limit is None else started + limit)
 
         bases = self._stage(self.space.base_proposals(registry), plan, state)
         if not any(eligible(r, self.metric, self.guard.require_full_pairing) for r in bases):
+            if state.stopped:
+                raise CoverageError(
+                    "O prazo max_wall_time_s acabou antes de algum modelo-base válido ser "
+                    "avaliado; aumente o prazo ou use só o orçamento por quantidade."
+                )
             raise CoverageError(
                 "Nenhum modelo-base produziu previsões válidas em todas as origens de busca; "
                 "não há candidata para selecionar."
@@ -168,6 +184,7 @@ class SearchEngine:
             residual_structures=tuple(r.candidate_id for r in structures),
             stop_reason=reason,
             protocol=self.protocol(plan),
+            elapsed_s=self.clock() - state.started,
         )
 
     def _stage(
@@ -186,7 +203,7 @@ class SearchEngine:
         """
 
         family_reserve = reserve if family_reserve is None else family_reserve
-        if self._out_of_time(state):
+        if self._past_deadline(state):
             state.stopped = True
         admitted: list[Proposal] = []
         pending: Counter[str] = Counter()
@@ -218,7 +235,15 @@ class SearchEngine:
 
         outcomes = self._evaluate_all(admitted, plan, state)
         evaluated = []
-        for proposal, (result, cached, seconds) in zip(admitted, outcomes, strict=True):
+        for proposal, outcome in zip(admitted, outcomes, strict=True):
+            if outcome is None:  # admitted, but the deadline passed before it started
+                state.stopped = True
+                state.seen.discard(proposal.candidate.candidate_id)
+                state.ledger.append(
+                    _entry(proposal, "STOPPED", "max_wall_time_s atingido antes de iniciar")
+                )
+                continue
+            result, cached, seconds = outcome
             state.per_family[proposal.candidate.family] += 1
             state.results[result.candidate_id] = result
             state.ledger.append(
@@ -229,8 +254,12 @@ class SearchEngine:
 
     def _evaluate_all(
         self, proposals: Sequence[Proposal], plan: TemporalPlan | PanelPlan, state: _State
-    ) -> list[tuple[EvaluationResult, bool, float]]:
-        def one(proposal: Proposal) -> tuple[EvaluationResult, bool, float]:
+    ) -> list[tuple[EvaluationResult, bool, float] | None]:
+        """Evaluate in submission order; ``None`` for a candidate the deadline kept out."""
+
+        def one(proposal: Proposal) -> tuple[EvaluationResult, bool, float] | None:
+            if self._past_deadline(state):
+                return None
             key = evaluation_key(
                 proposal.candidate.candidate_id,
                 plan.fingerprint,
@@ -241,20 +270,19 @@ class SearchEngine:
             )
             if self.cache is not None and (hit := self.cache.get(key)) is not None:
                 return hit, True, 0.0
-            started = time.perf_counter()
+            started = self.clock()
             result = self.evaluator.evaluate(proposal.candidate, plan, LAYER)
             if self.cache is not None:
                 self.cache.put(key, result)
-            return result, False, time.perf_counter() - started
+            return result, False, self.clock() - started
 
         if self.max_workers == 1:
             return [one(proposal) for proposal in proposals]
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             return list(pool.map(one, proposals))  # map keeps submission order
 
-    def _out_of_time(self, state: _State) -> bool:
-        limit = self.guard.max_wall_time_s
-        return limit is not None and self.clock() - state.started >= limit
+    def _past_deadline(self, state: _State) -> bool:
+        return state.deadline is not None and self.clock() >= state.deadline
 
 
 def _entry(

@@ -135,3 +135,20 @@ S4        decomposições das bases retidas, combinação das 2 melhores de fam�
 
 Todas as propostas — avaliadas, podadas pelo orçamento, puladas por capacidade ou
 duplicadas — ficam no ledger: ``result.search.ledger_frame()``.
+
+Orçamento
+---------
+
+``budget`` (``"smoke"``, ``"small"``, ``"medium"``, ``"large"``) limita o número de
+candidatas: total, por família e por etapa (``max_trials`` substitui o total). Os
+limites são aplicados à lista ordenada de propostas antes de cada etapa, então a busca
+é a mesma em qualquer máquina e com ``n_jobs`` sequencial ou paralelo. O número de
+origens de cada camada é ``fold``, não o orçamento.
+
+``max_wall_time_s`` acrescenta um prazo de relógio opcional e **cooperativo**: nenhuma
+candidata começa depois dele, e a que estiver em andamento termina todas as suas
+origens. As que ficaram de fora aparecem no ledger como ``STOPPED`` e
+``result.search.stop_reason`` vale ``"max_wall_time"``. Não há tempo limite por
+candidata (interromper um treino em andamento exigiria um processo isolado). Com prazo,
+as candidatas avaliadas podem mudar de uma máquina para outra; para resultados
+reprodutíveis, limite só por quantidade.

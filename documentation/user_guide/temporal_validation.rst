@@ -57,3 +57,17 @@ Validação cruzada temporal
 no fim do histórico de desenvolvimento) e avalia vários modelos nas mesmas origens. A
 CV aninhada, ``exp.nested_cross_validate``, repete o procedimento inteiro (busca +
 seleção) em cada dobra externa e mede quanto a escolha automática generaliza.
+
+.. code-block:: python
+
+   result = exp.compare_models(include=("standalone", "residual", "decomposition"))
+   nested = exp.nested_cross_validate(outer_folds=3)
+   nested.include    # as famílias do último compare_models (ou include=...)
+   nested.summary    # autohybts, best_standalone e as referências fixas
+   nested.cost       # por dobra: candidatas, unidades, orçamento, parada, segundos
+
+Sem ``include``, as buscas internas repetem as famílias do último ``compare_models``:
+é esse o procedimento que se quer estimar. A linha ``best_standalone`` é a melhor base
+**da seleção interna** de cada dobra, escolhida sem o bloco externo; é a referência
+justa para dizer se a hibridação compensa. ``nested.total_candidates`` e
+``nested.total_seconds`` somam o trabalho de todas as dobras.

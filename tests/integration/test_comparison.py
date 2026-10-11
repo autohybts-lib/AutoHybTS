@@ -227,8 +227,56 @@ def test_nested_cv_runs_the_procedure_on_past_data_only(monkeypatch: pytest.Monk
     assert list(folds.index) == ["cv-0", "cv-1"]
     for end, origin in zip(seen_ends, folds["origin"], strict=True):
         assert end == origin  # inner experiment sees history up to the outer origin only
-    assert {"autohybts_MASE", "naive_MASE", "champion", "inner_selection_gap"} <= set(folds.columns)
-    assert set(result.summary.index) == {"autohybts_MASE", "naive_MASE"}
+    assert {
+        "autohybts_MASE",
+        "best_standalone_MASE",
+        "naive_MASE",
+        "champion",
+        "best_standalone",
+        "inner_selection_gap",
+    } <= set(folds.columns)
+    assert set(result.summary.index) == {"autohybts_MASE", "best_standalone_MASE", "naive_MASE"}
+    # Default families: those of compare_models' default (it has not run here).
+    assert result.include == ("standalone", "residual")
+
+
+def test_nested_cv_repeats_the_families_and_reports_the_inner_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exp = AutoHybridExperiment(**FAST).fit(get_data("synthetic_daily", n=320))
+    families = ("standalone", "residual", "decomposition")
+    compared = exp.compare_models(include=families)
+    seen: list[tuple[str, ...]] = []
+    original = AutoHybridExperiment.compare_models
+
+    def spy(self: AutoHybridExperiment, include: tuple[str, ...] = ("standalone",), **kw: object):  # type: ignore[no-untyped-def]
+        seen.append(tuple(include))
+        return original(self, include, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(AutoHybridExperiment, "compare_models", spy)
+    result = exp.nested_cross_validate(outer_folds=2, baselines=())
+    assert seen == [families, families]  # the procedure that ran, not the default
+    assert result.include == families
+    assert compared.snapshot["include"] == list(families)
+
+    cost = result.cost
+    assert list(cost.index) == ["cv-0", "cv-1"]
+    assert (cost["status"] == "SUCCEEDED").all()
+    assert (cost["search_candidates"] > 0).all()
+    assert (cost["search_candidates"] <= cost["max_trials_total"]).all()
+    assert (cost["search_units"] >= cost["search_candidates"]).all()
+    assert (cost["select_units"] >= cost["select_candidates"]).all()
+    parts = cost[["seconds_search", "seconds_selection", "seconds_refit"]].sum(axis=1)
+    assert (parts <= cost["seconds_total"] + 1e-9).all()
+    assert result.total_candidates == int(cost["search_candidates"].sum())
+    assert result.total_seconds == pytest.approx(float(cost["seconds_total"].sum()))
+    # The inner reference is a standalone model chosen inside each fold.
+    assert (result.folds["best_standalone"].notna()).all()
+
+    with pytest.raises(ConfigurationError, match="standalone"):
+        exp.nested_cross_validate(outer_folds=2, include=("residual",))
+    with pytest.raises(ConfigurationError, match="variante B"):
+        exp.nested_cross_validate(outer_folds=2, include=("standalone", "residual", "dynamic"))
 
 
 def test_invalid_model_references(experiment: AutoHybridExperiment) -> None:
@@ -254,3 +302,72 @@ def test_comparison_plots(experiment: AutoHybridExperiment, kind: str) -> None:
 def test_unknown_comparison_plot(experiment: AutoHybridExperiment) -> None:
     with pytest.raises(ConfigurationError, match="desconhecido"):
         experiment.cross_validate(models=["naive"], folds=3).plot("radar")
+
+
+def test_nested_inner_experiments_repeat_the_outer_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exp = AutoHybridExperiment(
+        **FAST, profile="exploratory", significance_alpha=0.2, max_wall_time_s=3600.0
+    ).fit(get_data("synthetic_daily", n=320))
+    outer = exp.get_params()
+    inner: list[dict[str, object]] = []
+    original = AutoHybridExperiment.fit
+
+    def spy(self: AutoHybridExperiment, y: object) -> AutoHybridExperiment:
+        inner.append(self.get_params())
+        return original(self, y)
+
+    monkeypatch.setattr(AutoHybridExperiment, "fit", spy)
+    exp.nested_cross_validate(outer_folds=2, baselines=(), budget="smoke")
+    assert len(inner) == 2
+    for params in inner:
+        differences = {k for k in outer if params[k] != outer[k]}
+        assert differences <= {
+            "test_size",
+            "budget",
+            "base_models",
+            "correctors",
+            "residual_windows",
+            "alphas",
+            "metrics",
+        }
+        assert params["test_size"] == 0  # the outer block plays the sealed test
+        assert params["budget"] == "smoke"
+        for key in (
+            "variant",
+            "profile",
+            "significance_alpha",
+            "max_wall_time_s",
+            "fold",
+            "session_id",
+            "residual_sources",
+            "fh",
+        ):
+            assert params[key] == outer[key], key
+        # Sequences travel as lists through the public parameters; same content.
+        for key in ("base_models", "correctors", "residual_windows", "alphas", "metrics"):
+            assert list(params[key] or []) == list(outer[key] or []), key
+
+
+def test_a_failed_outer_fold_is_kept_in_folds_and_cost(monkeypatch: pytest.MonkeyPatch) -> None:
+    from autohybts.exceptions import CoverageError
+
+    exp = AutoHybridExperiment(**FAST).fit(get_data("synthetic_daily", n=320))
+    original = AutoHybridExperiment.compare_models
+    calls: list[int] = []
+
+    def flaky(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(1)
+        if len(calls) == 1:
+            raise CoverageError("nenhuma candidata válida nesta dobra")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(AutoHybridExperiment, "compare_models", flaky)
+    result = exp.nested_cross_validate(outer_folds=2, baselines=("naive",))
+    assert list(result.folds["status"]) == ["FAILED", "SUCCEEDED"]
+    assert "CoverageError" in result.folds["reason"].iloc[0]
+    assert list(result.cost["status"]) == ["FAILED", "SUCCEEDED"]
+    assert result.cost["seconds_total"].notna().all()
+    assert result.total_candidates == int(result.cost["search_candidates"].iloc[1])
+    assert result.summary.loc["autohybts_MASE", "n_folds"] == 1

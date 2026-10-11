@@ -11,8 +11,9 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [06_compare_and_cross_validate](06_compare_and_cross_validate.ipynb) | Ranking das finalistas, validação cruzada temporal, gráficos de comparação, testes estatísticos, comparação no teste selado e CV aninhada | — |
 | [07_panel](07_panel.ipynb) | Várias séries no mesmo experimento: ranking entre séries, seleção sobre o conjunto, um modelo por série e avaliação externa por série | — |
 | [08_advanced_families_and_tuning](08_advanced_families_and_tuning.ipynb) | Estágios extras, decomposição, combinação fixa, busca com todas as famílias e `tune_model` | — |
-| [09_ablation](09_ablation.ipynb) | Ablação do procedimento de seleção (§30.5): 4 procedimentos, mesmo orçamento e mesmos testes externos, em 12 séries sintéticas × 3 sementes | pesado (≈25 min) |
+| [09_ablation](09_ablation.ipynb) | Ablação do procedimento de seleção (§30.5): 4 procedimentos, mesmo orçamento e mesmos testes externos, em 12 séries sintéticas × 3 sementes, orçamento `small` | pesado (≈55 min) |
 | [10_external_models](10_external_models.ipynb) | Modelos próprios: PyTorch (LSTM, Transformer, Mamba, GRU escrito na hora), TensorFlow/Keras (LSTM, Transformer, convolução), Holt-Winters do statsmodels e gradient boosting, como bases, corretores, na busca, no ajuste e na persistência | extras `torch` e `tensorflow`; pesado |
+| [11_calibration](11_calibration.ipynb) | Calibração da regra de aceite em controles com resposta conhecida (ruído branco e resíduo previsível): falsos aceites, ganhos recusados, efeito do número de origens e do teste de Wilcoxon, conjunto de confirmação | — |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar
@@ -33,9 +34,11 @@ No VS Code, abra o notebook e selecione o kernel do `.venv`.
 | 04_rolling_one_step | roda (≈2,5–4,5 min) |
 | 07_panel | roda |
 | 08_advanced_families_and_tuning | roda (≈1 min) |
-| 09_ablation | roda (≈25 min); nos testes só com `AUTOHYBTS_RUN_HEAVY=1` |
+| 09_ablation | roda (≈55 min com o orçamento `small`); nos testes só com `AUTOHYBTS_RUN_HEAVY=1` |
 | 05_benchmark_m4 | roda (≈25 s com cache; o primeiro download do M4 diário tem ~100 MB) |
 | 06_compare_and_cross_validate | roda (≈50 s) |
+| 10_external_models | roda (≈6 min); nos testes só com `AUTOHYBTS_RUN_HEAVY=1` |
+| 11_calibration | roda (≈5 min) |
 
 O teste `tests/integration/test_notebooks.py` executa cada notebook assim que todos os nomes listados em `metadata.autohybts.requires` existem no pacote:
 
