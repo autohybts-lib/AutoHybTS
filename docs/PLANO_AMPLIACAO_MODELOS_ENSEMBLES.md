@@ -423,6 +423,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Formalizar capacidade por horizonte, variante, treino local/global e entradas exógenas.
 - [ ] Congelar controles, métricas, splits e protocolo inicial de pesquisa.
 
+- [ ] **Documentação/notebook:** definir convenções de documentação científica (algoritmos, capacidades A/B, referências, limitações) e template reutilizável dos notebooks, incluindo metadados de requisitos, sementes, protocolo e evidências; consultar `10.
+
 **Aceite:** ADR revisado; testes de identidade de pequeno grafo; contratos causais definidos; APIs legadas mantidas.
 
 ### F1 — Integrações de modelos e paridade
@@ -434,6 +436,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Reproduzir paridade técnica dos sete híbridos de `projeto_st_replicacao` com configurações iguais.
 - [ ] Validar suporte A/B individualmente para cada novo adaptador, em vez de presumir.
 
+- [ ] **Documentação/notebooks:** escrever guia de backends Nixtla e seus contratos; adicionar `12_nixtla_statsforecast.ipynb` e `13_boosting_regressors.ipynb`, com comparadores e versões declaradas.
+
 **Aceite:** testes de paridade, causa temporal, horizonte, serialização e avaliação com referência standalone para cada backend.
 
 ### F2 — Combinações básicas e ensembles de híbridos
@@ -442,6 +446,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Permitir ensemble de bases, ensemble de híbridos e híbrido cuja base é um ensemble.
 - [ ] Gerar OOF próprio de composições e comparar contra componentes originais.
 - [ ] Diagnóstico da estabilidade dos pesos, cobertura e custo integral.
+
+- [ ] **Documentação/notebooks:** documentar formas de ponderação e árvores de composição; adicionar `14_ensemble_basics.ipynb` e `15_ensemble_of_hybrids.ipynb` com pesos, seleção e prova de causalidade.
 
 **Aceite:** todos os tipos funcionam com teste selado e A/B quando elegíveis; comparação com média simples e standalone; falhas registradas.
 
@@ -453,6 +459,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Incluir AdaBoost.R2, LightGBM, XGBoost/CatBoost como preditores independentes ou corretores.
 - [ ] Executar ablações `C4–C7` e testes `T01–T16` pertinentes.
 
+- [ ] **Documentação/notebooks:** explicar diferenças entre bagging temporal, subspace, ensemble selection e boosting de regressão; adicionar `16_temporal_bagging.ipynb` e `17_greedy_ensemble_selection.ipynb`.
+
 **Aceite:** bagging comprovadamente causal, avaliação separando fontes de diversidade e comparação honesta com boosting como previsor isolado.
 
 ### F4 — Stacking e boosting de previsores completos
@@ -463,6 +471,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Comparar com `residual_multistage` do AutoHybTS, igualando base, estágios e orçamento.
 - [ ] Exigir CV aninhada e ruído branco como controle de sobreajuste.
 
+- [ ] **Documentação/notebooks:** especificar stacking OOF, dependências temporais, boosting de previsores e pesos por horizonte; adicionar `18_stacking_oof.ipynb`, `19_forecast_boosting.ipynb` e `20_horizon_weighted_ensembles.ipynb`.
+
 **Aceite:** zero *meta-leakage* nos testes; parâmetros dos estágios preservados; tratamento pode perder e ser rejeitado sem contornar a seleção.
 
 ### F5 — NeuralForecast, modelos globais e experts dinâmicos
@@ -472,6 +482,8 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Introduzir contrato de painel global e avaliações entre séries.
 - [ ] Estudar weighting por features tipo FFORMA, mixture of experts, DSEL generalizado e exponential weights em B.
 - [ ] Separar pesos por contexto/horizonte, treinamento e custo de atualização.
+
+- [ ] **Documentação/notebooks:** guias de MLForecast/NeuralForecast, recursos locais/globais e seleção dinâmica; adicionar `21_nixtla_mlforecast.ipynb`, `22_nixtla_neuralforecast.ipynb`, `23_dynamic_experts.ipynb` e `24_global_panels.ipynb`.
 
 **Aceite:** modelos locais/globais comparáveis no painel; teste de vazamento entre séries e de atualização B; matriz de versões e custos.
 
@@ -484,9 +496,128 @@ As fases expressam **dependência técnica**, não duração estimada. Os itens 
 - [ ] Consolidar formato de resultados, versionamento de modelos e caminho de upgrade de artefatos.
 - [ ] Avaliar probabilidade/reconciliação hierárquica **somente como extensão** posterior.
 
+- [ ] **Documentação/notebooks:** publicar `25_ensemble_benchmark.ipynb` e `26_ensemble_ablation_calibration.ipynb`; atualizar README, navegação Sphinx/Read the Docs, referência de API e CI de notebooks/documentação.
+
 **Aceite:** o usuário compara individual, híbrido e ensemble no mesmo experimento e consegue auditar seleção, rejeições, custo e validade temporal.
 
-## 10. Artefatos experimentais a produzir
+## 10. Plano transversal de notebooks e documentação
+
+A documentação e os notebooks não são uma etapa final isolada. Cada funcionalidade nova passa a ter **entrega simultânea de algoritmo + contrato/testes + guia de referência + notebook executável + evidências**, respeitando a maturidade do recurso. Esta seção descreve **tarefas futuras**, não novos arquivos já existentes.
+
+### 10.1. Ponto de partida do projeto
+
+A biblioteca **já possui notebooks 01–11**, descritos em [notebooks/README.md](../notebooks/README.md), e documentação Sphinx/reStructuredText em [documentation/](../documentation/), publicada no [Read the Docs](https://autohybts.readthedocs.io/pt-br/latest/). Evitar reescrever tutoriais estáveis apenas para acompanhar nomenclaturas novas.
+
+Elementos existentes a aproveitar:
+
+- §notebooks/01_quickstart.ipynb§, §02_hybrid_selection§, §04_rolling_one_step§, §05_benchmark_m4§, §06_compare_and_cross_validate§, §08_advanced_families_and_tuning§, §09_ablation§, §10_external_models§ e §11_calibration§ já cobrem passos próximos dos novos recursos.
+- §notebooks/README.md§ é o catálogo e índice operacional dos notebooks.
+- §documentation/tutorials/index.rst§ registra a navegação das aulas; §documentation/index.rst§ controla a navegação geral da documentação.
+- §documentation/conf.py§ copia os notebooks para §documentation/tutorials/notebooks/§ e usa §myst_nb§ com §nb_execution_mode = "off"§. A documentação exibe **saídas salvas**, mas **não executa** os notebooks durante o build.
+- §tests/integration/test_notebooks.py§ executa notebooks com §nbclient§, inspeciona §metadata.autohybts.requires§ e usa diretório temporário; §tests/contracts/test_notebook_outputs.py§ verifica se saídas salvas contêm caminhos locais. Os testes lentos são marcados §slow§; os que usam rede têm marcador §network§.
+- §.readthedocs.yaml§ usa Python 3.12, Sphinx e §fail_on_warning: true§. A documentação deve continuar compilando sem warnings.
+
+**Decisão:** continuar a numeração a partir de §12§; adicionar novas entradas ao índice somente após o notebook efetivamente existir, executar e salvar suas saídas. Não publicar snippets de APIs ainda propostas como se fossem exemplos funcionais.
+
+### 10.2. Currículo de notebooks proposto
+
+Os nomes e objetivos a seguir compõem um **backlog de tutoriais futuros**. Um notebook por problema, com evolução progressiva: introdução, exemplo prático, comparação objetiva, gráficos e limitações. Notebooks pesados devem ter versão de execução reduzida e saída completa de referência, executada separadamente.
+
+| Notebook (novo, proposto) | Fase | Objetivo prático e evidência mínima | Execução |
+|---|---|---|---|
+| §12_nixtla_statsforecast.ipynb§ | F1 | AutoARIMA sazonal/não sazonal, AutoETS, AutoTheta; paridade com baseline e variante A/B elegível | CPU / smoke |
+| §13_boosting_regressors.ipynb§ | F1/F3 | RandomForest × HistGradientBoosting × LightGBM/AdaBoost.R2 como bases e corretores; curva por horizonte | CPU / extra |
+| §14_ensemble_basics.ipynb§ | F2 | Média, mediana, aparada, pesos inversos e NNLS; tabela de pesos, ganho e custo | CPU / smoke |
+| §15_ensemble_of_hybrids.ipynb§ | F2 | Ensemble de híbridos e híbrido com ensemble-base; componentes, resíduos OOF e aceite/rejeição | CPU / smoke |
+| §16_temporal_bagging.ipynb§ | F3 | Bootstrap em blocos, bagging-ETS e diversidade de membros; sensibilidade ao bloco | CPU / estendido |
+| §17_greedy_ensemble_selection.ipynb§ | F3 | Seleção gulosa de membros, diversidade, cardinalidade e comparação com média igual | CPU / smoke |
+| §18_stacking_oof.ipynb§ | F4 | Conjunto de predições OOF, meta-modelo Ridge/NNLS e demonstração do isolamento temporal | CPU / estendido |
+| §19_forecast_boosting.ipynb§ | F4 | Boosting de previsores completos vs §residual_multistage§; shrinkage, estágios e controle de ruído | CPU / estendido |
+| §20_horizon_weighted_ensembles.ipynb§ | F4 | Pesos por horizontes ou faixas e trajetória de erros em A | CPU / estendido |
+| §21_nixtla_mlforecast.ipynb§ | F5 | Engenharia causal de lags, rolling features e modelos locais/globais | CPU / extra |
+| §22_nixtla_neuralforecast.ipynb§ | F5 | NHITS/NBEATSx/PatchTST; limites de horizonte, custo e controles estatísticos | GPU opcional / pesado |
+| §23_dynamic_experts.ipynb§ | F5 | DSEL generalizado, gating ou pesos exponenciais em B; pesos após observar erros | CPU / estendido |
+| §24_global_panels.ipynb§ | F5 | Séries locais versus painel global, séries vistas e não vistas e comparação entre grupos | CPU/GPU / pesado |
+| §25_ensemble_benchmark.ipynb§ | F6 | M3/M4, matrizes A/B, categoria/horizonte, leaderboard, Pareto e rastreabilidade | Rede/cache / pesado |
+| §26_ensemble_ablation_calibration.ipynb§ | F6 | Controles negativos em ruído branco, falsas melhorias, seeds e CV aninhada | CPU / pesado |
+
+**Protocolo didático para cada notebook:** usar ao menos uma série local/sintética sem internet; tratar download, extras ou GPU como seção opcional; ensinar a interpretação dos resultados sem afirmar que determinado ensemble sempre vence; acompanhar código de gráficos e evidências numéricas de acurácia, cobertura e custo. Para os que operam com teste selado, mostrar claramente que a seleção ocorre antes da avaliação externa.
+
+### 10.3. Modelo padrão das aulas executáveis
+
+Cada notebook deverá conter, nesta ordem:
+
+1. **Objetivos e requisitos:** tema, referência científica, fase, variantes A/B, dependências, hardware e versões relevantes.
+2. **Dados e protocolo:** origem, frequência, §fh§, §test_size§, sementes, divisões e metadados; nunca fazer busca no teste.
+3. **Exploração causal:** série observada, sazonalidade, escalas, lags e variáveis que estariam disponíveis na origem.
+4. **Baseline e modelo(s) propostos:** mesma métrica, mesmo horizonte, mesmo conjunto de origens, mesmo orçamento documentado.
+5. **Treinamento e seleção:** uso da API pública, §V_search§/§V_select§, OOF/§available_at§ onde aplicável, fallback e custos.
+6. **Resultados e gráficos:** previsões × observações, resíduos, erro × horizonte, pesos, tabelas de ganho e aceites/rejeições.
+7. **Diagnóstico e limites:** fontes possíveis de leakage, cobertura de candidatos, custo e falhas de execução.
+8. **Avaliação externa** (quando aplicável): uma única avaliação após congelar o candidato, distinguindo exploratório de confirmatório.
+9. **Reprodutibilidade:** versões, seed, ambiente, IDs de tentativa, saídas legíveis e referências para o guia correspondente.
+
+**Metadados/segurança:** preservar o contrato existente §metadata.autohybts.requires§, incluir §network§ quando necessário e planejar campos de execução para extras/dispositivo/§heavy§ somente junto com atualização explícita do *test harness*. Não supor que §tests/integration/test_notebooks.py§ já interpreta novos campos. Salvar as saídas somente após execução bem-sucedida e revisão para remover caminhos locais, chaves, tokens, dados privados, logs excessivos e artefatos grandes.
+
+### 10.4. Plano de documentação por tipo
+
+Manter a documentação oficial em **Sphinx + reStructuredText** sob §documentation/§ e os arquivos educacionais sob §notebooks/§.
+
+| Documento/arquivo | Ação planejada | Fase |
+|---|---|---|
+| §documentation/user_guide/models.rst§ | Ampliar catálogo, papéis base/corretor e matriz de capacidades A/B | F1 |
+| §documentation/user_guide/nixtla_integrations.rst§ (novo) | Instalação dos extras, adapters, import lazy, parâmetros, protocolos e limitações | F1/F5 |
+| §documentation/user_guide/strategies.rst§ | Manter métodos existentes e explicar novas composições sem retroatividade | F2 |
+| §documentation/user_guide/ensembles.rst§ (novo) | Definição de E01–E20, pesos, escolhas, hipóteses, exemplos e restrições | F2–F5 |
+| §documentation/user_guide/bagging_boosting.rst§ (novo) | Bagging temporal, B1/B2/B3, equações, pseudocódigo e comparação com multistage | F3/F4 |
+| §documentation/user_guide/stacking.rst§ (novo) | OOF, treinamento do meta-modelo, disponibilidade temporal e prevenção de leakage | F4 |
+| §documentation/user_guide/temporal_validation.rst§ | Estender regras para meta-modelos, boosting, bagging e horizontes | F2–F4 |
+| §documentation/user_guide/selection.rst§ | Política guardada, diversidade, limites, falsos aceites e orçamento de busca | F2–F5 |
+| §documentation/user_guide/panels.rst§ | Diferenciar previsão local e global, com exemplos e contratos de grupos | F5 |
+| §documentation/user_guide/benchmarks.rst§ | Protocolo, datasets, comparadores, ablações, testes e custo total | F6 |
+| §documentation/api/index.rst§ | Novas classes, assinaturas, parâmetros, tipos e contratos públicos | Cada fase |
+| §documentation/tutorials/index.rst§ | Adicionar §notebooks/12_*§ até §26_*§ **apenas quando publicados** | Cada fase |
+| §documentation/index.rst§ e §notebooks/README.md§ | Índices e navegação sincronizados com o código entregue | Cada fase |
+| §README.md§ e §pyproject.toml§ | Exemplos mínimos e extras reais, sem anunciar recursos futuros como presentes | Cada fase |
+
+**Conteúdo obrigatório por estratégia na documentação técnica:**
+- definição conceitual e fórmula/pseudocódigo;
+- referência científica e distinção frente a abordagens relacionadas;
+- parâmetros e espaço de busca admitido;
+- tipos de dados e modelos compatíveis, especialmente A/B e §h§;
+- descrição do ajuste, geração OOF e eventuais atualizações de pesos;
+- custo/recursos, comportamento de falhas e limites conhecidos;
+- exemplos executáveis com resultado plausível, nunca valores inventados;
+- links cruzados ao notebook, teste de causalidade e seção de benchmarks.
+
+### 10.5. Fluxo de publicação Sphinx / Read the Docs
+
+- **Desenvolvimento:** código, API, testes, guia e notebook entram na mesma entrega lógica; se a API ainda não existe, documentar a proposta **somente neste plano**, não na seção de API estável.
+- **Navegação:** ao liberar uma estratégia, atualizar §documentation/index.rst§ e §documentation/tutorials/index.rst§; checar se o notebook está presente e se a entrada resolve corretamente no Sphinx.
+- **Exibição de outputs:** como §nb_execution_mode="off"§, executar e validar notebooks previamente via §nbclient§; depois salvar outputs revisados no repositório. Build Sphinx **não substitui teste de execução**.
+- **Read the Docs:** preservar §.readthedocs.yaml§ e §fail_on_warning: true§; validar localmente com §sphinx-build -n -W -b html documentation documentation/_build/html§. Acrescentar job §docs§ de CI para PRs quando entrar a primeira estratégia nova.
+- **CI de notebook:** manter §pytest tests/contracts/test_notebook_outputs.py§ e execução integrada §pytest tests/integration/test_notebooks.py -m slow -rs§ no ambiente apropriado. Separar *smoke* CPU offline de execução estendida, extras, GPU e downloads de rede. Não transformar §SKIPPED§ por dependência faltante em evidência de execução bem-sucedida.
+- **Versionamento e linguagem:** documentação em português coerente com a interface; exemplos usando nomes reais de API e versões testadas. Notebooks pesados devem declarar dataset, orçamento, hardware, artefatos e limites de interpretação.
+- **Publicação segura:** conferir imagens salvas, outputs, tamanhos e informações locais; contratos existentes contra caminhos absolutos devem continuar passando.
+
+### 10.6. Critérios de aceite e Definition of Done
+
+A entrega de uma **nova estratégia de ensemble** estará concluída somente quando:
+
+- [ ] possuir algoritmo implementado e registrado com capacidades e incompatibilidades explícitas;
+- [ ] passar testes unitários, contrato temporal, integração e vazamento;
+- [ ] for avaliada contra standalone, híbrido correspondente e combinação simples com mesmas origens;
+- [ ] tiver página do guia contendo teoria, equação, parâmetros, complexidade, limitações e literatura;
+- [ ] tiver notebook numerado, com pré-requisitos, saídas reais revisadas, comparação e evidências;
+- [ ] tiver referência de API e navegação Sphinx atualizadas, sem links quebrados;
+- [ ] passar teste de outputs sem dados locais, execução notebook aplicável e build Sphinx sem warnings;
+- [ ] registrar custos, versões, sementes e resultados ou explicar claramente quando o benchmark pesado será executado separadamente;
+- [ ] estiver representada nos relatórios de erro, custo e seleção (inclusive motivos de rejeição).
+
+**Aceite transversal F6:** auditoria cruzada §estratégia → código → testes → API → guia → notebook → artefatos de benchmark§, sem exemplos desatualizados, sem método proposto descrito como implementado, e com tratamento explícito para notebooks opcionais e pesados.
+
+
+## 11. Artefatos experimentais a produzir
 
 Formato sugerido (não representa arquivos hoje existentes):
 
@@ -518,7 +649,7 @@ artifacts/<run_id>/
 
 Registrar `run_id`, `candidate_id`, `trial_key`, hashes, versão de backend, seed, dispositivo, ordem temporal, peso e cobertura. **Não reutilizar artefatos históricos incompatíveis** nem usar o teste externo para seleção.
 
-## 11. Riscos, ameaças à validade e decisões abertas
+## 12. Riscos, ameaças à validade e decisões abertas
 
 | Risco | Mitigação / decisão |
 |---|---|
@@ -538,7 +669,7 @@ Registrar `run_id`, `candidate_id`, `trial_key`, hashes, versão de backend, see
 
 **ADRs pendentes:** (i) grafo novo ou extensão do spec; (ii) esquema OOF e janela de meta-aprendizado; (iii) definição exata de B3 e perdas; (iv) políticas de fallback; (v) treino global/funcionalidade exógena; (vi) limites de orçamento por família. Resolver antes de codificar extensões avançadas.
 
-## 12. Referências científicas e documentação técnica
+## 13. Referências científicas e documentação técnica
 
 > Trabalhos citados fornecem base conceitual e comparadores, **não evidência de desempenho do AutoHybTS**. O boosting de previsores completos (E11) é proposição experimental que deve ser verificada.
 
