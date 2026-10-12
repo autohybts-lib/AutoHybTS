@@ -168,6 +168,7 @@ valores ausentes: trate-os antes do `fit`.
 ## Documentação e tutoriais
 
 - Documentação: <https://autohybts.readthedocs.io/>
+- Plano de ampliação (proposta, não implementado): [`docs/PLANO_AMPLIACAO_MODELOS_ENSEMBLES.md`](docs/PLANO_AMPLIACAO_MODELOS_ENSEMBLES.md) — integrações Nixtla, ensembles, bagging, boosting e avaliação temporal.
 - Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/jvataidee/AutoHybTS/tree/main/notebooks)
 
 ## Princípios
