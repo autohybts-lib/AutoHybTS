@@ -2,6 +2,9 @@
 !README.md
 !.github/SECURITY.md
 docs/
+!docs/
+docs/*
+!docs/PLANO_AMPLIACAO_MODELOS_ENSEMBLES.md
 
 .venv/
 .venv-*/
