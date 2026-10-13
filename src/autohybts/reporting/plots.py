@@ -59,6 +59,15 @@ _LAYER_COLORS: Final = {"search": "#4C72B0", "select": "#DD8452", "cv": "#55A868
 
 @dataclass(frozen=True)
 class PlotArtifact:
+    """A matplotlib figure plus where its numbers come from.
+
+    ``figure`` is the ``matplotlib.figure.Figure`` (Jupyter displays it; ``save`` writes
+    it). ``kind`` is the plot requested, ``source_split`` the data it used
+    (``"development"``, ``"validation"`` …, never the sealed test), ``candidate_id`` the
+    candidate drawn, ``origin_range`` the first and last date covered and ``provenance``
+    the counts and settings behind the figure.
+    """
+
     kind: str
     figure: Any
     source_split: str

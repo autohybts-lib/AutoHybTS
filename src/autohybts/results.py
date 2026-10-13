@@ -67,7 +67,29 @@ class ModelResult:
 
 @dataclass(frozen=True)
 class CompareResult:
-    """Search on V_search and incremental selection on V_select."""
+    """Search on ``V_search`` and incremental selection on ``V_select``.
+
+    Attributes:
+        best: the champion (a ``CandidateSpec``), ready for ``finalize_model``.
+        leaderboard: one row per evaluated candidate of the search (``V_search``), sorted
+            by the first metric, with ``mean_rank``, metric means, ``coverage``,
+            ``n_units``, failures and fit/predict seconds; ``is_champion`` marks the
+            champion.
+        selection_leaderboard: the same columns for the finalists on ``V_select``.
+        decisions: one row per challenge of the incremental chain: ``family``,
+            ``champion_before``, ``challenger``, ``accepted``, ``reason_codes``,
+            ``median_gain``, ``win_rate``, ``variability_status``,
+            ``variability_value`` and ``p_value`` (with ``significance_alpha``).
+        audit: how adaptive the selection was (``SelectionAudit``).
+        search: everything the search tried (``SearchResult``; ``ledger_frame()``).
+        selection: the selection itself (``SelectionResult``; ``decision_units_frame()``
+            and, in a panel, ``champion_per_series``).
+        snapshot: what must stay fixed to reproduce the selection (settings, splits,
+            space, budget, policy, protocol hash, champion).
+        comparison: statistical comparison of the finalists on ``V_select``
+            (``ComparisonResult``), or ``None``.
+        events: timed log of the experiment verbs.
+    """
 
     best: CandidateSpec
     leaderboard: pd.DataFrame
@@ -110,6 +132,13 @@ class CompareResult:
 
 @dataclass(frozen=True)
 class PredictResult:
+    """Forecasts of a finalized model.
+
+    Attributes:
+        predictions: ``y_pred`` indexed by date (stacked by series in a panel).
+        model_label: label of the forecasting structure.
+    """
+
     predictions: pd.DataFrame
     model_label: str
 
@@ -119,7 +148,13 @@ class PredictResult:
 
 @dataclass(frozen=True)
 class ExternalResult:
-    """Terminal evaluation on the sealed (or an external) test; never fed back to the search."""
+    """Terminal evaluation on the sealed (or an external) test; never fed back to the search.
+
+    Attributes:
+        metrics: one row per model (and per series, plus the mean, in a panel).
+        predictions: ``y_pred`` and ``y_true`` over the test, indexed by date.
+        model_label: label of the evaluated structure.
+    """
 
     metrics: pd.DataFrame
     predictions: pd.DataFrame
@@ -128,7 +163,7 @@ class ExternalResult:
 
 @dataclass(frozen=True)
 class ExternalComparison:
-    """Terminal comparison on the sealed test: reporting only, never fed back (§30.1).
+    """Terminal comparison on the sealed test: reporting only, never fed back.
 
     ``tests`` compares each model with the reference on per-step absolute errors of the
     single test block (Diebold-Mariano with ``fh - 1`` Newey-West lags, Holm-adjusted).
@@ -145,7 +180,7 @@ class ExternalComparison:
 
 @dataclass(frozen=True)
 class NestedCVResult:
-    """Outer rolling-origin evaluation of the whole automated procedure (§30.1, T27).
+    """Outer rolling-origin evaluation of the whole automated procedure.
 
     In each outer fold the search and the selection ran again on the history before the
     outer origin only; the outer block was never seen by them. ``include`` are the

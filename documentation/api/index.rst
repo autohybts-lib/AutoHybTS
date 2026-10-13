@@ -1,6 +1,11 @@
 Referência da API
 =================
 
+.. note::
+
+   Os docstrings abaixo estão em inglês: são a fonte única, escrita no código. As
+   mensagens de erro e os avisos da biblioteca estão em português.
+
 Experimento
 -----------
 
@@ -44,6 +49,11 @@ Modelos finalizados e persistência
 .. autoclass:: autohybts.PanelForecaster
    :members: predict, series_ids, training_cutoff
 
+.. autoclass:: autohybts.forecasting.finalized.ForecastStream
+   :members: predict_next, observe, log, model
+
+.. autoclass:: autohybts.forecasting.finalized.ForecastTicket
+
 .. autofunction:: autohybts.save_model
 .. autofunction:: autohybts.load_model
 .. autofunction:: autohybts.read_manifest
@@ -59,6 +69,21 @@ Resultados
 
 .. autoclass:: autohybts.results.ExternalResult
 .. autoclass:: autohybts.results.PredictResult
+.. autoclass:: autohybts.results.ExternalComparison
+.. autoclass:: autohybts.results.NestedCVResult
+   :members: total_candidates, total_fits, total_seconds
+
+.. autoclass:: autohybts.search.ledger.SearchResult
+   :members: ledger_frame, trial_count, unit_count, fit_count, counts
+
+.. autoclass:: autohybts.selection.incremental.SelectionResult
+   :members: decisions_frame, decision_units_frame
+
+.. autoclass:: autohybts.selection.incremental.SelectionAudit
+   :members: selection_gap
+
+.. autoclass:: autohybts.reporting.plots.PlotArtifact
+   :members: save
 
 .. autoclass:: autohybts.reporting.comparison.ComparisonResult
    :members: summary, win_rates, tests, friedman, plot

@@ -132,7 +132,15 @@ class FinalizedForecaster:
 
 @dataclass(frozen=True, slots=True)
 class ForecastTicket:
-    """A one-step forecast issued before the value it forecasts is observed."""
+    """A one-step forecast issued before the value it forecasts is observed.
+
+    Attributes:
+        origin: last observation the forecast used.
+        timestamp: date being forecast.
+        prediction: the forecast (``base_prediction + correction``).
+        base_prediction: the base model's part.
+        correction: the residual corrector's part (0 without a corrector).
+    """
 
     origin: pd.Timestamp
     timestamp: pd.Timestamp
@@ -156,6 +164,8 @@ class ForecastStream:
         return self._model
 
     def predict_next(self) -> ForecastTicket:
+        """Forecast the next step; ``observe`` must reveal its value before the next call."""
+
         if self._pending is not None:
             raise ConfigurationError("Observe o valor do passo anterior antes de prever o próximo.")
         model = self._model
