@@ -2,9 +2,9 @@
 
 Covered: the causal moving average and the kurtosis window of the decomposition, the
 mean-rank convention (ADR-0004), the paired gain/win share of the selection rule (I1) and
-the forecasts of the four KNN residual hybrids of the replication in variants A and B
-(plano de ensembles F1e). The three statistical-ANN hybrids need StatsForecast, which
-cannot be installed with pandas 3, and are not covered.
+the forecasts of the seven residual hybrids of the replication in variants A and B
+(plano de ensembles F1e). The three statistical-ANN hybrids require the optional
+StatsForecast environment (pandas 2.x), exercised by the nixtla CI job.
 """
 
 from __future__ import annotations
@@ -221,5 +221,10 @@ def test_residual_hybrids_match_the_legacy_in_both_variants(name: str) -> None:
     model.fit(y[:train])
     variant_a = model.predict(horizon, local_context(y, train))
     variant_b = [model.predict(1, local_context(y, train + k))[0] for k in range(horizon)]
-    np.testing.assert_allclose(variant_a, legacy["variant_a"], rtol=0, atol=1e-9)
-    np.testing.assert_allclose(variant_b, legacy["variant_b"], rtol=0, atol=1e-9)
+    # Statistical bases + L-BFGS MLP fits differ slightly across numerical backends:
+    # Linux CI differed from the captured forecasts by up to 4.24e-7 at a level of 60.
+    # Compare these iterative fits to seven relative decimal digits; preserve the
+    # stricter absolute-only check for the four KNN hybrids.
+    rtol = 1e-7 if base.name.startswith("sf_") else 0
+    np.testing.assert_allclose(variant_a, legacy["variant_a"], rtol=rtol, atol=1e-9)
+    np.testing.assert_allclose(variant_b, legacy["variant_b"], rtol=rtol, atol=1e-9)
