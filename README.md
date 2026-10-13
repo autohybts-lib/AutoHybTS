@@ -170,6 +170,12 @@ valores ausentes: trate-os antes do `fit`.
 - Documentação: <https://autohybts.readthedocs.io/>
 - Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/jvataidee/AutoHybTS/tree/main/notebooks)
 
+Para configurar a publicação no Read the Docs, veja
+[`Publicação no Read the Docs`](documentation/contributing.rst).
+O projeto em português (`/pt-br/latest/`) deve usar **Language: Portuguese (Brazil)**
+e **Build configuration file: `documentation/.readthedocs.yaml`**. O YAML da raiz
+(`.readthedocs.yaml`) compila a versão em inglês.
+
 ## Princípios
 
 - Validade temporal antes de automação: nenhuma informação posterior à origem de previsão entra como feature, e o teste selado nunca alimenta busca ou seleção.

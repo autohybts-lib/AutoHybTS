@@ -1,6 +1,7 @@
-# Read the Docs: main project (English), builds documentation/en with Sphinx.
-# The Portuguese translation is a second Read the Docs project whose
-# "Build configuration file" setting points to documentation/.readthedocs.yaml.
+# Read the Docs: English documentation. Set the project's language to "English"
+# and its "Build configuration file" to .readthedocs.yaml.
+# For /pt-br/latest/, use documentation/.readthedocs.yaml instead.
+# Dashboard setup and translation linking: documentation/contributing.rst.
 version: 2
 
 build:

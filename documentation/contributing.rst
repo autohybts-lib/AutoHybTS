@@ -96,8 +96,66 @@ duas antes de abrir o PR:
    sphinx-build -W documentation documentation/_build/html
    sphinx-build -W documentation/en documentation/_build/html-en
 
-No Read the Docs, o projeto em inglês é o principal (``.readthedocs.yaml`` da raiz) e o
-projeto em português é a tradução dele (``documentation/.readthedocs.yaml``).
+Publicação no Read the Docs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+O idioma configurado no painel define o segmento da URL (``pt-br`` ou ``en``),
+mas não escolhe a pasta que o Sphinx compila. Configure o idioma e o arquivo de
+build de acordo com a mesma linha da tabela:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Idioma no painel (Language)
+     - Arquivo de build (Build configuration file)
+     - Configuração Sphinx no YAML
+   * - Portuguese (Brazil)
+     - ``documentation/.readthedocs.yaml``
+     - ``documentation/conf.py``
+   * - English
+     - ``.readthedocs.yaml``
+     - ``documentation/en/conf.py``
+
+Para publicar a documentação em
+``https://autohybts.readthedocs.io/pt-br/latest/``:
+
+1. Abra o projeto que publica o português no painel do Read the Docs e entre em
+   **Admin → Settings** (ou **Settings**).
+2. Confira o repositório: ``https://github.com/jvataidee/AutoHybTS``.
+3. Defina **Language** como **Portuguese (Brazil)**.
+4. Em **Build configuration file**, informe ``documentation/.readthedocs.yaml``.
+   Esse campo recebe o YAML; o caminho do ``conf.py`` já está dentro dele.
+5. Defina **Default branch** como ``main`` e confira que essa branch contém os
+   arquivos de documentação. Uma alteração apenas em outra branch não entra em
+   ``latest``; integre-a à ``main`` para a publicação definitiva. Para uma prévia,
+   ative a branch desejada em **Versions** e compile essa versão.
+6. Salve e, em **Versions**, confira que ``latest`` está ativa. Em **Builds**,
+   execute **Build version** para ``latest``.
+7. No log, confira o commit compilado e que o comando Sphinx usa
+   ``documentation/conf.py``. Após o build terminar com sucesso, abra a URL acima.
+
+Os dois YAMLs já instalam o pacote com o extra ``docs`` em Python 3.12 e Ubuntu
+24.04. Todos os caminhos dentro deles são relativos à raiz do repositório,
+inclusive no YAML que fica em ``documentation/``. Os notebooks são copiados durante
+o build e renderizados com as saídas salvas, sem execução.
+
+Para oferecer os dois idiomas no mesmo domínio, crie um projeto Read the Docs por
+idioma, usando o mesmo repositório e os valores da tabela. Escolha um como principal
+e adicione o outro em **Translations**, no painel do principal. Se ``autohybts``
+continuar como principal em português, o projeto em inglês pode ser cadastrado como
+tradução dele. Se o inglês for o principal, o projeto em português será a tradução.
+Mantenha as mesmas versões ativas nos dois projetos e compile ambas.
+
+Se aparecer inglês em ``/pt-br/``, confira o **Build configuration file**: o YAML
+da raiz compila inglês mesmo que o painel indique português. Se o conteúdo estiver
+antigo, confira a branch e o commit no último build bem-sucedido.
+
+Referências: `arquivo de configuração em subpasta
+<https://docs.readthedocs.com/platform/stable/guides/setup/monorepo.html>`_,
+`idiomas e traduções
+<https://docs.readthedocs.com/platform/stable/localization.html>`_ e
+`versões e branches
+<https://docs.readthedocs.com/platform/stable/versions.html>`_.
 
 Documentação de uma estratégia
 ------------------------------

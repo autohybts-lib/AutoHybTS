@@ -99,8 +99,66 @@ before opening the PR:
    sphinx-build -W documentation documentation/_build/html
    sphinx-build -W documentation/en documentation/_build/html-en
 
-On Read the Docs, the English project is the main one (root ``.readthedocs.yaml``) and
-the Portuguese project is its translation (``documentation/.readthedocs.yaml``).
+Publishing on Read the Docs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The language configured in the dashboard sets the URL segment (``pt-br`` or ``en``),
+but does not select the folder that Sphinx builds. Set the language and build
+configuration file according to the same row in this table:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Dashboard language (Language)
+     - Build configuration file
+     - Sphinx configuration in the YAML
+   * - Portuguese (Brazil)
+     - ``documentation/.readthedocs.yaml``
+     - ``documentation/conf.py``
+   * - English
+     - ``.readthedocs.yaml``
+     - ``documentation/en/conf.py``
+
+To publish the Portuguese documentation at
+``https://autohybts.readthedocs.io/pt-br/latest/``:
+
+1. Open the project that publishes Portuguese in the Read the Docs dashboard and
+   go to **Admin → Settings** (or **Settings**).
+2. Check the repository: ``https://github.com/jvataidee/AutoHybTS``.
+3. Set **Language** to **Portuguese (Brazil)**.
+4. Set **Build configuration file** to ``documentation/.readthedocs.yaml``.
+   This field takes the YAML path; the ``conf.py`` path is already inside it.
+5. Set **Default branch** to ``main`` and check that this branch contains the
+   documentation files. Changes on another branch do not reach ``latest``;
+   merge them into ``main`` for the final publication. For a preview, activate
+   the desired branch under **Versions** and build that version.
+6. Save and check that ``latest`` is active under **Versions**. Under **Builds**,
+   trigger **Build version** for ``latest``.
+7. Check the built commit in the log and that the Sphinx command uses
+   ``documentation/conf.py``. Once the build succeeds, open the URL above.
+
+Both YAML files already install the package with the ``docs`` extra on Python 3.12
+and Ubuntu 24.04. All paths inside them are relative to the repository root,
+including those in the YAML under ``documentation/``. Notebooks are copied during
+the build and rendered with their saved outputs, without execution.
+
+To offer both languages on the same domain, create one Read the Docs project per
+language, using the same repository and the values in the table. Choose one as the
+parent and add the other under **Translations** in the parent's dashboard. If
+``autohybts`` remains the Portuguese parent, the English project can be registered
+as its translation. If English is the parent, the Portuguese project is its
+translation. Keep the same versions active in both projects and build both.
+
+If English appears under ``/pt-br/``, check **Build configuration file**: the root
+YAML builds English even when the dashboard language is Portuguese. If the content
+is outdated, check the branch and commit in the last successful build.
+
+References: `configuration file in a subfolder
+<https://docs.readthedocs.com/platform/stable/guides/setup/monorepo.html>`_,
+`languages and translations
+<https://docs.readthedocs.com/platform/stable/localization.html>`_ and
+`versions and branches
+<https://docs.readthedocs.com/platform/stable/versions.html>`_.
 
 Documenting a strategy
 ----------------------
