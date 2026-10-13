@@ -293,7 +293,7 @@ máximo menor que o pedido é ``SKIPPED`` sem ser ajustado.
 Métricas
 --------
 
-MASE (padrão de ordenação), MAE, RMSE, sMAPE, WAPE, RRMSE, RMAE (``MAE / média do
+MASE (padrão de ordenação), MAE, RMSE, sMAPE, MAPE, MdAPE, WAPE, RRMSE, RMAE (``MAE / média do
 observado``, como no protocolo de replicação) e RMSSE (raiz do erro quadrático médio
 escalado pela diferença sazonal ao quadrado do treino, com o mesmo ``m`` da MASE; o M5
 usa ``m = 1``). Escolha com

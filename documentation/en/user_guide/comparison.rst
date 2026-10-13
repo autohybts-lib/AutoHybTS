@@ -28,6 +28,7 @@ Across finalists
    cmp.win_rates                         # matrix of paired wins
    cmp.tests()                           # Wilcoxon and Diebold-Mariano, Holm
    cmp.friedman()                        # Friedman + Nemenyi critical difference
+   cmp.kruskal()                         # Kruskal-Wallis + Dunn (Holm); ignores the pairing
    result.plot("critical_difference")    # also: leaderboard, boxplot, win_rate …
 
 Cross-validation

@@ -34,7 +34,10 @@ __all__ = [
     "adf_profile",
     "boxcox_transform",
     "characterize",
+    "decompose_series",
     "kpss_profile",
+    "ljung_box",
+    "stationarity_table",
     "stl_boxcox_strength",
     "stl_class",
 ]
@@ -186,3 +189,85 @@ def characterize(
     else:
         record["category"] = "nonseasonal"
     return record
+
+
+def stationarity_table(values: npt.ArrayLike, max_d: int = 2, alpha: float = 0.05) -> Any:
+    """ADF and KPSS for ``d = 0..max_d``, with each rule's decision and their consensus.
+
+    ADF stationary: ``p <= alpha`` and statistic below the 5 % critical value. KPSS
+    stationary: ``p >= alpha`` (it does not reject level stationarity). The chosen orders
+    are the smallest ``d`` that passes each rule (``max_d`` when none passes).
+    """
+
+    import pandas as pd
+
+    y = np.asarray(values, dtype=np.float64)
+    rows = []
+    for order in range(max_d + 1):
+        level = np.diff(y, n=order) if order else y
+        adf = adf_profile(level, alpha)
+        kpss = kpss_profile(level)
+        kpss_ok = bool(np.isfinite(kpss["pvalue"]) and kpss["pvalue"] >= alpha)
+        rows.append(
+            {
+                "d": order,
+                "n": int(level.size),
+                "adf_stat": adf["stat"],
+                "adf_pvalue": adf["pvalue"],
+                "adf_crit5": adf["crit_5"],
+                "adf_stationary": bool(adf["stationary"]),
+                "kpss_stat": kpss["stat"],
+                "kpss_pvalue": kpss["pvalue"],
+                "kpss_stationary": kpss_ok,
+                "consensus": bool(adf["stationary"]) and kpss_ok,
+            }
+        )
+    table = pd.DataFrame(rows).set_index("d")
+    for rule, column in (
+        ("adf", "adf_stationary"),
+        ("kpss", "kpss_stationary"),
+        ("consensus", "consensus"),
+    ):
+        passing = table.index[table[column]]
+        table.attrs[f"d_{rule}"] = int(passing[0]) if len(passing) else max_d
+    return table
+
+
+def decompose_series(
+    values: npt.ArrayLike, period: int, method: str = "stl", robust: bool = True
+) -> dict[str, FloatArray]:
+    """Trend, seasonal and remainder: ``"stl"`` (statsmodels) or ``"classical"`` (numpy)."""
+
+    from autohybts.data.seasonality import classical_decomposition
+
+    y = np.asarray(values, dtype=np.float64)
+    if method == "classical":
+        trend, seasonal, remainder = classical_decomposition(y, period)
+    elif method == "stl":
+        if period < 2 or y.size < 2 * period:
+            raise ValueError(f"A STL exige período >= 2 e dois ciclos; período {period}.")
+        result = stl_class()(y, period=int(period), robust=robust).fit()
+        trend = np.asarray(result.trend, dtype=np.float64)
+        seasonal = np.asarray(result.seasonal, dtype=np.float64)
+        remainder = np.asarray(result.resid, dtype=np.float64)
+    else:
+        raise ValueError(f"Decomposição desconhecida {method!r}: use 'stl' ou 'classical'.")
+    return {"observed": y, "trend": trend, "seasonal": seasonal, "resid": remainder}
+
+
+def ljung_box(residuals: npt.ArrayLike, lags: Sequence[int]) -> Any:
+    """Ljung-Box statistic and p-value at each lag (statsmodels ``acorr_ljungbox``)."""
+
+    try:
+        from statsmodels.stats.diagnostic import acorr_ljungbox
+    except ModuleNotFoundError as error:
+        raise UnsupportedCapabilityError(
+            'O teste de Ljung-Box requer o extra `stats`: pip install "autohybts[stats]".'
+        ) from error
+    e = np.asarray(residuals, dtype=np.float64)
+    valid = sorted({int(lag) for lag in lags if 1 <= int(lag) < e.size})
+    if not valid:
+        raise ValueError(f"Nenhum lag válido para {e.size} resíduos.")
+    table = acorr_ljungbox(e, lags=valid, return_df=True)
+    table.index.name = "lag"
+    return table

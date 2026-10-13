@@ -74,6 +74,20 @@ def _rmsse(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
     return math.sqrt(mse / scale) if scale > MIN_SCALE else float("nan")
 
 
+def _mape(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
+    scale = np.abs(a)
+    if np.any(scale <= MIN_SCALE):
+        return float("nan")
+    return float(np.mean(np.abs(a - p) / scale))
+
+
+def _mdape(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
+    scale = np.abs(a)
+    if np.any(scale <= MIN_SCALE):
+        return float("nan")
+    return float(np.median(np.abs(a - p) / scale))
+
+
 def _wape(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
     return _ratio(float(np.sum(np.abs(a - p))), float(np.sum(np.abs(a))))
 
@@ -121,6 +135,20 @@ METRICS: Final[dict[str, Metric]] = {
             _rmsse,
         ),
         Metric("WAPE", 1, "sum(|y - ŷ|) / sum(|y|); NaN if sum(|y|) <= 1e-12", True, _wape),
+        Metric(
+            "MAPE",
+            1,
+            "mean(|y - ŷ| / |y|), a fraction; NaN if any |y| <= 1e-12 (zeros in the target)",
+            True,
+            _mape,
+        ),
+        Metric(
+            "MdAPE",
+            1,
+            "median(|y - ŷ| / |y|) over steps 1..H, a fraction; NaN if any |y| <= 1e-12",
+            True,
+            _mdape,
+        ),
         Metric(
             "RRMSE",
             1,

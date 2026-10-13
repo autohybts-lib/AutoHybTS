@@ -17,11 +17,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, cast, overload
 
+import numpy as np
 import pandas as pd
 
 import autohybts
 from autohybts.adapters.base import Parametrized
 from autohybts.data.characterization import characterize as characterize_series
+from autohybts.data.characterization import decompose_series, ljung_box, stationarity_table
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
 from autohybts.data.schema import SeriesFrame
@@ -53,7 +55,7 @@ from autohybts.reporting.comparison import ComparisonResult, diebold_mariano, ho
 from autohybts.reporting.evidence import EvidenceBundle, write_evidence
 from autohybts.reporting.leaderboard import leaderboard
 from autohybts.reporting.plots import PlotArtifact, characterization_plot, data_plot, model_plot
-from autohybts.residuals.generation import ResidualSettings
+from autohybts.residuals.generation import ResidualSettings, one_step_residuals
 from autohybts.results import (
     CompareResult,
     Event,
@@ -970,6 +972,88 @@ class AutoHybridExperiment(Parametrized):
             for frame in frames
         ]
         return pd.DataFrame(rows).set_index("series_id")
+
+    def stationarity_report(self, series_id: str | None = None, max_d: int = 2) -> pd.DataFrame:
+        """ADF and KPSS at ``d = 0..max_d`` on the development history, with their consensus.
+
+        One row per series and order: statistics, p-values, each rule's decision and
+        ``consensus`` (both say stationary). The smallest passing order of each rule is in
+        the table's ``attrs`` (``d_adf``, ``d_kpss``, ``d_consensus``) for one series, and
+        in the columns of the same name for a panel. Exploratory: never reads the sealed
+        test.
+        """
+
+        self._require("VALIDATED")
+        frames = (
+            [self._series(series_id)]
+            if series_id is not None or not self.is_panel
+            else list(self.panel_)
+        )
+        tables = []
+        for frame in frames:
+            table = stationarity_table(frame.values, max_d)
+            for rule in ("adf", "kpss", "consensus"):
+                table[f"d_{rule}"] = table.attrs[f"d_{rule}"]
+            tables.append(table.assign(series_id=frame.series_id).reset_index())
+        report = pd.concat(tables).set_index(["series_id", "d"])
+        if len(frames) == 1:
+            report.attrs = {
+                f"d_{r}": int(report[f"d_{r}"].iloc[0]) for r in ("adf", "kpss", "consensus")
+            }
+        return cast(pd.DataFrame, report)
+
+    def decompose(
+        self,
+        method: str = "stl",
+        series_id: str | None = None,
+        period: int | None = None,
+    ) -> pd.DataFrame:
+        """Trend, seasonal and remainder of the development history, indexed by date.
+
+        ``method="stl"`` is a robust STL (statsmodels); ``"classical"`` the centred moving
+        average with mean seasonal indices (numpy; the trend is ``NaN`` at the edges).
+        Exploratory: the ``decomposition`` strategy recomputes its own decomposition on
+        each origin's training data.
+        """
+
+        self._require("VALIDATED")
+        frame = self._series(series_id)
+        parts = decompose_series(frame.values, int(period or self.seasonal_period_), method)
+        return pd.DataFrame(parts, index=pd.Index(frame.timestamps, name="timestamp"))
+
+    def residual_diagnostics(
+        self,
+        base: str,
+        series_id: str | None = None,
+        lags: Sequence[int] | None = None,
+        **params: Any,
+    ) -> pd.DataFrame:
+        """Ljung-Box test of a base model's one-step out-of-sample residuals.
+
+        The base is fitted on the first part of the development history and forecasts the
+        rest one step at a time with frozen parameters, as the ``historical_oof_1step``
+        residuals that correctors learn from. Autocorrelation left in these residuals
+        (small p-values) is room for a residual corrector. Default lags: ``min(10, n/5)``
+        and twice the seasonal period. Never reads the sealed test.
+        """
+
+        self._require("VALIDATED")
+        frame = self._series(series_id)
+        y = frame.values
+        space = self._space(with_residuals=False)
+        model = self.registry_.make_base(base, {**space.default_params(base), **params})
+        tail = ResidualSettings().tail_length(y.size)
+        start = y.size - tail
+        fitted = model.clone().fit(y[:start])
+        records = one_step_residuals(fitted, y, start, "historical_oof_1step")
+        residuals = np.array([record.residual for record in records])
+        if lags is None:
+            lags = [max(1, min(10, residuals.size // 5))]
+            if self.seasonal_period_ >= 2:
+                lags.append(2 * self.seasonal_period_)
+        table = ljung_box(residuals, lags)
+        table.attrs = {"base": base, "n_residuals": int(residuals.size), "start": int(start)}
+        return cast(pd.DataFrame, table)
 
     def plot_characterization(self, periods: Sequence[int] | None = None) -> PlotArtifact:
         """ADF statistic against seasonal strength for every series (see ``characterize``)."""
