@@ -343,3 +343,7 @@ Your own models
 Models from PyTorch, TensorFlow/Keras or any other library enter through registration
 (``exp.register_model``) and then work across the whole experiment: see
 :doc:`custom_models`.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/12_baselines_and_boosting`, :doc:`../tutorials/notebooks/14_intermittent_demand`.

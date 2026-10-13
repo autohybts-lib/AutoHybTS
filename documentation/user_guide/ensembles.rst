@@ -69,3 +69,7 @@ Cada tentativa conta seus ajustes de modelos-folha (``TrialResult.n_fits``;
 ``result.search.fit_count``). Um ensemble ``nnls`` de ``K`` membros ajusta ``2K``
 modelos por origem (prefixo e vetor inteiro); um híbrido, três (base, base no prefixo e
 corretor). Compare ganhos sempre com o custo.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/13_ensembles`.

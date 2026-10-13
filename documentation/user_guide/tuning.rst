@@ -30,3 +30,7 @@ ajuste, então a comparação com o original continua honesta.
            "estimator_params.epsilon": [0.01, 0.1, 0.5], # lista: opções
        },
    )
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/08_advanced_families_and_tuning`.

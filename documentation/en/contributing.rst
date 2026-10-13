@@ -106,66 +106,46 @@ before opening the PR:
    sphinx-build -W documentation documentation/_build/html
    sphinx-build -W documentation/en documentation/_build/html-en
 
-Publishing on Read the Docs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Environment and tests
+---------------------
 
-The language configured in the dashboard sets the URL segment (``pt-br`` or ``en``),
-but does not select the folder that Sphinx builds. Set the language and build
-configuration file according to the same row in this table:
+.. code-block:: bash
 
-.. list-table::
-   :header-rows: 1
+   python -m venv .venv
+   .venv/bin/python -m pip install -e ".[dev,stats,notebook]"   # Windows: .venv\Scripts\python
+   ruff check . && ruff format --check .
+   mypy                                  # strict, the whole package
+   pytest -m "not slow" --cov            # minimum coverage: 85 %
+   pytest -m leakage                     # one suite
 
-   * - Dashboard language (Language)
-     - Build configuration file
-     - Sphinx configuration in the YAML
-   * - Portuguese (Brazil)
-     - ``documentation/.readthedocs.yaml``
-     - ``documentation/conf.py``
-   * - English
-     - ``.readthedocs.yaml``
-     - ``documentation/en/conf.py``
+* The suites (``unit``, ``integration``, ``contracts``, ``leakage``, ``regression``) come
+  from the folder under ``tests/``. ``slow`` stays out of each PR's CI; ``network`` runs
+  only with ``--run-network``; ``heavy`` notebooks only with ``AUTOHYBTS_RUN_HEAVY=1``.
+* ``import autohybts`` must not load statsmodels, torch, optuna, matplotlib, plotly, yaml
+  or scikit-learn (``tests/contracts/test_import_minimal.py``): import heavy libraries
+  inside functions.
+* StatsForecast models require pandas < 3: test them in a second environment with the
+  ``nixtla-stats`` extra.
 
-To publish the Portuguese documentation at
-``https://autohybts.readthedocs.io/pt-br/latest/``:
+Adding a built-in model
+-----------------------
 
-1. Open the project that publishes Portuguese in the Read the Docs dashboard and
-   go to **Admin → Settings** (or **Settings**).
-2. Check the repository: ``https://github.com/jvataidee/AutoHybTS``.
-3. Set **Language** to **Portuguese (Brazil)**.
-4. Set **Build configuration file** to ``documentation/.readthedocs.yaml``.
-   This field takes the YAML path; the ``conf.py`` path is already inside it.
-5. Set **Default branch** to ``main`` and check that this branch contains the
-   documentation files. Changes on another branch do not reach ``latest``;
-   merge them into ``main`` for the final publication. For a preview, activate
-   the desired branch under **Versions** and build that version.
-6. Save and check that ``latest`` is active under **Versions**. Under **Builds**,
-   trigger **Build version** for ``latest``.
-7. Check the built commit in the log and that the Sphinx command uses
-   ``documentation/conf.py``. Once the build succeeds, open the URL above.
-
-Both YAML files already install the package with the ``docs`` extra on Python 3.12
-and Ubuntu 24.04. All paths inside them are relative to the repository root,
-including those in the YAML under ``documentation/``. Notebooks are copied during
-the build and rendered with their saved outputs, without execution.
-
-To offer both languages on the same domain, create one Read the Docs project per
-language, using the same repository and the values in the table. Choose one as the
-parent and add the other under **Translations** in the parent's dashboard. If
-``autohybts`` remains the Portuguese parent, the English project can be registered
-as its translation. If English is the parent, the Portuguese project is its
-translation. Keep the same versions active in both projects and build both.
-
-If English appears under ``/pt-br/``, check **Build configuration file**: the root
-YAML builds English even when the dashboard language is Portuguese. If the content
-is outdated, check the branch and commit in the last successful build.
-
-References: `configuration file in a subfolder
-<https://docs.readthedocs.com/platform/stable/guides/setup/monorepo.html>`_,
-`languages and translations
-<https://docs.readthedocs.com/platform/stable/localization.html>`_ and
-`versions and branches
-<https://docs.readthedocs.com/platform/stable/versions.html>`_.
+1. Subclass ``ForecasterBase`` (``autohybts.adapters.base``) and store every ``__init__``
+   argument in an attribute of the same name: that is how ``get_params`` and ``clone``
+   work.
+2. Implement ``_fit(y)`` and ``_predict(horizon, history)``. The forecast starts from the
+   observed context with frozen parameters: never refit inside the forecast (variant B
+   and out-of-sample residuals require it).
+3. Import the library inside the methods and declare the extra in
+   ``Capabilities(requires_extra=...)``.
+4. Register it in ``registry.default_registry()`` with a descriptive name; short names
+   collide with models registered by users (check notebooks and tests).
+5. The contract tests (``tests/contracts/test_base_forecaster.py``) and causality tests
+   (``tests/leakage/test_base_causality.py``) cover every registered model
+   automatically; if the defaults are slow, add fast parameters to ``FAST_PARAMS``.
+6. Keep the model out of the default search until it is measured and describe it in
+   :doc:`user_guide/models` (the tables of :doc:`user_guide/model_reference` are
+   generated).
 
 Documenting a strategy
 ----------------------

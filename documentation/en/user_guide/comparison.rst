@@ -33,11 +33,9 @@ Across finalists
 Cross-validation
 ----------------
 
-.. code-block:: python
-
-   cv = exp.cross_validate(["naive", "arima", result.best], folds=8, step=7)
-   cv.summary
-   cv.plot("boxplot")
+``exp.cross_validate`` builds its own folds and returns the same kind of comparison as
+this page (``cv.summary``, ``cv.plot("boxplot")`` …); the folds, nested CV and what each
+one estimates are in :doc:`temporal_validation`.
 
 On the sealed test
 ------------------
@@ -45,3 +43,7 @@ On the sealed test
 .. code-block:: python
 
    exp.compare_external()                # finalizes and evaluates each model once
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/06_compare_and_cross_validate`.

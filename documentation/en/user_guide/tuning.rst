@@ -30,3 +30,7 @@ tuning, so the comparison with the original stays honest.
            "estimator_params.epsilon": [0.01, 0.1, 0.5], # list: choices
        },
    )
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/08_advanced_families_and_tuning`.

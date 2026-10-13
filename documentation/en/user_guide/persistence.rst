@@ -35,3 +35,7 @@ Experiment evidence
 
 Writes the configuration, the splits, the search ledger, the decisions and the
 selection audit — without raw values of the series or of the sealed test.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/03_finalize_and_persist`.

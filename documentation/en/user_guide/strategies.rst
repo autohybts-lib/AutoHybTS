@@ -131,36 +131,9 @@ In the search
 (:doc:`ensembles`) and ``"dynamic"`` (variant B only). ``"multistage"`` and
 ``"dynamic"`` build on the residual structures and require ``"residual"``.
 
-========  ===================================================================
-Stage     What it does
-========  ===================================================================
-S0        evaluates every base
-S1        keeps the 2 best per family, ARIMA and the overall best
-S2        residual grid (corrector × window × alpha × source) on the retained
-          bases
-S3        refines the 2 best residual structures: source, corrector
-          parameters and extra stages
-S4        decompositions of the retained bases, combination of the 2 best from
-          different families, ensembles and, in variant B, dynamic selection
-          around the best residual structures, with the leftover budget (one
-          slot per family)
-========  ===================================================================
+The search stages (S0–S4), the budget, the wall-clock deadline and the ledger are in
+:doc:`search_space`.
 
-Every proposal — evaluated, pruned by the budget, skipped for capability or
-duplicated — stays in the ledger: ``result.search.ledger_frame()``.
+.. seealso::
 
-Budget
-------
-
-``budget`` (``"smoke"``, ``"small"``, ``"medium"``, ``"large"``) limits the number of
-candidates: total, per family and per stage (``max_trials`` replaces the total). The
-limits are applied to the ordered list of proposals before each stage, so the search is
-the same on any machine and with ``n_jobs`` sequential or parallel. The number of
-origins in each layer is ``fold``, not the budget.
-
-``max_wall_time_s`` adds an optional, **cooperative** wall-clock deadline: no candidate
-starts after it, and the one in progress finishes all its origins. The ones left out
-appear in the ledger as ``STOPPED`` and ``result.search.stop_reason`` is
-``"max_wall_time"``. There is no per-candidate timeout (interrupting a training run in
-progress would require an isolated process). With a deadline, the evaluated candidates
-can change from one machine to another; for reproducible results, limit by count only.
+   Tutorials: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/08_advanced_families_and_tuning`.

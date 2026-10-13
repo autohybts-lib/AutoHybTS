@@ -99,3 +99,7 @@ Limites
 * Só modelos locais e pontuais: intervalos de previsão do StatsForecast não são usados.
 * MLForecast e NeuralForecast não estão integrados.
 * Sem covariáveis (``target_mode="univariate"``).
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/15_statsforecast`.

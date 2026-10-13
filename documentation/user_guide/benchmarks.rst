@@ -1,5 +1,5 @@
-Ablação e calibração do procedimento
-====================================
+Avaliar o próprio procedimento
+==============================
 
 ``autohybts.benchmarks`` mede o próprio procedimento de seleção. Nada aqui é importado
 por ``import autohybts``.
@@ -101,3 +101,7 @@ disjuntas: ajuste numa, confira uma vez na outra. O teste externo não é lido.
 
 O notebook ``11_calibration`` roda os dois controles nos dois conjuntos, com tabelas e
 um gráfico das taxas por número de origens.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`.
