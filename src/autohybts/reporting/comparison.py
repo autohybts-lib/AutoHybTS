@@ -206,6 +206,47 @@ def friedman_nemenyi(
     return out
 
 
+def kruskal_dunn(results: Sequence[EvaluationResult], metric: str) -> dict[str, Any]:
+    """Kruskal-Wallis across models and Dunn's pairwise test (Holm-adjusted).
+
+    Both treat the models' errors as independent samples and ignore the pairing by unit;
+    neighbouring origins are not independent either. Friedman and Nemenyi
+    (``friedman_nemenyi``) are the paired counterparts and remain the recommended test.
+    """
+
+    from scipy import stats
+
+    table = unit_table(results, metric)
+    groups = {label: table[label].dropna().to_numpy() for label in table.columns}
+    out: dict[str, Any] = {"n_models": len(groups)}
+    if len(groups) < 2 or any(len(v) < 2 for v in groups.values()):
+        out.update(statistic=math.nan, p_value=math.nan, dunn=pd.DataFrame())
+        return out
+    statistic, p_value = stats.kruskal(*groups.values())
+    values = np.concatenate(list(groups.values()))
+    ranks = stats.rankdata(values)
+    n_total = values.size
+    _, counts = np.unique(values, return_counts=True)
+    tie = 1 - float(np.sum(counts**3 - counts)) / (n_total**3 - n_total)
+    mean_rank, sizes, position = {}, {}, 0
+    for label, group in groups.items():
+        mean_rank[label] = float(ranks[position : position + group.size].mean())
+        sizes[label] = group.size
+        position += group.size
+    rows = []
+    labels = list(groups)
+    for i, a in enumerate(labels):
+        for b in labels[i + 1 :]:
+            se = math.sqrt(tie * n_total * (n_total + 1) / 12 * (1 / sizes[a] + 1 / sizes[b]))
+            z = (mean_rank[a] - mean_rank[b]) / se if se > 0 else math.nan
+            p = float(2 * stats.norm.sf(abs(z))) if math.isfinite(z) else math.nan
+            rows.append({"model_a": a, "model_b": b, "z": z, "p_value": p})
+    dunn = pd.DataFrame(rows)
+    dunn["p_holm"] = holm(dunn["p_value"].tolist())
+    out.update(statistic=float(statistic), p_value=float(p_value), dunn=dunn)
+    return out
+
+
 @dataclass(frozen=True)
 class ComparisonResult:
     """Several models scored on the same units, with tables, tests and plots."""
@@ -249,6 +290,11 @@ class ComparisonResult:
 
     def friedman(self, alpha: float = 0.05) -> dict[str, Any]:
         return friedman_nemenyi(self.results, self.metric, alpha)
+
+    def kruskal(self) -> dict[str, Any]:
+        """Kruskal-Wallis and Dunn (Holm); they ignore the pairing, prefer ``friedman``."""
+
+        return kruskal_dunn(self.results, self.metric)
 
     def plot(self, kind: str = "leaderboard") -> Any:
         from autohybts.reporting.plots import comparison_plot

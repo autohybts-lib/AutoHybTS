@@ -177,6 +177,68 @@ Todos usam o histórico de desenvolvimento, nunca o teste selado (extras ``plot`
    estatística ADF contra ``F_S``, um ponto por série, colorido pela categoria; útil num
    painel.
 
+Estacionariedade: ADF e KPSS
+----------------------------
+
+``exp.stationarity_report()`` testa o nível e as diferenças até ``max_d`` (padrão 2) com
+os dois testes, que têm hipóteses nulas opostas: o ADF rejeita a raiz unitária quando
+``p ≤ 0,05`` e a estatística fica abaixo do crítico de 5 %; o KPSS diz estacionária
+quando não rejeita (``p ≥ 0,05``). ``consensus`` marca as ordens em que os dois
+concordam, e ``attrs`` traz a menor ordem de cada regra (``d_adf``, ``d_kpss``,
+``d_consensus``). Na ``synthetic_daily``:
+
+.. code-block:: text
+
+   d   adf_stat  adf_pvalue  adf_stationary  kpss_pvalue  kpss_stationary  consensus
+   0     -0.749       0.834           False         0.01            False      False
+   1    -11.128     < 0.001            True         0.10             True       True
+   2    -12.048     < 0.001            True         0.10             True       True
+
+   {'d_adf': 1, 'd_kpss': 1, 'd_consensus': 1}
+
+O KPSS informa p-valores só entre 0,01 e 0,10 (fora disso, o limite da tabela); com
+poucas observações, os dois testes têm pouco poder.
+
+Decomposição em tabela
+----------------------
+
+``exp.decompose("stl")`` (STL robusta) ou ``exp.decompose("classical")`` (média móvel
+centrada e índices sazonais médios) devolvem ``observed``, ``trend``, ``seasonal`` e
+``resid`` indexados pela data, no período do experimento (ou ``period=``). Na clássica, a
+tendência é ``NaN`` nas pontas. É exploratório: a estratégia ``decomposition`` refaz a
+decomposição no treino de cada origem.
+
+Resíduos de uma base: Ljung-Box
+-------------------------------
+
+``exp.residual_diagnostics("arima")`` ajusta a base na primeira metade do histórico de
+desenvolvimento e prevê a outra metade um passo por vez, com parâmetros congelados: são
+os resíduos fora da amostra de que os corretores aprendem. O teste de Ljung-Box diz se
+sobrou autocorrelação neles; ``p`` pequeno indica espaço para um corretor residual. Lags
+padrão: ``min(10, n/5)`` e duas vezes o período sazonal. Na ``synthetic_daily`` (358
+resíduos):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Base
+     - p (lag 10)
+     - p (lag 14)
+   * - ``naive``
+     - < 0,001
+     - < 0,001
+   * - ``seasonal_naive``
+     - < 0,001
+     - < 0,001
+   * - ``arima``
+     - 0,070
+     - 0,110
+
+Os resíduos do ``naive`` e do ``seasonal_naive`` carregam a estrutura que a base não
+modelou; os do ``arima``, quase nenhuma. Um teste sem rejeição não garante que um
+corretor seja inútil: a regra de aceite decide nas origens de validação.
+
 Diferenças automáticas
 ----------------------
 

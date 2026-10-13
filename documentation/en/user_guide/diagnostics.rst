@@ -179,6 +179,68 @@ extras):
    ADF statistic against ``F_S``, one point per series, coloured by category; useful in
    a panel.
 
+Stationarity: ADF and KPSS
+--------------------------
+
+``exp.stationarity_report()`` tests the level and the differences up to ``max_d``
+(default 2) with both tests, whose null hypotheses are opposite: ADF rejects a unit root
+when ``p ≤ 0.05`` and the statistic is below the 5 % critical value; KPSS says stationary
+when it does not reject (``p ≥ 0.05``). ``consensus`` marks the orders where both agree,
+and ``attrs`` holds each rule's smallest order (``d_adf``, ``d_kpss``, ``d_consensus``).
+On ``synthetic_daily``:
+
+.. code-block:: text
+
+   d   adf_stat  adf_pvalue  adf_stationary  kpss_pvalue  kpss_stationary  consensus
+   0     -0.749       0.834           False         0.01            False      False
+   1    -11.128     < 0.001            True         0.10             True       True
+   2    -12.048     < 0.001            True         0.10             True       True
+
+   {'d_adf': 1, 'd_kpss': 1, 'd_consensus': 1}
+
+KPSS reports p-values only between 0.01 and 0.10 (beyond that, the table's bound); with
+few observations, both tests have little power.
+
+Decomposition as a table
+------------------------
+
+``exp.decompose("stl")`` (robust STL) or ``exp.decompose("classical")`` (centred moving
+average and mean seasonal indices) return ``observed``, ``trend``, ``seasonal`` and
+``resid`` indexed by date, at the experiment's period (or ``period=``). In the classical
+one, the trend is ``NaN`` at the edges. It is exploratory: the ``decomposition`` strategy
+redoes the decomposition on each origin's training data.
+
+Residuals of a base: Ljung-Box
+------------------------------
+
+``exp.residual_diagnostics("arima")`` fits the base on the first half of the development
+history and forecasts the other half one step at a time, with frozen parameters: these
+are the out-of-sample residuals correctors learn from. The Ljung-Box test says whether
+autocorrelation is left in them; a small ``p`` signals room for a residual corrector.
+Default lags: ``min(10, n/5)`` and twice the seasonal period. On ``synthetic_daily`` (358
+residuals):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Base
+     - p (lag 10)
+     - p (lag 14)
+   * - ``naive``
+     - < 0.001
+     - < 0.001
+   * - ``seasonal_naive``
+     - < 0.001
+     - < 0.001
+   * - ``arima``
+     - 0.070
+     - 0.110
+
+The residuals of ``naive`` and ``seasonal_naive`` carry the structure the base did not
+model; those of ``arima``, almost none. A test without rejection does not guarantee that
+a corrector is useless: the acceptance rule decides on the validation origins.
+
 Automatic differences
 ---------------------
 

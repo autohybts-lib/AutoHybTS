@@ -296,7 +296,7 @@ whose maximum horizon is shorter than requested is ``SKIPPED`` without being fit
 Metrics
 -------
 
-MASE (default for ranking), MAE, RMSE, sMAPE, WAPE, RRMSE, RMAE (``MAE / mean of the
+MASE (default for ranking), MAE, RMSE, sMAPE, MAPE, MdAPE, WAPE, RRMSE, RMAE (``MAE / mean of the
 observations``, as in the replication protocol) and RMSSE (root mean squared error
 scaled by the squared seasonal difference of the training data, with the same ``m`` as
 MASE; M5 uses ``m = 1``). Choose with ``metrics=[...]``; the first one ranks and
