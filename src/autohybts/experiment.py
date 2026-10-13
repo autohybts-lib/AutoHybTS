@@ -136,14 +136,21 @@ class AutoHybridExperiment(Parametrized):
         fold: origins in each validation layer (``V_search`` and ``V_select``).
             ``"auto"`` (default) uses 7 when the history allows and otherwise the largest
             number that fits, with a warning: the acceptance rule is calibrated for 7
-            units on one series (ADR-0008); with fewer it accepts spurious structures
+            units on one series; with fewer it accepts spurious structures
             more often. An integer is used as given.
         fold_strategy: ``"expanding"`` or ``"rolling"`` (needs ``window_size``).
+        window_size: training window length of each origin with ``fold_strategy="rolling"``.
         seasonal_period: ``None`` infers it from the frequency (daily: 7, monthly: 12 ...).
         test_size: points sealed at the end of the series; ``None`` means ``fh``, ``0``
             disables the sealed test (operational forecasting).
         profile: ``"quickstart"`` (variability criterion off), ``"standard"``,
-            ``"research_strict"`` or ``"exploratory"`` (§30.3).
+            ``"research_strict"`` or ``"exploratory"``.
+        variant: forecasting protocol. ``"A"`` (default): each origin forecasts ``fh``
+            steps at once, and a corrector's window is fed with its own predicted
+            residuals. ``"B"``: rolling one-step forecasts with frozen parameters; each
+            observation is revealed only after its forecast and its residual then enters
+            the corrector window. Bases that cannot take new observations without
+            refitting are skipped in B; ``"dynamic"`` selection exists only in B.
         budget: search preset (``"smoke"``, ``"small"``, ``"medium"``, ``"large"``).
         max_trials: overrides the preset's total number of candidates.
         max_wall_time_s: optional search deadline in seconds (``None``: none, the default).
@@ -151,7 +158,7 @@ class AutoHybridExperiment(Parametrized):
             kept out are ``STOPPED`` in the ledger. With a deadline the searched set can
             change between machines; budgets by count are the reproducible ones.
         base_models, correctors, residual_windows, alphas, residual_sources: search space
-            (``None`` keeps the protocol presets of §8.1).
+            (``None`` keeps the default search space).
         base_params: grid of each base in stage S0, by model name: a list of parameter
             dicts, one candidate each (e.g. ``{"knn": [{"lags": 7}, {"lags": 14}]}``). A
             base without a grid uses its search defaults.
@@ -169,7 +176,7 @@ class AutoHybridExperiment(Parametrized):
             ``"ensemble"`` (``"equal"``, ``"median"``, ``"trimmed_mean"``,
             ``"inverse_mse"``, ``"nnls"``): ensembles of the best base of each family, of
             the two best residual structures and residual corrections of the equal-weight
-            ensemble (ADR-0007). Off the default ``include``: see the calibration gate.
+            ensemble. Off the default ``include``: see the calibration gate.
         stage_params: ``"shared"`` (extra stages reuse window, alpha and source) or
             ``"per_stage"`` (the search also varies the extra stage's window and alpha).
         significance_alpha: optional extra acceptance predicate: a one-sided paired
@@ -411,7 +418,7 @@ class AutoHybridExperiment(Parametrized):
         method: str = "equal",
         **options: Any,
     ) -> ModelResult:
-        """Evaluate one ensemble of complete forecasters on every origin (ADR-0007).
+        """Evaluate one ensemble of complete forecasters on every origin.
 
         ``models`` are names (default parameters of this experiment), specs or
         ``ModelResult`` — standalone models, hybrids or other ensembles. ``method`` is
@@ -689,7 +696,7 @@ class AutoHybridExperiment(Parametrized):
     def finalize_model(
         self, candidate: CandidateSpec | ModelResult
     ) -> FinalizedForecaster | PanelForecaster:
-        """Refit the frozen candidate on the history before the sealed test (R11, T13).
+        """Refit the frozen candidate on the history before the sealed test.
 
         In a panel each series is refitted with the configuration the selection chose for
         it (the champion's best configuration per series) and a ``PanelForecaster`` is
@@ -872,7 +879,7 @@ class AutoHybridExperiment(Parametrized):
         plot: str = "cv_forecasts",
         series_id: str | None = None,
     ) -> PlotArtifact:
-        """Validation diagnostics of a candidate; never uses the sealed test (§34.6).
+        """Validation diagnostics of a candidate; never uses the sealed test.
 
         In a panel the forecast plots show one series (``series_id``, default the first).
         """
@@ -916,7 +923,7 @@ class AutoHybridExperiment(Parametrized):
         return pd.DataFrame(rows, columns=columns)
 
     def export_evidence(self, path: str | Path, plots: Sequence[str] = ()) -> EvidenceBundle:
-        """Tables, decisions, splits and manifest of the last ``compare_models`` (§34.6).
+        """Tables, decisions, splits and manifest of the last ``compare_models``.
 
         Raw series values are not written. ``plots`` adds model plots of the champion
         (e.g. ``("selection_trace", "cv_forecasts")``).
@@ -1014,7 +1021,7 @@ class AutoHybridExperiment(Parametrized):
 
         Each model is finalized (refit on the pre-test history) and evaluated once; a model
         already evaluated reuses its result. Report it; do not go back and change the
-        configuration because of it, or the test becomes validation (§30.1).
+        configuration because of it, or the test becomes validation.
         """
 
         self._require("VALIDATED")
@@ -1062,7 +1069,7 @@ class AutoHybridExperiment(Parametrized):
         budget: BudgetPreset | None = None,
         include: Sequence[str] | None = None,
     ) -> NestedCVResult:
-        """Estimate how the whole automated procedure generalizes (§30.1, T27).
+        """Estimate how the whole automated procedure generalizes.
 
         For each outer origin (the last ``outer_folds`` blocks of ``fh`` points of the
         development history), a fresh experiment with these parameters searches and selects
@@ -1314,7 +1321,7 @@ class AutoHybridExperiment(Parametrized):
             if fold < AUTO_FOLD:
                 warnings.warn(
                     f"fold='auto': o histórico comporta {fold} origem(ns) por camada, menos que "
-                    f"as {AUTO_FOLD} da calibração da regra de aceite (ADR-0008); com menos "
+                    f"as {AUTO_FOLD} da calibração da regra de aceite; com menos "
                     "unidades a regra aceita estruturas espúrias com mais frequência.",
                     UserWarning,
                     stacklevel=3,
@@ -1515,7 +1522,7 @@ class AutoHybridExperiment(Parametrized):
             )
         if "dynamic" in include and self.variant != "B":
             raise ConfigurationError(
-                "'dynamic' só existe na variante B (R07): use AutoHybridExperiment(variant='B')."
+                "'dynamic' só existe na variante B: use AutoHybridExperiment(variant='B')."
             )
         if "dynamic" in include and "residual" not in include:
             raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")

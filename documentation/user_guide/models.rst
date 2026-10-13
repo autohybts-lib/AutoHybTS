@@ -1,11 +1,14 @@
 Modelos e bibliotecas
 =====================
 
-A AutoHybTS não implementa algoritmos de previsão próprios: cada modelo é um adaptador
-fino sobre uma biblioteca conhecida. O adaptador cuida do que é específico de séries
-temporais (janelas de lags, diferenciação, previsão recursiva, contexto temporal) e
-delega o ajuste à biblioteca de origem. O nome curto é o que se passa para
-``create_model``, ``create_hybrid`` e aparece no leaderboard.
+A maior parte dos modelos é um adaptador fino sobre uma biblioteca conhecida
+(scikit-learn, statsmodels, StatsForecast, LightGBM ...): o adaptador cuida do que é
+específico de séries temporais (janelas de lags, diferenciação, previsão recursiva,
+contexto temporal) e delega o ajuste à biblioteca de origem. Métodos simples sem uma
+implementação de referência adequada — baselines, regressão harmônica e os métodos de
+demanda intermitente — são implementados em numpy na própria AutoHybTS e marcados como
+"próprio (numpy)" nas tabelas. O nome curto é o que se passa para ``create_model`` e
+``create_hybrid``, e é o que aparece no leaderboard.
 
 .. code-block:: python
 

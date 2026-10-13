@@ -1,4 +1,4 @@
-"""Residual multistage: corrections of corrections, up to ``MAX_STAGES`` (§16).
+"""Residual multistage: corrections of corrections, up to ``MAX_STAGES``.
 
 Formal targets. Stage 0 is the base ``b``. For ``k >= 1`` the stage-``k`` model is
 ``ŷ_k = ŷ_{k-1} + α · r̂_k`` and its corrector learns ``e_k(t) = y(t) - ŷ_{k-1}(t)``,

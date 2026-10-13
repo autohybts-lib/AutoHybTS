@@ -133,7 +133,7 @@ Cost
 ----
 
 The cost of a search is proportional to candidates × origins × fits per candidate. With
-``fold="auto"`` (7 origins per layer when the series allows, ADR-0008), each candidate
+``fold="auto"`` (7 origins per layer when the series allows; see :doc:`selection`), each candidate
 is evaluated on more origins than with the old default of 3: in the example above,
 ``small`` took about 3.5 times as long. A hybrid fits the base twice per origin
 (training and residual prefix) plus the corrector. For a quick exploration,

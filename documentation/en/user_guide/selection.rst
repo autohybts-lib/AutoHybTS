@@ -2,9 +2,21 @@ Incremental selection
 =====================
 
 Selection starts from the best standalone model and visits the families in
-``family_order`` (statistical, linear, kernel, tree, neural, residual, decomposition,
-combination). Each family's finalist — its best structure in the search — challenges
-the **current champion** on ``V_select``.
+``family_order``: statistical, linear, kernel, tree, neural, residual, decomposition,
+combination and dynamic selection. Each family's finalist — its best structure in the
+search — challenges the **current champion** on ``V_select``.
+
+Some families join the chain only when they are used, and the default protocol does not
+change without them:
+
+* ``intermittent`` (``croston_sba``, ``tsb``, ``adida``, ``imapa``), when one of those
+  models is in ``base_models``, and the families of models registered with
+  ``register_model``, as soon as they are registered: right before ``residual``;
+* ``ensemble``, when included in ``compare_models(include=...)``: last, before
+  ``dynamic``.
+
+Families without a finalist (not requested in ``include`` or without a valid candidate)
+are skipped.
 
 Acceptance rule
 ---------------
@@ -34,7 +46,7 @@ Calibration of the rule
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 The thresholds and the number of origins come from a calibration with a known answer
-(``autohybts.benchmarks.calibration``; ADR-0008): 50 white-noise series, where any
+(``autohybts.benchmarks.calibration``): 50 white-noise series, where any
 composite structure is a false acceptance, and 50 with an AR(0.8) residual, where the
 correction is useful. The target, set before measuring, was false acceptance ≤ 10 % and
 useful gain accepted ≥ 50 %, per chain.
@@ -46,7 +58,7 @@ useful gain accepted ≥ 50 %, per chain.
    * - Rule
      - False acceptance
      - Useful gain accepted
-   * - gain ≥ 1 %, ``fold=3`` (previous default, §9.3 of the architecture)
+   * - gain ≥ 1 %, ``fold=3`` (previous default)
      - 38 %
      - 66 %
    * - gain ≥ 5 %, ``fold=3``

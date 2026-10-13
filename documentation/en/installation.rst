@@ -71,7 +71,7 @@ Combine extras inside brackets and keep the version. For example:
    * - ``datasets``
      - Reading the M3 benchmark
    * - ``yaml``
-     - PyYAML for working with YAML configurations
+     - PyYAML; reserved: no feature of this version depends on it
 
 Development
 -----------

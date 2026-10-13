@@ -1,4 +1,4 @@
-"""Decomposition hybrid: one model for the smooth part, another for the volatile part (§16).
+"""Decomposition hybrid: one model for the smooth part, another for the volatile part.
 
 ``y = s + v``. The base forecasts ``s``; a corrector forecasts ``v`` from windows of its
 past values, recursively in variant A (only its own predictions enter the window). The

@@ -1,11 +1,14 @@
 Models and libraries
 ====================
 
-AutoHybTS does not implement forecasting algorithms of its own: each model is a thin
-adapter over a well-known library. The adapter handles what is specific to time series
-(lag windows, differencing, recursive forecasting, temporal context) and delegates the
-fitting to the source library. The short name is what you pass to ``create_model`` and
-``create_hybrid``, and it shows up in the leaderboard.
+Most models are a thin adapter over a well-known library (scikit-learn, statsmodels,
+StatsForecast, LightGBM ...): the adapter handles what is specific to time series (lag
+windows, differencing, recursive forecasting, temporal context) and delegates the
+fitting to the source library. Simple methods without a suitable reference
+implementation — baselines, harmonic regression and the intermittent-demand methods —
+are implemented in numpy in AutoHybTS itself and marked "own (numpy)" in the tables.
+The short name is what you pass to ``create_model`` and ``create_hybrid``, and it shows
+up in the leaderboard.
 
 .. code-block:: python
 

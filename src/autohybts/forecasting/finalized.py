@@ -142,7 +142,7 @@ class ForecastTicket:
 
 
 class ForecastStream:
-    """``predict_next`` then ``observe``, in strict alternation; parameters stay frozen (T08)."""
+    """``predict_next`` then ``observe``, in strict alternation; parameters stay frozen."""
 
     def __init__(self, model: FinalizedForecaster) -> None:
         self._model = model

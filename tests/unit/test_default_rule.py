@@ -35,7 +35,7 @@ def test_auto_uses_seven_origins_when_they_fit() -> None:
 
 
 def test_auto_falls_back_with_a_warning_on_short_series() -> None:
-    with pytest.warns(UserWarning, match="ADR-0008"):
+    with pytest.warns(UserWarning, match="calibração da regra de aceite"):
         exp = AutoHybridExperiment(fh=12).fit(series(144, "MS"))
     assert exp.fold_ == 4
     assert len(exp.plan_.select_origins) == 4

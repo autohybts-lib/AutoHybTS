@@ -1,4 +1,4 @@
-"""Fixed combinations (§16): of base forecasters, and of residual correctors.
+"""Fixed combinations: of base forecasters, and of residual correctors.
 
 ``ŷ = Σ w_i · b_i`` with weights fixed at fit time:
 

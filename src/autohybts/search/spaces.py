@@ -73,7 +73,7 @@ class Proposal:
 
 @dataclass(frozen=True, slots=True)
 class SearchSpace:
-    """What the search may try; protocol presets of §8.1 by default.
+    """What the search may try; the default search space by default.
 
     ``base_params`` and ``corrector_params`` map a model name to a grid (sequence of
     parameter dicts); a missing entry means the model's defaults. ``refine_sources`` are
@@ -132,7 +132,7 @@ class SearchSpace:
         if self.dynamic_methods and self.variant != "B":
             raise ConfigurationError(
                 "A seleção dinâmica só existe na variante B: em A não há observação nova entre "
-                "os passos para escolher o corretor (R07)."
+                "os passos para escolher o corretor."
             )
         unknown_ensembles = set(self.ensemble_methods) - set(ENSEMBLE_METHODS)
         if unknown_ensembles:
@@ -465,7 +465,7 @@ class SearchSpace:
         structures: Sequence[CandidateSpec],
         registry: ModelRegistry,
     ) -> list[Proposal]:
-        """S4: ensembles (family ``ensemble``, ADR-0007), all from candidates already searched.
+        """S4: ensembles (family ``ensemble``), all from candidates already searched.
 
         * Ensembles of bases: the best retained base of each family, up to
           ``ENSEMBLE_SIZE`` (diversity of families before more members), with every

@@ -47,7 +47,7 @@ class Capabilities:
         target_mode: ``"univariate"`` (one series from its own history), ``"multivariate"``
             (several targets forecast jointly) or ``"exogenous"`` (needs covariates, past or
             known in advance). The search is univariate: the other two are skipped until
-            they get their own contract (plano de ensembles L03, F7).
+            they get their own contract.
     """
 
     multi_step: bool = True

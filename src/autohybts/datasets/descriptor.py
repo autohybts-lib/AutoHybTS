@@ -18,7 +18,7 @@ SplitKind: TypeAlias = Literal["official", "chronological", "custom", "none"]
 
 @dataclass(frozen=True)
 class DatasetDescriptor:
-    """Where a dataset came from and how it is split; kept in manifests (D07)."""
+    """Where a dataset came from and how it is split; kept in manifests."""
 
     provider: str
     dataset_id: str

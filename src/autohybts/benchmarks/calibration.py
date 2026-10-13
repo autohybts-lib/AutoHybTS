@@ -1,4 +1,4 @@
-"""Calibration of the acceptance rule on controls with a known answer (plan M02, §30.2).
+"""Calibration of the acceptance rule on controls with a known answer.
 
 Two controls, both daily, with the sealed test held out and never read:
 
@@ -129,7 +129,7 @@ def run_calibration(
     """One row per series, number of select origins and policy (see the module docstring).
 
     ``include`` are the families of the search; with ``"ensemble"`` the rates measure the
-    calibration gate of the composed families (plano de ensembles §6): any champion that
+    calibration gate of the composed families: any champion that
     is not a single model counts as a composed champion.
     """
 

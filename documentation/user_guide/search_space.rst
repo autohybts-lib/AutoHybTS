@@ -133,7 +133,7 @@ Custo
 -----
 
 O custo de uma busca é proporcional a candidatas × origens × ajustes por candidata. Com
-``fold="auto"`` (7 origens por camada quando a série comporta, ADR-0008), cada
+``fold="auto"`` (7 origens por camada quando a série comporta; veja :doc:`selection`), cada
 candidata é avaliada em mais origens que com o antigo padrão de 3: no exemplo acima, o
 ``small`` levou cerca de 3,5 vezes o tempo. Um híbrido ajusta a base duas vezes por
 origem (treino e prefixo dos resíduos) mais o corretor. Para uma exploração rápida,
