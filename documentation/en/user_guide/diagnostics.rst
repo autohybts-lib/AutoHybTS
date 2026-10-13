@@ -303,6 +303,14 @@ with ``transform="log"``, 0.881; with ``"boxcox"``, 0.927; with Box-Cox and
 ``differencing="auto"``, 0.773. The transform alone did not help: combined with the
 differences, it did. Use it as one more option to validate, not as a default.
 
+Missing values
+--------------
+
+By default (``missing="reject"``) a series with missing values is refused in ``fit``.
+With ``AutoHybridExperiment(missing="ffill")``, each gap gets the last observed value
+(only the past is used, no leakage) and leading gaps are dropped. Filled points enter the
+metrics as observed: prefer handling long gaps with your domain's criterion.
+
 Seasonal ARIMA
 --------------
 

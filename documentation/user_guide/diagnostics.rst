@@ -301,6 +301,15 @@ No ``air_passengers`` (mensal, 4 origens), o linear sobre 12 lags teve MASE 0,82
 0,773. A transformação sozinha não melhorou: combinada com as diferenças, sim. Use-a como
 mais uma opção a validar, não como padrão.
 
+Faltantes
+---------
+
+Por padrão (``missing="reject"``) uma série com valores ausentes é recusada no ``fit``.
+Com ``AutoHybridExperiment(missing="ffill")``, cada lacuna recebe o último valor
+observado (só o passado é usado, sem vazamento) e as lacunas do início são descartadas.
+Os pontos preenchidos entram nas métricas como observados: prefira tratar faltantes
+longos com o critério do seu domínio.
+
 ARIMA sazonal
 -------------
 
