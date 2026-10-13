@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+  <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/v/autohybts.svg" alt="PyPI"></a>
   <a href="https://autohybts.readthedocs.io/"><img src="https://readthedocs.org/projects/autohybts/badge/?version=latest" alt="Documentação"></a>
   <a href="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg" alt="Licença MIT"></a>
@@ -15,22 +16,25 @@
 
 A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
 
-> **Status: candidata à v1 (`1.0.0rc1`).** A API funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Esta é uma pré-versão para validação; a `1.0.0` estável depende da conferência final e do estudo em séries reais. Veja as [notas e a política de compatibilidade](documentation/releasing.rst).
+> **Status: candidata à v1 (`1.0.0rc1`), [publicada no PyPI](https://pypi.org/project/autohybts/1.0.0rc1/).** A API funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Esta é uma pré-versão para validação; a `1.0.0` estável depende da conferência final e do estudo em séries reais. Veja as [notas e a política de compatibilidade](documentation/releasing.rst).
 
 ## Instalação
 
 Requer Python 3.11 ou mais novo.
 
-Para testar o código antes da publicação da candidata, instale direto do repositório:
+Instale pelo PyPI com os modelos estatísticos e gráficos usados nos exemplos:
 
 ```bash
-pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
+python -m pip install "autohybts[stats,plot]==1.0.0rc1"
 ```
 
-A publicação de `v1.0.0rc1` será feita primeiro no TestPyPI. As instruções para instalar
-a candidata pelo índice de testes estão nas [notas de release](documentation/releasing.rst).
+A versão está fixada porque `1.0.0rc1` é uma candidata. Para instalar apenas o núcleo,
+use `python -m pip install "autohybts==1.0.0rc1"`. A instalação pelo PyPI não requer Git.
 
-Para usar modelos próprios em PyTorch ou TensorFlow, acrescente os extras `torch` e/ou `tensorflow` (ex.: `autohybts[stats,plot,torch]`).
+Para usar modelos próprios em PyTorch ou TensorFlow, acrescente os extras `torch` e/ou
+`tensorflow` (ex.: `autohybts[stats,plot,torch]==1.0.0rc1`). Para notebooks, use o extra
+`notebook`. Veja o [guia de instalação](documentation/installation.rst) para Jupyter,
+extras e instalação de desenvolvimento.
 
 ## Início rápido
 

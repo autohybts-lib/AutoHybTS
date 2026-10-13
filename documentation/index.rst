@@ -38,7 +38,8 @@ estratégias de montar sistemas híbridos:
 
 .. note::
 
-   **Candidata à v1** (|release|): pré-versão para validação. Consulte
+   **Candidata à v1** (|release|), publicada no PyPI: veja :doc:`installation`.
+   Esta é uma pré-versão para validação. Consulte
    :doc:`releasing` para o escopo, a compatibilidade e os critérios da versão estável.
 
 .. toctree::
