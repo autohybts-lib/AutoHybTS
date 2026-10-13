@@ -61,10 +61,12 @@ strategies for building hybrid systems together in a single workflow:
    :maxdepth: 1
    :caption: Guide: fundamentals
 
+   user_guide/configuration
    user_guide/temporal_validation
    user_guide/variant_b
    user_guide/selection
    user_guide/diagnostics
+   user_guide/troubleshooting
 
 .. toctree::
    :maxdepth: 1
@@ -95,6 +97,7 @@ strategies for building hybrid systems together in a single workflow:
    :maxdepth: 1
    :caption: Guide: results and production
 
+   user_guide/results
    user_guide/comparison
    user_guide/persistence
 

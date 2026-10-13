@@ -300,7 +300,7 @@ MASE (default for ranking), MAE, RMSE, sMAPE, WAPE, RRMSE, RMAE (``MAE / mean of
 observations``, as in the replication protocol) and RMSSE (root mean squared error
 scaled by the squared seasonal difference of the training data, with the same ``m`` as
 MASE; M5 uses ``m = 1``). Choose with ``metrics=[...]``; the first one ranks and
-selects.
+selects. Formulas and undefined cases in :doc:`results`.
 
 Other dependencies
 ------------------

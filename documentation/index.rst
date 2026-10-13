@@ -60,10 +60,12 @@ estratégias de montar sistemas híbridos:
    :maxdepth: 1
    :caption: Guia: fundamentos
 
+   user_guide/configuration
    user_guide/temporal_validation
    user_guide/variant_b
    user_guide/selection
    user_guide/diagnostics
+   user_guide/troubleshooting
 
 .. toctree::
    :maxdepth: 1
@@ -94,6 +96,7 @@ estratégias de montar sistemas híbridos:
    :maxdepth: 1
    :caption: Guia: resultados e produção
 
+   user_guide/results
    user_guide/comparison
    user_guide/persistence
 
