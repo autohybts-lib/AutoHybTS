@@ -49,6 +49,7 @@ strategies for building hybrid systems together in a single workflow:
 
    installation
    quickstart
+   concepts
 
 .. toctree::
    :maxdepth: 1

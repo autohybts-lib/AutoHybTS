@@ -18,7 +18,12 @@ prever. Cada método devolve um resultado imutável.
 
 ``fit`` valida a série, separa os últimos ``test_size`` pontos (padrão: ``fh``) como
 **teste selado** e congela as origens de validação. O teste selado só é lido por
-``evaluate_external``.
+``evaluate_external``. Os termos (origem, ``V_search``, ``V_select``, base, corretor …)
+estão em :doc:`concepts`.
+
+Por padrão a previsão é da **variante A**: ``fh`` passos de uma vez a partir de cada
+origem. Para prever um passo por vez, recebendo cada valor real antes do próximo, use
+``variant="B"`` (:doc:`user_guide/variant_b`).
 
 2. Explorar os dados
 --------------------
@@ -38,8 +43,24 @@ prever. Cada método devolve um resultado imutável.
    result.decisions          # cadeia incremental: desafiante, ganho, vitórias, motivo
    result.best               # o campeão
 
-A busca roda em ``V_search``; a escolha do campeão, em ``V_select``. Para incluir as
-outras estratégias de montar o sistema:
+A busca roda em ``V_search``; a escolha do campeão, em ``V_select``. O que olhar:
+
+* ``leaderboard``: uma linha por candidata avaliada, ordenada pela primeira métrica
+  (MASE por padrão; menor é melhor), com cobertura e custo;
+* ``decisions``: uma linha por família que desafiou o campeão, com ``accepted``,
+  ``median_gain`` (ganho mediano pareado), ``win_rate`` e o motivo de uma recusa.
+
+.. note::
+
+   Com os padrões (orçamento ``small`` e 7 origens por camada), ``compare_models`` pode
+   levar minutos: o notebook 01 inteiro, na série ``synthetic_daily``, levou cerca de
+   1 min, e séries maiores, mais modelos ou um orçamento maior levam mais. Para um
+   primeiro contato,
+   ``AutoHybridExperiment(fh=14, budget="smoke", fold=3)`` termina em segundos, com a
+   ressalva de que a regra de aceite foi calibrada para 7 origens
+   (:doc:`user_guide/selection`).
+
+Para incluir as outras estratégias de montar o sistema:
 
 .. code-block:: python
 
@@ -88,3 +109,13 @@ Sem teste selado (``test_size=0``), ou com o estimador de uma chamada:
 
    forecaster = AutoHybridForecaster(fh=14).fit(y)
    forecaster.predict()
+
+Próximos passos
+---------------
+
+* :doc:`concepts`: o vocabulário e o caminho dos dados, da divisão à previsão.
+* Tutoriais :doc:`tutorials/notebooks/01_quickstart` a
+  :doc:`tutorials/notebooks/04_rolling_one_step`: o mesmo fluxo com figuras, a seleção de
+  híbridos, a finalização e a variante B.
+* :doc:`user_guide/diagnostics`: sazonalidade, estacionariedade e diferenças antes de
+  escolher modelos.

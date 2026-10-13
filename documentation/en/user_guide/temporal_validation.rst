@@ -19,7 +19,9 @@ Everything in AutoHybTS starts from a temporal split frozen in ``fit``:
 
 At each origin ``o``, the model is fitted on ``y[:o+1]`` and forecasts ``fh`` steps.
 Nothing after the origin enters fitting, transforms, the MASE scale, corrector windows,
-the moving-average window or combination weights.
+the moving-average window or combination weights. In variant A (default) the ``fh``
+steps come at once; in variant B they are ``fh`` one-step forecasts, each value revealed
+only after its forecast, and the errors of the two are not comparable (:doc:`variant_b`).
 
 Parameters
 ----------

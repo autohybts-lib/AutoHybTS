@@ -18,7 +18,9 @@ Tudo em AutoHybTS parte de uma divisão temporal congelada em ``fit``:
 
 Em cada origem ``o``, o modelo é ajustado em ``y[:o+1]`` e prevê ``fh`` passos. Nada
 depois da origem entra em ajuste, transformações, escala da MASE, janelas do corretor,
-janela da média móvel ou pesos de combinação.
+janela da média móvel ou pesos de combinação. Na variante A (padrão) os ``fh`` passos
+saem de uma vez; na variante B são ``fh`` previsões de um passo, cada valor revelado só
+depois da sua previsão, e os erros das duas não são comparáveis (:doc:`variant_b`).
 
 Parâmetros
 ----------
