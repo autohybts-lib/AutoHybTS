@@ -64,7 +64,10 @@ Options shared by lag-based models and window correctors:
 
 * ``scale``: ``True`` (mean and deviation of the series), ``"columns"`` (per column,
   like ``StandardScaler``), ``"minmax"`` (per column, to [0, 1]) or ``False``;
-* ``differencing`` (bases only): differences fitted on each origin's training data;
+* ``differencing`` (bases only): number of differences (0, 1, 2 …) or ``"auto"``,
+  which chooses them on each origin's training data (:doc:`diagnostics`);
+  ``seasonal_differencing`` (0 or 1) with ``season_length`` adds a seasonal difference;
+  ``differencing_test`` (``"kpss"`` or ``"adf"``) is the test of ``"auto"``;
 * ``random_state``: seed; in the search, each origin gets a seed derived from the
   experiment's seed, unless you fix it;
 * ``feature_order`` (correctors only): ``"chronological"`` or ``"lag"``.

@@ -330,7 +330,8 @@ Modelos-base e corretores
 * **Box, G. E. P., & Jenkins, G. M. (1970).** *Time series analysis: Forecasting and
   control*. Holden-Day. (Livro, sem DOI.)
 
-  Identificação, estimação e diagnóstico de modelos ARIMA. *Na AutoHybTS:* ``arima``.
+  Identificação, estimação e diagnóstico de modelos ARIMA e ARIMA sazonais. *Na
+  AutoHybTS:* ``arima`` e ``sarima``.
 
 * **Akaike, H. (1974).** A new look at the statistical model identification. *IEEE
   Transactions on Automatic Control*, 19(6), 716–723.
@@ -431,7 +432,8 @@ Modelos-base e corretores
 
   ``auto.arima``: ``d`` por testes KPSS sucessivos e ``p``, ``q`` por critério de
   informação. *Na AutoHybTS:* ``arima`` com ``order="auto"`` segue a mesma ideia (KPSS e
-  AIC, só no treino).
+  AIC, só no treino); ``sarima`` acrescenta ``D`` pela força sazonal e a busca *stepwise*
+  de ``(p, q, P, Q)`` por AICc a partir de quatro modelos iniciais.
 
 * **Chen, T., & Guestrin, C. (2016).** XGBoost: A scalable tree boosting system. In
   *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery
@@ -531,7 +533,9 @@ Avaliação, validação temporal e testes
   Association*, 32(200), 675–701.
   `doi:10.1080/01621459.1937.10503522 <https://doi.org/10.1080/01621459.1937.10503522>`__
 
-  *Na AutoHybTS:* ``cmp.friedman()`` (:doc:`user_guide/comparison`).
+  *Na AutoHybTS:* ``cmp.friedman()`` (:doc:`user_guide/comparison`) e o teste de
+  sazonalidade de ``seasonality_report`` e ``seasonal_period="auto"``, com os ciclos
+  como blocos (:doc:`user_guide/diagnostics`).
 
 * **Wilcoxon, F. (1945).** Individual comparisons by ranking methods. *Biometrics
   Bulletin*, 1(6), 80–83.
@@ -592,6 +596,13 @@ Avaliação, validação temporal e testes
   `doi:10.1016/j.ijforecast.2006.03.001 <https://doi.org/10.1016/j.ijforecast.2006.03.001>`__
 
   *Na AutoHybTS:* ``MASE``, a métrica padrão de ordenação e seleção.
+
+* **Wang, X., Smith, K., & Hyndman, R. (2006).** Characteristic-based clustering for
+  time series data. *Data Mining and Knowledge Discovery*, 13(3), 335–364.
+  `doi:10.1007/s10618-005-0039-x <https://doi.org/10.1007/s10618-005-0039-x>`__
+
+  Força da tendência e da sazonalidade a partir de uma decomposição. *Na AutoHybTS:*
+  ``strength`` de ``seasonality_report`` e a escolha de ``D`` do ``sarima``.
 
 * **Varma, S., & Simon, R. (2006).** Bias in error estimation when using cross-validation
   for model selection. *BMC Bioinformatics*, 7, 91.

@@ -98,6 +98,12 @@ composite structures, and boosting on lags.
        Holt-Winters, damped: ``trend``, ``damped``, ``season_length``); parameters
        estimated on the training data and frozen, states updated by the context
      - ``stats`` extra (statsmodels)
+   * - ``sarima``
+     - statistical
+     - ``statsmodels.tsa.arima.model.ARIMA`` with a seasonal part ``(P, D, Q, m)``: ``D``
+       from the seasonal strength, ``d`` by KPSS and ``(p, q, P, Q)`` by AICc in a stepwise
+       search (:doc:`diagnostics`)
+     - ``stats`` extra (statsmodels)
    * - ``harmonic_regression``
      - statistical
      - own (numpy): dynamic harmonic regression, with trend, Fourier pairs for each

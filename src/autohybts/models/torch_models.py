@@ -162,7 +162,7 @@ class TorchForecaster(_TorchState, LaggedModelForecaster):
         module: ModuleBuilder,
         module_params: Mapping[str, Any] | None = None,
         lags: int | tuple[int, ...] = 14,
-        differencing: int = 0,
+        differencing: int | str = 0,
         scale: bool = True,
         epochs: int = 100,
         batch_size: int = 32,
@@ -172,12 +172,18 @@ class TorchForecaster(_TorchState, LaggedModelForecaster):
         random_state: int | None = 0,
         device: str = "cpu",
         requires: Mapping[str, str] | None = None,
+        seasonal_differencing: int = 0,
+        season_length: int = 1,
+        differencing_test: str = "kpss",
     ) -> None:
         if not callable(module):
             raise ConfigurationError("module deve ser uma classe ou função que cria a rede.")
         super().__init__(
             lags=lags,
             differencing=differencing,
+            seasonal_differencing=seasonal_differencing,
+            season_length=season_length,
+            differencing_test=differencing_test,
             scale=scale,
             epochs=epochs,
             batch_size=batch_size,

@@ -12,7 +12,8 @@ from typing import Any, Final
 import numpy as np
 
 from autohybts.adapters.base import FloatArray, ForecasterBase
-from autohybts.data.preprocessing import DifferenceTransform
+from autohybts.data.preprocessing import Differencer
+from autohybts.data.stationarity import check_differencing, differencer_for, max_lost
 from autohybts.data.windows import lag_matrix, latest_lags, normalize_lags
 from autohybts.exceptions import ConfigurationError, UnsupportedCapabilityError
 
@@ -108,7 +109,10 @@ EXTRA_ESTIMATORS: Final[dict[str, tuple[str, str]]] = {
 class LagRegressionForecaster(ForecasterBase):
     """Regressor trained on ``[y[t - lag] for lag in lags] -> y[t]``.
 
-    Optional differencing and standardization are fitted on the training vector only.
+    Optional differencing and standardization are fitted on the training vector only;
+    ``differencing="auto"`` chooses ``d`` (by ``differencing_test``) and, with
+    ``season_length >= 3``, one seasonal difference on that vector
+    (:mod:`autohybts.data.stationarity`), then keeps the choice frozen.
     At prediction time the differencing anchors come from the context (observed values),
     while the learned scale and estimator stay frozen. Multi-step forecasts are recursive:
     each prediction becomes a lag for the next step.
@@ -124,20 +128,20 @@ class LagRegressionForecaster(ForecasterBase):
         self,
         estimator: str = "linear",
         lags: int | tuple[int, ...] = 7,
-        differencing: int = 0,
+        differencing: int | str = 0,
         scale: bool | str = True,
         estimator_params: Mapping[str, Any] | None = None,
         random_state: int | None = 0,
+        seasonal_differencing: int = 0,
+        season_length: int = 1,
+        differencing_test: str = "kpss",
     ) -> None:
         super().__init__()
         if estimator not in ESTIMATORS:
             raise ConfigurationError(
                 f"Estimador desconhecido {estimator!r}; opções: {sorted(ESTIMATORS)}."
             )
-        if isinstance(differencing, bool) or not isinstance(differencing, int) or differencing < 0:
-            raise ConfigurationError(
-                f"differencing deve ser inteiro >= 0; recebido {differencing!r}."
-            )
+        check_differencing(differencing, seasonal_differencing, season_length, differencing_test)
         self._lags = normalize_lags(lags)
         self.estimator = estimator
         self.lags = lags
@@ -145,16 +149,31 @@ class LagRegressionForecaster(ForecasterBase):
         self.scale = check_scale(scale)
         self.estimator_params = estimator_params
         self.random_state = random_state
+        self.seasonal_differencing = seasonal_differencing
+        self.season_length = season_length
+        self.differencing_test = differencing_test
 
     @property
     def min_history(self) -> int:
-        return max(self._lags) + self.differencing
+        differencer: Differencer | None = getattr(self, "differencer_", None)
+        if differencer is not None:
+            return max(self._lags) + differencer.lost
+        return max(self._lags) + max_lost(
+            self.differencing, self.seasonal_differencing, self.season_length
+        )
 
     @property
     def min_train_size(self) -> int:
         return self.min_history + 1
 
     def _fit(self, y: FloatArray) -> None:
+        self.differencer_ = differencer_for(
+            y,
+            self.differencing,
+            self.seasonal_differencing,
+            self.season_length,
+            self.differencing_test,
+        )
         level = self._differenced(y)
         self.model_ = build_estimator(self.estimator, self.estimator_params, self.random_state)
         if self.scale in PER_COLUMN:
@@ -176,8 +195,8 @@ class LagRegressionForecaster(ForecasterBase):
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         anchors = None
         level = history
-        if self.differencing:
-            anchors, level = DifferenceTransform(self.differencing).fit_transform(history)
+        if self.differencer_.lost:
+            anchors, level = self.differencer_.fit_transform(history)
         columns = self.scale in PER_COLUMN
         # Per-column scaling works on raw lags; the global one on the standardized series.
         window = list(level if columns else self._standardized(level))
@@ -198,9 +217,9 @@ class LagRegressionForecaster(ForecasterBase):
         return forecast if anchors is None else anchors.inverse_forecast(forecast)
 
     def _differenced(self, y: FloatArray) -> FloatArray:
-        if not self.differencing:
+        if not self.differencer_.lost:
             return y
-        return DifferenceTransform(self.differencing).fit_transform(y)[1]
+        return self.differencer_.fit_transform(y)[1]
 
     def _standardized(self, values: FloatArray) -> FloatArray:
         return (values - self.center_) / self.spread_

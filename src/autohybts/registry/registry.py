@@ -289,6 +289,7 @@ def default_registry() -> ModelRegistry:
     )
     from autohybts.adapters.statsmodels_arima import ArimaForecaster
     from autohybts.adapters.statsmodels_ets import ExponentialSmoothingForecaster
+    from autohybts.adapters.statsmodels_sarima import SarimaForecaster
 
     registry = ModelRegistry()
     registry.register_base(
@@ -375,6 +376,17 @@ def default_registry() -> ModelRegistry:
         family="statistical",
         capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats"),
         description="ARIMA (statsmodels); ordem automática por KPSS e AIC.",
+    )
+    # Opt-in (DS1): out of the default search space until measured on M3/M4.
+    registry.register_base(
+        "sarima",
+        lambda p: SarimaForecaster(**p),
+        family="statistical",
+        capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats"),
+        description=(
+            "ARIMA sazonal (statsmodels); D pela força sazonal, d por KPSS, "
+            "(p, q, P, Q) por AICc em busca stepwise."
+        ),
     )
     lag_models = {
         "linear": ("linear", True, "Regressão linear sobre lags."),

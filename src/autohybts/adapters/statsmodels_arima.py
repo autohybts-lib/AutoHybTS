@@ -15,7 +15,7 @@ import itertools
 import threading
 import warnings
 from collections import OrderedDict
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 import numpy as np
 
@@ -30,6 +30,8 @@ __all__ = ["ArimaForecaster"]
 
 # statsmodels only accepts trend terms of order >= d: constant at d=0, drift at d=1.
 TREND_BY_D = {0: "c", 1: "t", 2: "n"}
+
+_Item = TypeVar("_Item")
 
 
 class ArimaForecaster(ForecasterBase):
@@ -169,7 +171,7 @@ class ArimaForecaster(ForecasterBase):
         raise AssertionError("unreachable: the loop returns at d == max_d")  # pragma: no cover
 
 
-class _BoundedCache:
+class _BoundedCache(Generic[_Item]):
     """Thread-safe LRU of fitted ``(order, params, warnings)`` by training vector and settings.
 
     Only numbers are shared: every model still builds its own statsmodels result, so no
@@ -179,13 +181,11 @@ class _BoundedCache:
 
     def __init__(self, size: int = 1024) -> None:
         self.size = size
-        self._items: OrderedDict[str, tuple[tuple[int, int, int], Any, tuple[str, ...]]] = (
-            OrderedDict()
-        )
+        self._items: OrderedDict[str, _Item] = OrderedDict()
         self._lock = threading.Lock()
         self.hits = 0
 
-    def get(self, key: str) -> tuple[tuple[int, int, int], Any, tuple[str, ...]] | None:
+    def get(self, key: str) -> _Item | None:
         with self._lock:
             item = self._items.get(key)
             if item is not None:
@@ -193,7 +193,7 @@ class _BoundedCache:
                 self.hits += 1
             return item
 
-    def put(self, key: str, item: tuple[tuple[int, int, int], Any, tuple[str, ...]]) -> None:
+    def put(self, key: str, item: _Item) -> None:
         with self._lock:
             self._items[key] = item
             self._items.move_to_end(key)
@@ -206,7 +206,7 @@ class _BoundedCache:
             self.hits = 0
 
 
-_FIT_CACHE = _BoundedCache()
+_FIT_CACHE: _BoundedCache[tuple[tuple[int, int, int], Any, tuple[str, ...]]] = _BoundedCache()
 
 
 def _arima_class() -> Any:

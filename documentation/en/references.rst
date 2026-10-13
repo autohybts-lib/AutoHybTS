@@ -333,8 +333,8 @@ Base models and correctors
 * **Box, G. E. P., & Jenkins, G. M. (1970).** *Time series analysis: Forecasting and
   control*. Holden-Day. (Book, no DOI.)
 
-  Identification, estimation and diagnostic checking of ARIMA models. *In AutoHybTS:*
-  ``arima``.
+  Identification, estimation and diagnostic checking of ARIMA and seasonal ARIMA models.
+  *In AutoHybTS:* ``arima`` and ``sarima``.
 
 * **Akaike, H. (1974).** A new look at the statistical model identification. *IEEE
   Transactions on Automatic Control*, 19(6), 716–723.
@@ -435,7 +435,8 @@ Base models and correctors
 
   ``auto.arima``: ``d`` by successive KPSS tests and ``p``, ``q`` by information
   criterion. *In AutoHybTS:* ``arima`` with ``order="auto"`` follows the same idea (KPSS
-  and AIC, on the training data only).
+  and AIC, on the training data only); ``sarima`` adds ``D`` from the seasonal strength
+  and the stepwise search of ``(p, q, P, Q)`` by AICc from four starting models.
 
 * **Chen, T., & Guestrin, C. (2016).** XGBoost: A scalable tree boosting system. In
   *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery
@@ -536,7 +537,9 @@ Evaluation, temporal validation and tests
   Association*, 32(200), 675–701.
   `doi:10.1080/01621459.1937.10503522 <https://doi.org/10.1080/01621459.1937.10503522>`__
 
-  *In AutoHybTS:* ``cmp.friedman()`` (:doc:`user_guide/comparison`).
+  *In AutoHybTS:* ``cmp.friedman()`` (:doc:`user_guide/comparison`) and the seasonality
+  test of ``seasonality_report`` and ``seasonal_period="auto"``, with cycles as blocks
+  (:doc:`user_guide/diagnostics`).
 
 * **Wilcoxon, F. (1945).** Individual comparisons by ranking methods. *Biometrics
   Bulletin*, 1(6), 80–83.
@@ -597,6 +600,13 @@ Evaluation, temporal validation and tests
   `doi:10.1016/j.ijforecast.2006.03.001 <https://doi.org/10.1016/j.ijforecast.2006.03.001>`__
 
   *In AutoHybTS:* ``MASE``, the default ranking and selection metric.
+
+* **Wang, X., Smith, K., & Hyndman, R. (2006).** Characteristic-based clustering for
+  time series data. *Data Mining and Knowledge Discovery*, 13(3), 335–364.
+  `doi:10.1007/s10618-005-0039-x <https://doi.org/10.1007/s10618-005-0039-x>`__
+
+  Strength of trend and seasonality from a decomposition. *In AutoHybTS:* ``strength``
+  of ``seasonality_report`` and the choice of ``D`` in ``sarima``.
 
 * **Varma, S., & Simon, R. (2006).** Bias in error estimation when using cross-validation
   for model selection. *BMC Bioinformatics*, 7, 91.

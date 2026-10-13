@@ -15,6 +15,7 @@ from autohybts.registry import default_registry
 REGISTRY = default_registry()
 FAST_PARAMS: dict[str, dict[str, Any]] = {
     "arima": {"order": (1, 1, 1)},
+    "sarima": {"season_length": 7, "order": (1, 0, 0), "seasonal_order": (1, 0, 0)},
     "random_forest": {"estimator_params": {"n_estimators": 10}},
     "extra_trees_regressor": {"estimator_params": {"n_estimators": 10}},
     "mlp": {"estimator_params": {"hidden_layer_sizes": (8,), "max_iter": 300}},
@@ -27,6 +28,7 @@ FAST_PARAMS: dict[str, dict[str, Any]] = {
 # Models from optional extras are skipped when their library is missing.
 EXTRA_MODULES: dict[str, str] = {
     "arima": "statsmodels",
+    "sarima": "statsmodels",
     "exponential_smoothing": "statsmodels",
     "lightgbm_regressor": "lightgbm",
     "sf_auto_arima": "statsforecast",

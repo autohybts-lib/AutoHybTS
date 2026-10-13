@@ -99,6 +99,12 @@ comparar estruturas compostas e boosting sobre lags.
        amortecida: ``trend``, ``damped``, ``season_length``); parâmetros estimados no treino
        e congelados, estados atualizados pelo contexto
      - extra ``stats`` (statsmodels)
+   * - ``sarima``
+     - statistical
+     - ``statsmodels.tsa.arima.model.ARIMA`` com parte sazonal ``(P, D, Q, m)``: ``D`` pela
+       força sazonal, ``d`` por KPSS e ``(p, q, P, Q)`` por AICc em busca *stepwise*
+       (:doc:`diagnostics`)
+     - extra ``stats`` (statsmodels)
    * - ``harmonic_regression``
      - statistical
      - próprio (numpy): regressão harmônica dinâmica, com tendência, pares de Fourier

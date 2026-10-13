@@ -61,6 +61,7 @@ strategies for building hybrid systems together in a single workflow:
    :caption: User guide
 
    user_guide/temporal_validation
+   user_guide/diagnostics
    user_guide/datasets
    user_guide/models
    user_guide/model_reference
