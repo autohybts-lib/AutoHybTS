@@ -53,7 +53,7 @@ def structure_key(candidate: CandidateSpec) -> tuple[str, ...]:
 def eligible(result: EvaluationResult, metric: str, full_pairing: bool) -> bool:
     if not math.isfinite(result.mean(metric)):
         return False
-    return result.coverage(metric) == 1.0 if full_pairing else result.coverage(metric) > 0
+    return result.coverage(metric) >= 1.0 if full_pairing else result.coverage(metric) > 0
 
 
 def _best_configs(

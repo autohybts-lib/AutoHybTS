@@ -416,11 +416,16 @@ def _metric_by_horizon(candidate: CandidateSpec, evaluation: EvaluationResult) -
 
 def _selection_trace(candidate: CandidateSpec, selection: SelectionResult) -> Any:
     figure, (ax,) = _figure(height=4.2)
-    decisions = selection.decisions
-    if not decisions:
+    if selection.decisions:
+        _draw_decisions(ax, candidate, selection)
+    else:
         ax.text(0.5, 0.5, "sem desafiantes: o campeão inicial foi mantido", ha="center")
         ax.set_axis_off()
-        return figure
+    return figure
+
+
+def _draw_decisions(ax: Any, candidate: CandidateSpec, selection: SelectionResult) -> None:
+    decisions = selection.decisions
     thresholds = decisions[0].thresholds
     gains = [d.median_gain if math.isfinite(d.median_gain) else 0.0 for d in decisions]
     colors = ["#55A868" if d.accepted else "#C44E52" for d in decisions]
@@ -453,7 +458,6 @@ def _selection_trace(candidate: CandidateSpec, selection: SelectionResult) -> An
         fontsize=10,
     )
     ax.legend(fontsize=8)
-    return figure
 
 
 def _search_overfitting(
