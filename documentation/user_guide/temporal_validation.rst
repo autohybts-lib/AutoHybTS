@@ -74,3 +74,7 @@ Sem ``include``, as buscas internas repetem as famílias do último ``compare_mo
 **da seleção interna** de cada dobra, escolhida sem o bloco externo; é a referência
 justa para dizer se a hibridação compensa. ``nested.total_candidates`` e
 ``nested.total_seconds`` somam o trabalho de todas as dobras.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/06_compare_and_cross_validate`.

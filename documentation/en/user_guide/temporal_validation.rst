@@ -77,3 +77,7 @@ Without ``include``, the inner searches repeat the families of the last
 is the best base **of the inner selection** of each fold, chosen without the outer
 block; it is the fair reference for saying whether hybridization pays off.
 ``nested.total_candidates`` and ``nested.total_seconds`` add up the work of all folds.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/06_compare_and_cross_validate`.

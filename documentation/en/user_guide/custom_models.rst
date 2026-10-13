@@ -184,3 +184,7 @@ The ``10_external_models`` notebook has the complete workflow with PyTorch (LSTM
 Transformer, Mamba and a GRU written on the spot), Keras (LSTM, Transformer and a
 convolution written on the spot), statsmodels' Holt-Winters through functions and
 scikit-learn gradient boosting.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/10_external_models`.

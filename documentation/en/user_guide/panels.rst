@@ -37,3 +37,7 @@ experiment runs on the truncated panel and the table has one row per fold and se
    nested = exp.nested_cross_validate(outer_folds=3)
    nested.folds        # index (fold_id, series_id)
    nested.summary
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/07_panel`.

@@ -33,11 +33,9 @@ Entre finalistas
 Validação cruzada
 -----------------
 
-.. code-block:: python
-
-   cv = exp.cross_validate(["naive", "arima", result.best], folds=8, step=7)
-   cv.summary
-   cv.plot("boxplot")
+``exp.cross_validate`` cria dobras próprias e devolve o mesmo tipo de comparação desta
+página (``cv.summary``, ``cv.plot("boxplot")`` …); as dobras, a CV aninhada e o que cada
+uma estima estão em :doc:`temporal_validation`.
 
 No teste selado
 ---------------
@@ -45,3 +43,7 @@ No teste selado
 .. code-block:: python
 
    exp.compare_external()                # finaliza e avalia cada modelo uma vez
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/06_compare_and_cross_validate`.

@@ -35,3 +35,7 @@ Evidências do experimento
 
 Grava a configuração, as divisões, o ledger da busca, as decisões e a auditoria da
 seleção — sem valores brutos da série nem do teste selado.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/03_finalize_and_persist`.

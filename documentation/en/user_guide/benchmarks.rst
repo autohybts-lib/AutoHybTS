@@ -1,5 +1,5 @@
-Ablation and calibration of the procedure
-=========================================
+Evaluating the procedure itself
+===============================
 
 ``autohybts.benchmarks`` measures the selection procedure itself. Nothing here is
 imported by ``import autohybts``.
@@ -105,3 +105,7 @@ disjoint seeds: tune on one, check once on the other. The external test is not r
 
 The ``11_calibration`` notebook runs both controls on both sets, with tables and a plot
 of the rates per number of origins.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`.

@@ -101,3 +101,7 @@ Limitations
 * Local point models only: StatsForecast's prediction intervals are not used.
 * MLForecast and NeuralForecast are not integrated.
 * No covariates (``target_mode="univariate"``).
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/15_statsforecast`.

@@ -116,3 +116,7 @@ and averaged.
    both, which happens by chance in about 1 of every 4 comparisons. Measure the
    behaviour of the chain with ``autohybts.benchmarks.calibration`` and use the
    comparison and nested CV to report the uncertainty.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/09_ablation`, :doc:`../tutorials/notebooks/11_calibration`.

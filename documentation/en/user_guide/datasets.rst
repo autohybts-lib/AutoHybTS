@@ -1,5 +1,5 @@
-Datasets and benchmarks
-=======================
+Data and reference series
+=========================
 
 Copy the name and pass it to ``get_data``; the result is a ``pd.Series`` with a regular
 ``DatetimeIndex``, ready for ``fit``.
@@ -245,3 +245,7 @@ assembled by hand from the raw table:
 
    The license of each Rdatasets dataset is that of the source R package. The library
    does not redistribute data: check the source before republishing.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`.

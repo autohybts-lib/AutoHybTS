@@ -39,3 +39,7 @@ dobra e série.
    nested = exp.nested_cross_validate(outer_folds=3)
    nested.folds        # índice (fold_id, series_id)
    nested.summary
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/07_panel`.

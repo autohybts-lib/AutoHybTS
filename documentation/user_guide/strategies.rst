@@ -126,36 +126,9 @@ Na busca
 (:doc:`ensembles`) e ``"dynamic"`` (só na variante B). ``"multistage"`` e ``"dynamic"``
 partem das estruturas residuais e exigem ``"residual"``.
 
-========  ===================================================================
-Etapa     O que faz
-========  ===================================================================
-S0        avalia todas as bases
-S1        retém as 2 melhores por família, o ARIMA e a melhor geral
-S2        grade residual (corretor × janela × alfa × fonte) nas bases retidas
-S3        refina as 2 melhores estruturas residuais: fonte, parâmetros do
-          corretor e estágios extras
-S4        decomposições das bases retidas, combinação das 2 melhores de famílias
-          diferentes, ensembles e, na variante B, seleção dinâmica em torno das
-          melhores estruturas residuais, com o orçamento que sobrar (uma vaga
-          por família)
-========  ===================================================================
+As etapas da busca (S0–S4), o orçamento, o prazo de relógio e o ledger estão em
+:doc:`search_space`.
 
-Todas as propostas — avaliadas, podadas pelo orçamento, puladas por capacidade ou
-duplicadas — ficam no ledger: ``result.search.ledger_frame()``.
+.. seealso::
 
-Orçamento
----------
-
-``budget`` (``"smoke"``, ``"small"``, ``"medium"``, ``"large"``) limita o número de
-candidatas: total, por família e por etapa (``max_trials`` substitui o total). Os
-limites são aplicados à lista ordenada de propostas antes de cada etapa, então a busca
-é a mesma em qualquer máquina e com ``n_jobs`` sequencial ou paralelo. O número de
-origens de cada camada é ``fold``, não o orçamento.
-
-``max_wall_time_s`` acrescenta um prazo de relógio opcional e **cooperativo**: nenhuma
-candidata começa depois dele, e a que estiver em andamento termina todas as suas
-origens. As que ficaram de fora aparecem no ledger como ``STOPPED`` e
-``result.search.stop_reason`` vale ``"max_wall_time"``. Não há tempo limite por
-candidata (interromper um treino em andamento exigiria um processo isolado). Com prazo,
-as candidatas avaliadas podem mudar de uma máquina para outra; para resultados
-reprodutíveis, limite só por quantidade.
+   Tutoriais: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/08_advanced_families_and_tuning`.

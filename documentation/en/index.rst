@@ -59,24 +59,49 @@ strategies for building hybrid systems together in a single workflow:
 
 .. toctree::
    :maxdepth: 1
-   :caption: User guide
+   :caption: Guide: fundamentals
 
    user_guide/temporal_validation
+   user_guide/variant_b
+   user_guide/selection
    user_guide/diagnostics
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guide: data
+
    user_guide/datasets
+   user_guide/panels
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guide: models
+
    user_guide/models
    user_guide/model_reference
    user_guide/nixtla
    user_guide/custom_models
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guide: search
+
    user_guide/search_space
    user_guide/strategies
    user_guide/ensembles
-   user_guide/selection
-   user_guide/comparison
-   user_guide/panels
-   user_guide/variant_b
    user_guide/tuning
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guide: results and production
+
+   user_guide/comparison
    user_guide/persistence
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guide: evaluating the procedure
+
    user_guide/benchmarks
 
 .. toctree::
@@ -91,5 +116,6 @@ strategies for building hybrid systems together in a single workflow:
    :caption: Project
 
    contributing
+   maintainers
    releasing
    about

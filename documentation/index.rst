@@ -58,24 +58,49 @@ estratégias de montar sistemas híbridos:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Guia do usuário
+   :caption: Guia: fundamentos
 
    user_guide/temporal_validation
+   user_guide/variant_b
+   user_guide/selection
    user_guide/diagnostics
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guia: dados
+
    user_guide/datasets
+   user_guide/panels
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guia: modelos
+
    user_guide/models
    user_guide/model_reference
    user_guide/nixtla
    user_guide/custom_models
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guia: busca
+
    user_guide/search_space
    user_guide/strategies
    user_guide/ensembles
-   user_guide/selection
-   user_guide/comparison
-   user_guide/panels
-   user_guide/variant_b
    user_guide/tuning
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guia: resultados e produção
+
+   user_guide/comparison
    user_guide/persistence
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guia: avaliar o procedimento
+
    user_guide/benchmarks
 
 .. toctree::
@@ -90,5 +115,6 @@ estratégias de montar sistemas híbridos:
    :caption: Projeto
 
    contributing
+   maintainers
    releasing
    about

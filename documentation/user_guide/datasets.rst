@@ -1,5 +1,5 @@
-Datasets e benchmarks
-=====================
+Dados e séries de referência
+============================
 
 Copie o nome e passe para ``get_data``; o resultado é uma ``pd.Series`` com
 ``DatetimeIndex`` regular, pronta para o ``fit``.
@@ -244,3 +244,7 @@ Tabelas sem coluna de data, como ``airquality`` (só ``Month`` e ``Day``), são 
 
    A licença de cada dataset do Rdatasets é a do pacote R de origem. A biblioteca não
    redistribui dados: consulte a origem antes de republicar.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/05_benchmark_m4`.

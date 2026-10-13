@@ -70,3 +70,7 @@ Each trial counts its leaf-model fits (``TrialResult.n_fits``;
 ``result.search.fit_count``). An ``nnls`` ensemble of ``K`` members fits ``2K`` models
 per origin (prefix and whole vector); a hybrid, three (base, base on the prefix and
 corrector). Always weigh gains against cost.
+
+.. seealso::
+
+   Tutorials: :doc:`../tutorials/notebooks/13_ensembles`.

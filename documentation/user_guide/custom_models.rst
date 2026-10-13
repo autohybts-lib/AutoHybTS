@@ -179,3 +179,7 @@ Arquiteturas de exemplo
 O notebook ``10_external_models`` traz o fluxo completo com PyTorch (LSTM, Transformer,
 Mamba e um GRU escrito na hora), Keras (LSTM, Transformer e uma convolução escrita na
 hora), Holt-Winters do statsmodels por funções e gradient boosting do scikit-learn.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/10_external_models`.

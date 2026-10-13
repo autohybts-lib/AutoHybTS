@@ -114,3 +114,7 @@ promediados.
    duas, o que acontece por acaso em cerca de 1 de cada 4 comparações. Meça o
    comportamento da cadeia com ``autohybts.benchmarks.calibration`` e use a comparação
    e a CV aninhada para relatar a incerteza.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/09_ablation`, :doc:`../tutorials/notebooks/11_calibration`.

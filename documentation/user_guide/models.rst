@@ -339,3 +339,7 @@ Modelos próprios
 Modelos de PyTorch, TensorFlow/Keras ou de qualquer outra biblioteca entram por registro
 (``exp.register_model``) e passam a valer em todo o experimento: veja
 :doc:`custom_models`.
+
+.. seealso::
+
+   Tutoriais: :doc:`../tutorials/notebooks/12_baselines_and_boosting`, :doc:`../tutorials/notebooks/14_intermittent_demand`.
