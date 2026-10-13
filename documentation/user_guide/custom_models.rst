@@ -23,8 +23,8 @@ de validação temporal.
    )
    result = exp.fit(y).compare_models()
 
-Instalação dos extras: ``pip install "autohybts[torch]"`` ou
-``pip install "autohybts[tensorflow]"``. ``import autohybts`` nunca carrega essas
+Instalação pelo PyPI: ``python -m pip install "autohybts[torch]==1.0.0rc1"`` ou
+``python -m pip install "autohybts[tensorflow]==1.0.0rc1"``. ``import autohybts`` nunca carrega essas
 bibliotecas; elas são importadas quando o modelo é ajustado.
 
 Quatro maneiras de trazer o modelo

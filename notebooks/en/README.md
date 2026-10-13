@@ -22,6 +22,16 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 
 ## How to run
 
+To use the tutorials with the candidate published on PyPI:
+
+```bash
+python -m pip install "autohybts[stats,notebook]==1.0.0rc1"
+```
+
+Notebooks 05, 10, 12 and 15 require the extras listed in the table. See the
+[installation guide](../../documentation/en/installation.rst) for other extras.
+To develop and run tests from a local clone:
+
 ```bash
 .venv/Scripts/python -m pip install -e ".[dev,stats,notebook]"
 ```

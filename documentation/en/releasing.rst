@@ -10,6 +10,11 @@ combinations and ensembles, panels of local models, search and hyperparameter
 tuning, temporal validation, reports and persistence. Variant A forecasts multiple
 steps; variant B forecasts one step per update with frozen parameters.
 
+The candidate was `published on PyPI on October 13, 2026
+<https://pypi.org/project/autohybts/1.0.0rc1/>`_, with a wheel and source
+distribution. Publication through ``publish.yml`` was approved in the GitHub
+``pypi`` environment.
+
 The default rule requires a median gain of at least 5%, wins on at least 60% of
 paired units and the variability criterion. ``fold="auto"`` uses 7 origins per
 layer when history permits; shorter series receive fewer origins and a warning.
@@ -20,12 +25,12 @@ they are not guarantees for real series or all optional families.
 Delivery changes in this candidate:
 
 * version ``1.0.0rc1`` and beta classification in package metadata;
-* CI reused on the tagged commit before any publication;
+* validation workflow with reusable CI on the tagged commit;
 * exact agreement checked between tag, version and wheel/sdist metadata;
 * installed-wheel test without extras, including A/B forecasting and persistence;
 * Sphinx builds for both languages and StatsForecast contracts in CI;
-* slow notebooks, including heavy ones, and downloads checked before publication;
-* ``rc`` candidates routed to TestPyPI and final versions to PyPI.
+* complete slow/heavy notebook and download checks in the validation workflow;
+* candidate available on PyPI; TestPyPI reserved for the separate testing workflow.
 
 Compatibility
 -------------
@@ -62,7 +67,7 @@ Criteria for stable 1.0.0
 The M3/M4 study has no results yet. Before the final version, freeze its protocol
 with the calibrated rule, samples, seeds and budget; execute without using test
 data to retune the rule and report gains, deteriorations, coverage and cost against
-baselines. Also review installation through TestPyPI, public contracts and
+baselines. Also review installation through PyPI, public contracts and
 limitations found while using the candidate.
 
 Composite families remain optional until they pass chain-level calibration. New
@@ -73,29 +78,36 @@ on real series. Demonstration notebooks do not constitute that study.
 Publishing and installing the candidate
 ---------------------------------------
 
-Merging the PR prepares the code; it does not publish packages. After review, tag
-``v1.0.0rc1`` triggers ``release.yml`` on that same commit. The workflow validates
-the tag, runs full CI and release tests, builds and checks both distributions, and
-publishes to TestPyPI. A final tag such as ``v1.0.0`` is routed to PyPI.
-
-Register a Trusted Publisher on each index for repository
-``jvataidee/AutoHybTS``, workflow file ``release.yml`` and the corresponding
-environment: ``testpypi`` or ``pypi``. Create those GitHub environments with required
-reviewers. External configuration must be ready before tagging; the PR does not
-create accounts, publishers or reviewers.
-
-Once the candidate is published, test in a clean virtual environment:
+Install the published version directly from PyPI:
 
 .. code-block:: bash
 
-   python -m pip install numpy pandas scikit-learn
-   python -m pip install --index-url https://test.pypi.org/simple/ --no-deps autohybts==1.0.0rc1
+   python -m pip install "autohybts[stats,plot]==1.0.0rc1"
 
-Install dependencies from PyPI and only the package from TestPyPI; avoid combining
-indices with ``--extra-index-url``. This test installs the core. Install
-``statsmodels`` and ``matplotlib`` from PyPI to use statistical examples and plots.
-Each uploaded version is immutable on its index; use ``1.0.0rc2`` if the candidate
-needs a fix.
+The :doc:`installation` guide covers the core, extras, notebooks and the GitHub
+development option.
+
+The ``publish.yml`` workflow runs when a ``v*`` tag is pushed. It builds the wheel
+and source distribution, checks them with Twine and waits for approval of the
+``pypi`` environment before uploading. The Trusted Publisher registered on PyPI
+must match:
+
+* project: ``autohybts``;
+* owner and repository: ``jvataidee/AutoHybTS``;
+* workflow filename: ``publish.yml``;
+* environment: ``pypi``.
+
+On GitHub, open the run, use **Review deployments**, select **pypi** and click
+**Approve and deploy**. Registering a publisher does not start an upload; pushing
+the tag and approving the environment are steps in the workflow.
+
+``release.yml`` retains a separate validation and TestPyPI workflow, which depends
+on its own Trusted Publisher. For future versions, run complete checks before
+tagging and choose a single publishing workflow for each index.
+
+Each version uploaded to PyPI is immutable, including the README embedded in its
+metadata. Changes to the GitHub README and Read the Docs appear on PyPI only in
+the next published version, such as ``1.0.0rc2``. Do not re-upload ``1.0.0rc1``.
 
 Local checklist
 ---------------

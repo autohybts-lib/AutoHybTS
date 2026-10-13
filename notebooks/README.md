@@ -22,6 +22,16 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 
 ## Como executar
 
+Para usar os tutoriais com a candidata publicada no PyPI:
+
+```bash
+python -m pip install "autohybts[stats,notebook]==1.0.0rc1"
+```
+
+Os notebooks 05, 10, 12 e 15 requerem os extras indicados na tabela. Consulte o
+[guia de instalação](../documentation/installation.rst) para instalar outros extras.
+Para desenvolver e executar os testes a partir de um clone local:
+
 ```bash
 .venv/Scripts/python -m pip install -e ".[dev,stats,notebook]"
 ```

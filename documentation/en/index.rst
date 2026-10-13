@@ -39,7 +39,8 @@ strategies for building hybrid systems together in a single workflow:
 
 .. note::
 
-   **v1 release candidate** (|release|): a prerelease for validation. See
+   **v1 release candidate** (|release|), published on PyPI: see :doc:`installation`.
+   This is a prerelease for validation. See
    :doc:`releasing` for scope, compatibility and the stable-release criteria.
 
 .. toctree::
