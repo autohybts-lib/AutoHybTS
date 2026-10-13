@@ -162,3 +162,30 @@ out-of-sample residuals) only updates the Kalman filter state. ``sarima`` is out
 default search (it enters through ``base_models``) and refuses periods above 24, too slow
 for a search; for long cycles use ``harmonic_regression``. ``arima`` remains
 non-seasonal.
+
+Measured on 13 October 2026 with ``create_model`` and the experiment defaults (mean MASE
+over the validation origins and total time):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 18 18 18 18
+
+   * - Series
+     - ``seasonal_naive``
+     - ``arima``
+     - ``exponential_smoothing``
+     - ``sarima``
+   * - ``air_passengers`` (8 origins)
+     - 1.27 · 0 s
+     - 1.30 · 6 s
+     - 0.68 · 0.5 s
+     - 0.60 · 12 s
+   * - ``synthetic_daily`` (14 origins)
+     - 1.13 · 0 s
+     - 1.13 · 26 s
+     - 1.06 · 1.5 s
+     - 0.76 · 310 s
+
+The gain came at a cost: on a daily series of 730 points, each origin took about 22 s.
+That is why ``sarima`` stays out of the default search until it is measured on more
+series.

@@ -160,3 +160,29 @@ A ordem e os parâmetros ficam congelados depois do ajuste: um contexto mais lon
 ``sarima`` está fora da busca padrão (entra por ``base_models``) e recusa períodos acima
 de 24, lentos demais para uma busca; para ciclos longos use ``harmonic_regression``. O
 ``arima`` continua não sazonal.
+
+Medido em 13 de outubro de 2026 com ``create_model`` e os padrões do experimento (MASE
+médio nas origens de validação e tempo total):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 18 18 18 18
+
+   * - Série
+     - ``seasonal_naive``
+     - ``arima``
+     - ``exponential_smoothing``
+     - ``sarima``
+   * - ``air_passengers`` (8 origens)
+     - 1,27 · 0 s
+     - 1,30 · 6 s
+     - 0,68 · 0,5 s
+     - 0,60 · 12 s
+   * - ``synthetic_daily`` (14 origens)
+     - 1,13 · 0 s
+     - 1,13 · 26 s
+     - 1,06 · 1,5 s
+     - 0,76 · 310 s
+
+O ganho veio com custo: numa série diária de 730 pontos, cada origem levou cerca de 22 s.
+Por isso o ``sarima`` fica fora da busca padrão até ser medido em mais séries.
