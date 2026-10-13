@@ -84,6 +84,13 @@ outputs must not contain local paths (``tests/contracts/test_notebook_outputs.py
 keys, private data or large artifacts. The documentation build does not execute
 notebooks: it shows the saved outputs.
 
+Language of the code
+--------------------
+
+Code, names and docstrings in English; error messages, warnings and texts shown to the
+user in Portuguese. The API reference shows the English docstrings in both languages
+of the documentation.
+
 Translations
 ------------
 

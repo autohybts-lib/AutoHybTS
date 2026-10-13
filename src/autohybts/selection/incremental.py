@@ -73,7 +73,11 @@ class SelectionDecision:
 
 @dataclass(frozen=True, slots=True)
 class SelectionAudit:
-    """Evidence of how adaptive the selection was (§30.2, §30.4)."""
+    """Evidence of how adaptive the selection was: trials, pruning, finalists, reasons.
+
+    ``selection_gap()`` compares the winner's score on ``V_search`` with its score on
+    ``V_select``: a large gap signals optimism from choosing where it was searched.
+    """
 
     protocol_hash: str
     search_protocol_hash: str
@@ -99,6 +103,16 @@ class SelectionAudit:
 
 @dataclass(frozen=True, slots=True)
 class SelectionResult:
+    """Outcome of the incremental selection on ``V_select``.
+
+    ``champion`` is the final champion and ``champion_result`` its evaluation;
+    ``finalists`` holds the best structure of each family, evaluated on ``V_select``;
+    ``decisions`` records every challenge, accepted or not, with per-unit errors and gains
+    (``decisions_frame()`` and ``decision_units_frame()`` give them as tables); ``audit``
+    is the ``SelectionAudit``; in a panel, ``champion_per_series`` holds the
+    configuration chosen for each series.
+    """
+
     champion: CandidateSpec
     champion_result: EvaluationResult
     finalists: tuple[EvaluationResult, ...]

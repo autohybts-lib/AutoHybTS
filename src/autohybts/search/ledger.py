@@ -36,7 +36,21 @@ class LedgerEntry:
 
 @dataclass(frozen=True, slots=True)
 class SearchResult:
-    """Everything the search tried and what it found, on ``V_search`` only."""
+    """Everything the search tried and what it found, on ``V_search`` only.
+
+    Attributes:
+        metric: metric that ranked the candidates.
+        plan_fingerprint: fingerprint of the temporal plan the search used.
+        ledger: every proposal, evaluated or not, with stage, status (``EVALUATED``,
+            ``PRUNED_BUDGET``, ``SKIPPED_CAPABILITY``, ``DUPLICATE``, ``STOPPED``) and
+            reason; ``ledger_frame()`` gives it as a table.
+        results: evaluation of every evaluated candidate.
+        retained: bases retained for the hybrids (stage S1).
+        residual_structures: residual structures carried to refinement.
+        stop_reason: ``"completed"``, a budget limit or ``"max_wall_time"``.
+        protocol: pre-registered settings of the search and their hash.
+        elapsed_s: wall time of the search.
+    """
 
     metric: str
     plan_fingerprint: str

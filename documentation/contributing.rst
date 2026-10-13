@@ -81,6 +81,13 @@ confira figuras e tabelas; as saídas não podem conter caminhos locais
 (``tests/contracts/test_notebook_outputs.py``), chaves, dados privados ou artefatos
 grandes. O build da documentação não executa notebooks: ele mostra as saídas salvas.
 
+Idioma do código
+----------------
+
+Código, nomes e docstrings em inglês; mensagens de erro, avisos e textos mostrados ao
+usuário em português. A referência da API mostra os docstrings em inglês nos dois
+idiomas da documentação.
+
 Traduções
 ---------
 

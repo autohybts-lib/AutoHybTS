@@ -56,6 +56,9 @@ def settings(language: str) -> dict[str, Any]:
         "autosummary_generate": False,
         "napoleon_google_docstring": True,
         "napoleon_numpy_docstring": False,
+        # Attributes sections as :ivar: fields: dataclass fields are also documented by
+        # autodoc, and attribute directives would describe them twice.
+        "napoleon_use_ivar": True,
         "intersphinx_mapping": {
             "python": ("https://docs.python.org/3", None),
             "pandas": ("https://pandas.pydata.org/docs", None),

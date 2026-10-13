@@ -1,4 +1,4 @@
-"""One-call estimator (§12.1) on top of ``AutoHybridExperiment``.
+"""One-call estimator on top of ``AutoHybridExperiment``.
 
 ``AutoHybridForecaster(**params).fit(y)`` runs the experiment, selects the champion and
 finalizes it; ``predict`` forecasts from the end of the permitted history.
@@ -23,7 +23,14 @@ __all__ = ["AutoHybridForecaster"]
 
 
 class AutoHybridForecaster(Parametrized):
-    """Same parameters as ``AutoHybridExperiment``; ``test_size`` defaults to 0 here."""
+    """Experiment, selection and finalization in one call, for operational forecasting.
+
+    Args:
+        **params: any parameter of ``AutoHybridExperiment`` (``fh``, ``budget``,
+            ``variant`` …); ``test_size`` defaults to 0 here, so the whole series is used
+            and nothing is sealed. The fitted experiment, the comparison and the
+            finalized model stay in ``experiment_``, ``compare_`` and ``model_``.
+    """
 
     def __init__(self, **params: Any) -> None:
         params.setdefault("test_size", 0)
