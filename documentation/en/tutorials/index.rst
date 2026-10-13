@@ -22,3 +22,4 @@ Short notebooks, one topic each, in the style of the PyCaret tutorials. They liv
    notebooks/13_ensembles
    notebooks/14_intermittent_demand
    notebooks/15_statsforecast
+   notebooks/16_series_diagnostics
