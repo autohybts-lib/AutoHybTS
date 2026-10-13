@@ -9,6 +9,11 @@ residuals (variant A).
 A context that extends the training vector (new observations after the fit, as in
 variant B) appends the frozen base's one-step errors on those observations to the
 residual history; nothing is refitted.
+
+With a *sequence* corrector (``residuals.sequence``) the corrector is a time-series model
+of the residuals: it is fitted on the contiguous residuals that end at the last training
+position and forecasts the residual vector of the horizon from the same stretch extended
+to the origin, instead of iterating a window regression.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from autohybts.adapters.base import BaseForecaster, FloatArray, ForecasterBase
 from autohybts.exceptions import (
     ConfigurationError,
     InsufficientHistoryError,
+    TemporalLeakageError,
     UnsupportedCapabilityError,
 )
 from autohybts.residuals.correctors import ResidualCorrector
@@ -31,12 +37,15 @@ from autohybts.residuals.generation import (
 )
 from autohybts.residuals.provenance import ONLINE_SOURCE, ResidualSeries
 from autohybts.residuals.recursive import recursive_correction
+from autohybts.residuals.sequence import ResidualSequenceForecaster, fitted_correction_ratio
 from autohybts.types import RESIDUAL_SOURCES
 
 __all__ = ["ResidualHybridForecaster"]
 
 
 class ResidualHybridForecaster(ForecasterBase):
+    composite = True
+
     def __init__(
         self,
         base: BaseForecaster,
@@ -86,6 +95,9 @@ class ResidualHybridForecaster(ForecasterBase):
             self.residuals_ = build_residuals(
                 self.base, self.base_, y, self.residual_source, self.residual_settings
             )
+            if self.is_sequence:
+                self._fit_sequence(y.size - 1)
+                return
             windows, targets, self.row_origins_ = training_rows(self.residuals_, self.window_size)
             if len(targets) < self.residual_settings.min_corrector_rows:
                 raise InsufficientHistoryError(
@@ -101,6 +113,27 @@ class ResidualHybridForecaster(ForecasterBase):
             self.corrector_ = None
             self.correction_std_ratio_ = float("nan")
             self.fallback_reason_ = f"{type(error).__name__}: {error}"
+
+    @property
+    def is_sequence(self) -> bool:
+        """Whether the corrector forecasts the residual series (not a window regression)."""
+
+        return isinstance(self.corrector, ResidualSequenceForecaster)
+
+    def _fit_sequence(self, origin: int) -> None:
+        self.sequence_start_, values = _contiguous_tail(self.residuals_, origin)
+        needed = max(
+            self.residual_settings.min_corrector_rows,
+            int(getattr(self.corrector, "min_residuals", 1)),
+        )
+        if values.size < needed:
+            raise InsufficientHistoryError(
+                f"Apenas {values.size} resíduos contíguos para o corretor de sequência "
+                f"(mínimo {needed})."
+            )
+        corrector = self.corrector.clone().fit_sequence(values)  # type: ignore[attr-defined]
+        self.corrector_ = corrector
+        self.correction_std_ratio_ = fitted_correction_ratio(corrector, values)
 
     def diagnostics(self) -> dict[str, float]:
         """``correction_std_ratio`` of the last fit (ADR-0003); NaN if undefined."""
@@ -119,6 +152,14 @@ class ResidualHybridForecaster(ForecasterBase):
         base_path = self.base_.predict(horizon, local_context(history, history.size))
         if self.corrector_ is None:
             return base_path, np.zeros(horizon)
+        if self.is_sequence:
+            start, values = _contiguous_tail(self._residuals_at(history), history.size - 1)
+            if start != self.sequence_start_:
+                raise UnsupportedCapabilityError(
+                    "O histórico residual não estende o trecho em que o corretor foi ajustado."
+                )
+            correction = self.corrector_.forecast(horizon, values)  # type: ignore[attr-defined]
+            return base_path, np.asarray(correction, dtype=np.float64)
         window = latest_window(self._residuals_at(history), self.window_size, history.size - 1)
         return base_path, recursive_correction(self.corrector_, window, horizon)
 
@@ -148,3 +189,19 @@ def _correction_std_ratio(
         return float("nan")
     fitted = np.array([corrector.predict_next(row) for row in windows], dtype=np.float64)
     return float(np.std(fitted)) / scale
+
+
+def _contiguous_tail(series: ResidualSeries, origin: int) -> tuple[int, FloatArray]:
+    """First target and values of the contiguous residuals ending at ``origin``.
+
+    Every residual must be available at the origin; a gap ends the stretch.
+    """
+
+    targets = series.targets
+    if not len(series) or int(targets[-1]) != origin:
+        raise InsufficientHistoryError(f"Nenhum resíduo termina na origem {origin}.")
+    if int(np.max(series.available_at)) > origin:
+        raise TemporalLeakageError(f"Resíduo disponível só depois da origem {origin}.")
+    gaps = np.flatnonzero(np.diff(targets) != 1)
+    first = int(gaps[-1]) + 1 if gaps.size else 0
+    return int(targets[first]), np.array(series.residuals[first:], dtype=np.float64)

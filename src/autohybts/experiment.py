@@ -77,6 +77,7 @@ _INCLUDE: Final = (
     "decomposition",
     "combination",
     "dynamic",
+    "ensemble",
 )
 _DEFAULT_INCLUDE: Final = ("standalone", "residual")
 
@@ -150,6 +151,11 @@ class AutoHybridExperiment(Parametrized):
             ``("ma",)`` in variant B.
         combination_weights: weightings tried when ``compare_models`` includes
             ``"combination"``.
+        ensemble_methods: aggregations tried when ``compare_models`` includes
+            ``"ensemble"`` (``"equal"``, ``"median"``, ``"trimmed_mean"``,
+            ``"inverse_mse"``, ``"nnls"``): ensembles of the best base of each family, of
+            the two best residual structures and residual corrections of the equal-weight
+            ensemble (ADR-0007). Off the default ``include``: see the calibration gate.
         stage_params: ``"shared"`` (extra stages reuse window, alpha and source) or
             ``"per_stage"`` (the search also varies the extra stage's window and alpha).
         significance_alpha: optional extra acceptance predicate: a one-sided paired
@@ -184,6 +190,7 @@ class AutoHybridExperiment(Parametrized):
         max_stages: int = 2,
         decomposition_methods: Sequence[str] | None = None,
         combination_weights: Sequence[str] = ("equal", "inverse_mse"),
+        ensemble_methods: Sequence[str] = ("equal", "median", "inverse_mse", "nnls"),
         stage_params: str = "shared",
         significance_alpha: float | None = None,
         metrics: Sequence[str] = DEFAULT_METRICS,
@@ -210,6 +217,7 @@ class AutoHybridExperiment(Parametrized):
         self.max_stages = max_stages
         self.decomposition_methods = decomposition_methods
         self.combination_weights = combination_weights
+        self.ensemble_methods = ensemble_methods
         self.stage_params = stage_params
         self.significance_alpha = significance_alpha
         self.metrics = metrics
@@ -384,9 +392,33 @@ class AutoHybridExperiment(Parametrized):
         )
         return self._model_result(candidate, "model.created")
 
+    def create_ensemble(
+        self,
+        models: Sequence[str | CandidateSpec | ModelResult],
+        method: str = "equal",
+        **options: Any,
+    ) -> ModelResult:
+        """Evaluate one ensemble of complete forecasters on every origin (ADR-0007).
+
+        ``models`` are names (default parameters of this experiment), specs or
+        ``ModelResult`` — standalone models, hybrids or other ensembles. ``method`` is
+        ``"equal"``, ``"median"``, ``"trimmed_mean"`` (``trim=``), ``"inverse_mse"`` or
+        ``"nnls"`` (``shrinkage=`` towards equal weights); learned weights come from
+        out-of-fold forecasts inside each origin's training vector.
+        """
+
+        self._require("VALIDATED")
+        components = self._candidates(models)
+        candidate = CandidateSpec.ensemble(components, method=method, **options)
+        if candidate.variant != self.variant:
+            raise ConfigurationError(
+                f"Componentes da variante {candidate.variant}; o experimento é {self.variant}."
+            )
+        return self._model_result(candidate, "ensemble.created")
+
     def create_hybrid(
         self,
-        base: str,
+        base: str | CandidateSpec | ModelResult,
         corrector: str,
         window: int = 7,
         alpha: float = 1.0,
@@ -407,9 +439,37 @@ class AutoHybridExperiment(Parametrized):
 
         ``combine_correctors`` instead averages ``corrector`` and these correctors with
         fixed ``combination_weights`` (``"equal"`` or ``"inverse_mse"``) as one correction.
+
+        ``base`` may also be a composed candidate (e.g. ``create_ensemble(...)``): the
+        corrector then learns the out-of-fold residuals of that composition
+        (``residual_composite``); stages and corrector combinations are for named bases.
         """
 
         self._require("VALIDATED")
+        if not isinstance(base, str):
+            spec = base.candidate if isinstance(base, ModelResult) else base
+            if spec.strategy == "standalone":  # a single model: the usual residual hybrid
+                return self.create_hybrid(
+                    spec.base.name,
+                    corrector,
+                    window,
+                    alpha,
+                    residual_source,
+                    spec.base.params,
+                    corrector_params,
+                    extra_stages,
+                    stage_params,
+                    combine_correctors,
+                    combination_weights,
+                )
+            if extra_stages or combine_correctors or base_params:
+                raise ConfigurationError(
+                    "Com uma base composta, use só corrector, window, alpha e residual_source."
+                )
+            candidate = CandidateSpec.corrected(
+                spec, ModelSpec.of(corrector, corrector_params), window, alpha, residual_source
+            )
+            return self._model_result(candidate, "hybrid.created")
         if extra_stages and combine_correctors:
             raise ConfigurationError("Use extra_stages ou combine_correctors, não os dois.")
         if stage_params is not None and not extra_stages:
@@ -564,8 +624,9 @@ class AutoHybridExperiment(Parametrized):
         ``include`` picks the families: ``"standalone"`` (required: the initial champion
         is a single model), ``"residual"``, ``"multistage"`` (extra correction stages on
         the best residual structures; needs ``"residual"``), ``"decomposition"`` and
-        ``"combination"`` and, in variant B, ``"dynamic"`` (dynamic selection of the
-        corrector, ``dref`` and ``local``).
+        ``"combination"``, ``"ensemble"`` (ensembles of bases, of residual structures and
+        corrected ensembles; ``ensemble_methods``) and, in variant B, ``"dynamic"``
+        (dynamic selection of the corrector, ``dref`` and ``local``).
         """
 
         self._require("VALIDATED")
@@ -580,7 +641,7 @@ class AutoHybridExperiment(Parametrized):
             "search.finished", f"{search.trial_count} tentativas ({search.stop_reason})", started
         )
         started = time.perf_counter()
-        self.policy_ = replace(self.policy_, family_order=self._family_order())
+        self.policy_ = replace(self.policy_, family_order=self._family_order(include))
         selection = IncrementalSelector(self.evaluator_, self.policy_).select(
             search, self.work_plan_
         )
@@ -1064,11 +1125,13 @@ class AutoHybridExperiment(Parametrized):
                 {
                     "search_candidates": search.trial_count,
                     "search_units": search.unit_count,
+                    "search_fits": search.fit_count,
                     "cached_candidates": search.cached_count,
                     "max_trials_total": inner_compare.snapshot["guard"]["max_trials_total"],
                     "stop_reason": search.stop_reason,
                     "select_candidates": len(finalists),
                     "select_units": sum(len(r.trials) for r in finalists),
+                    "select_fits": sum(t.n_fits or 0 for r in finalists for t in r.trials),
                     "seconds_search": search.elapsed_s,
                     # validation of the inner history, selection and bookkeeping
                     "seconds_selection": max(0.0, compared - fold_started - search.elapsed_s),
@@ -1208,13 +1271,34 @@ class AutoHybridExperiment(Parametrized):
         raise ConfigurationError(f"Referência {reference!r} não está entre os modelos comparados.")
 
     # ------------------------------------------------------------------ helpers
-    def _family_order(self) -> tuple[str, ...]:
-        """Default order with families of user-registered bases right before ``residual``."""
+    def _family_order(self, include: Sequence[str] = ()) -> tuple[str, ...]:
+        """Default order with extra base families right before ``residual``.
+
+        With ``"ensemble"`` included, the ensemble family challenges last but before
+        ``dynamic`` (ADR-0007): only after every simpler structure had its chance. Without
+        it the order, and the protocol hash, stay as before.
+        """
 
         order = list(DEFAULT_FAMILY_ORDER)
-        extra = [f for f in self.registry_.families("base") if f not in order]
+        bases = set(self.base_models or DEFAULT_BASES)
+        registry = self.registry_
+        # A built-in family outside the default order (``intermittent``) joins only when the
+        # search uses one of its models, so the default protocol does not change; families
+        # of user-registered models join as soon as they are registered.
+        extra = [
+            family
+            for family in registry.families("base")
+            if family not in order
+            and any(
+                name in bases or registry.entry(name).external
+                for name in registry.names("base", family)
+            )
+        ]
         position = order.index("residual")
-        return (*order[:position], *extra, *order[position:])
+        order = [*order[:position], *extra, *order[position:]]
+        if "ensemble" in include:
+            order.insert(order.index("dynamic"), "ensemble")
+        return tuple(order)
 
     def _registered_space(self, name: str) -> dict[str, Distribution]:
         entry = self.registry_.entry(name)
@@ -1223,15 +1307,9 @@ class AutoHybridExperiment(Parametrized):
         return {key: _as_distribution(key, value) for key, value in entry.tuning_space.items()}
 
     def _external_requirements(self, spec: CandidateSpec) -> set[str]:
-        names = [("base", spec.base.name)]
-        if spec.corrector is not None:
-            names.append(("corrector", spec.corrector.name))
-        for member in spec.members:
-            kind = "base" if spec.strategy == "fixed_combination" else "corrector"
-            names.append((kind, member.name))
         packages: set[str] = set()
-        for kind, model in names:
-            packages.update(self.registry_.entry(model, kind).requires)  # type: ignore[arg-type]
+        for kind, model in spec.model_names():
+            packages.update(self.registry_.entry(model, kind).requires)
         return packages
 
     def _series(self, series_id: str | None) -> SeriesFrame:
@@ -1342,6 +1420,7 @@ class AutoHybridExperiment(Parametrized):
             stage_params=self.stage_params,
             decomposition_methods=tuple(methods),
             combination_weights=tuple(self.combination_weights) if "combination" in include else (),
+            ensemble_methods=tuple(self.ensemble_methods) if "ensemble" in include else (),
             dynamic_methods=("dref", "local") if "dynamic" in include else (),
         )
 

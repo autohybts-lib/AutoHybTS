@@ -15,11 +15,12 @@ from autohybts.domain.identity import canonical_json
 from autohybts.domain.specs import (
     COMBINATION_WEIGHTS,
     DECOMPOSITION_METHODS,
+    ENSEMBLE_METHODS,
     MAX_STAGES,
     CandidateSpec,
     ModelSpec,
 )
-from autohybts.exceptions import ConfigurationError
+from autohybts.exceptions import AutoHybTSError, ConfigurationError
 from autohybts.registry.registry import ModelRegistry
 from autohybts.types import RESIDUAL_SOURCES, ProtocolVariant
 
@@ -36,11 +37,30 @@ DEFAULT_BASES: Final = (
     "arima",
     "mlp",
 )
-_LAG_MODELS: Final = frozenset({"linear", "knn", "svm", "tree", "random_forest", "mlp"})
+_LAG_MODELS: Final = frozenset(
+    {
+        "linear",
+        "knn",
+        "svm",
+        "tree",
+        "random_forest",
+        "mlp",
+        "hist_gradient_boosting",
+        "adaboost_r2",
+        "lightgbm_regressor",
+        "ridge_regression",
+        "lasso_regression",
+        "elastic_net_regression",
+        "extra_trees_regressor",
+    }
+)
 # Dynamic selection grid of the legacy project (Silva et al., 2020); first value = default.
 DYNAMIC_NEIGHBORS: Final = (10, 5, 20)
 DYNAMIC_LAGS: Final = (7, 14)
 LOCAL_ALPHAS: Final = (1.0, 0.1)
+# Ensembles of the search start small (plano de ensembles §7.4: K = 2, 3 before more).
+ENSEMBLE_SIZE: Final = 3
+_WEIGHTED: Final = ("equal", "inverse_mse", "nnls")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +80,8 @@ class SearchSpace:
     the residual sources tried in S3 around the best residual structures.
 
     Advanced families are off by default: ``max_stages > 1`` adds correction stages in
-    S3; ``decomposition_methods`` and ``combination_weights`` open stage S4.
+    S3; ``decomposition_methods``, ``combination_weights`` and ``ensemble_methods`` open
+    stage S4.
     """
 
     base_models: tuple[str, ...] = DEFAULT_BASES
@@ -78,6 +99,7 @@ class SearchSpace:
     combination_weights: tuple[str, ...] = ()
     dynamic_methods: tuple[str, ...] = ()
     stage_params: str = "shared"
+    ensemble_methods: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -112,6 +134,11 @@ class SearchSpace:
                 "A seleção dinâmica só existe na variante B: em A não há observação nova entre "
                 "os passos para escolher o corretor (R07)."
             )
+        unknown_ensembles = set(self.ensemble_methods) - set(ENSEMBLE_METHODS)
+        if unknown_ensembles:
+            raise ConfigurationError(
+                f"Métodos de ensemble desconhecidos: {sorted(unknown_ensembles)}."
+            )
         unknown_weights = set(self.combination_weights) - set(COMBINATION_WEIGHTS)
         if unknown_weights:
             raise ConfigurationError(
@@ -131,6 +158,8 @@ class SearchSpace:
             described["dynamic_methods"] = list(self.dynamic_methods)
         if self.stage_params != "shared":
             described["stage_params"] = self.stage_params
+        if self.ensemble_methods:
+            described["ensemble_methods"] = list(self.ensemble_methods)
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -179,10 +208,22 @@ class SearchSpace:
             )
             for source in self.residual_sources
             for corrector in self.correctors
-            for window in self.residual_windows
+            for window in self._windows(corrector, registry)
             for alpha in self.alphas
             for base in bases
         ]
+
+    def _windows(self, corrector: str, registry: ModelRegistry) -> tuple[int, ...]:
+        """Windows to try with ``corrector``: one for a sequence corrector (it has none)."""
+
+        if _is_sequence(corrector, registry):
+            return self.residual_windows[:1]
+        return self.residual_windows
+
+    def _window_correctors(self, registry: ModelRegistry) -> tuple[str, ...]:
+        """Correctors usable where a window regression is required."""
+
+        return tuple(name for name in self.correctors if not _is_sequence(name, registry))
 
     def refinement_proposals(
         self, structures: Sequence[CandidateSpec], registry: ModelRegistry, max_refinements: int
@@ -289,8 +330,7 @@ class SearchSpace:
         proposals: list[Proposal] = []
         for method in self.decomposition_methods:
             reason = self._decomposition_skip(method)
-            for corrector in self.correctors:
-                registry.entry(corrector, "corrector")
+            for corrector in self._window_correctors(registry):
                 for window in self.residual_windows:
                     for base in bases:
                         options: dict[str, Any] = {"method": method}
@@ -345,8 +385,12 @@ class SearchSpace:
         for best in structures:
             if best.corrector is None or best.window_size is None:
                 continue
+            if _is_sequence(best.corrector.name, registry):
+                continue  # dynamic selection needs window correctors
             others = tuple(
-                ModelSpec.of(name) for name in self.correctors if name != best.corrector.name
+                ModelSpec.of(name)
+                for name in self._window_correctors(registry)
+                if name != best.corrector.name
             )
             for method in self.dynamic_methods:
                 members = others if method == "dref" else ()
@@ -390,11 +434,15 @@ class SearchSpace:
         for best in structures:
             if best.strategy != "residual_additive" or best.corrector is None:
                 continue
+            if _is_sequence(best.corrector.name, registry):
+                continue  # corrector combinations average window regressions
             others = tuple(
-                ModelSpec.of(name) for name in self.correctors if name != best.corrector.name
+                ModelSpec.of(name)
+                for name in self._window_correctors(registry)
+                if name != best.corrector.name
             )
-            for spec in others:
-                registry.entry(spec.name, "corrector")
+            if not others:
+                continue
             for weights in self.combination_weights:
                 candidate = CandidateSpec(
                     "combination",
@@ -411,6 +459,75 @@ class SearchSpace:
                 proposals.append(Proposal(candidate, "S4", best.candidate_id))
         return proposals
 
+    def ensemble_proposals(
+        self,
+        bases: Sequence[CandidateSpec],
+        structures: Sequence[CandidateSpec],
+        registry: ModelRegistry,
+    ) -> list[Proposal]:
+        """S4: ensembles (family ``ensemble``, ADR-0007), all from candidates already searched.
+
+        * Ensembles of bases: the best retained base of each family, up to
+          ``ENSEMBLE_SIZE`` (diversity of families before more members), with every
+          configured method; ``median`` needs 3 members and ``trimmed_mean`` is left to
+          explicit use (with 3 members it equals the median).
+        * Ensemble of hybrids: the two best residual structures, weighted methods only.
+        * Corrected ensemble: the equal-weight ensemble of bases corrected by each
+          configured corrector (first window, alpha and source of the space).
+
+        The equal-weight version of each kind comes first, so a budget cut keeps the
+        simplest control of every kind.
+        """
+
+        if not self.ensemble_methods:
+            return []
+        pool: list[CandidateSpec] = []
+        for base in bases:
+            if all(base.family != chosen.family for chosen in pool):
+                pool.append(base)
+            if len(pool) == ENSEMBLE_SIZE:
+                break
+        kinds: list[list[Proposal]] = []
+        if len(pool) >= 2:
+            kinds.append(
+                [
+                    Proposal(
+                        CandidateSpec.ensemble(pool, method=method), "S4", pool[0].candidate_id
+                    )
+                    for method in self.ensemble_methods
+                    if method != "trimmed_mean" and (method != "median" or len(pool) >= 3)
+                ]
+            )
+        if len(structures) >= 2:
+            pair = list(structures[:2])
+            kinds.append(
+                [
+                    Proposal(
+                        CandidateSpec.ensemble(pair, method=method), "S4", pair[0].candidate_id
+                    )
+                    for method in self.ensemble_methods
+                    if method in _WEIGHTED
+                ]
+            )
+        if len(pool) >= 2 and self.correctors and self.residual_windows and self.alphas:
+            base = CandidateSpec.ensemble(pool, method="equal")
+            corrected = []
+            for corrector in self.correctors:
+                registry.entry(corrector, "corrector")
+                candidate = CandidateSpec.corrected(
+                    base,
+                    ModelSpec.of(corrector),
+                    self.residual_windows[0],
+                    float(self.alphas[-1]),
+                    self.residual_sources[0],
+                )
+                corrected.append(Proposal(candidate, "S4", base.candidate_id))
+            kinds.append(corrected)
+        ordered: list[Proposal] = []
+        for index in range(max((len(k) for k in kinds), default=0)):
+            ordered.extend(kind[index] for kind in kinds if index < len(kind))
+        return ordered
+
     def _decomposition_skip(self, method: str) -> str | None:
         if method != "stl":
             return None
@@ -424,6 +541,8 @@ class SearchSpace:
         """Parameters a base gets when no grid is given (seasonality and lags of this space)."""
 
         if name == "seasonal_naive":
+            return {"season_length": self.seasonal_period}
+        if name in ("seasonal_window_average", "exponential_smoothing") or name.startswith("sf_"):
             return {"season_length": self.seasonal_period}
         if name in _LAG_MODELS:
             return {"lags": max(7, self.seasonal_period)}
@@ -477,3 +596,16 @@ def round_robin(proposals: Sequence[Proposal]) -> list[Proposal]:
     for index in range(max((len(g) for g in groups.values()), default=0)):
         merged.extend(group[index] for group in groups.values() if index < len(group))
     return merged
+
+
+def _is_sequence(corrector: str, registry: ModelRegistry) -> bool:
+    """Whether ``corrector`` forecasts the residual series (``residuals.sequence``)."""
+
+    from autohybts.residuals.sequence import ResidualSequenceForecaster
+
+    registry.entry(corrector, "corrector")  # unknown names fail here, as before
+    try:
+        made = registry.make_corrector(corrector)
+    except AutoHybTSError:
+        return False
+    return isinstance(made, ResidualSequenceForecaster)

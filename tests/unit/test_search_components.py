@@ -224,3 +224,55 @@ def test_retention_top_k_plus_arima_and_best_without_duplicates() -> None:
     families = [r.candidate.family for r in retained if r.candidate.base.name != "arima"]
     assert len(families) == len(set(families))  # one per family (top_k=1)
     assert retained[0].mean("MASE") == min(r.mean("MASE") for r in results)
+
+
+def test_ensemble_proposals_are_diverse_and_simplest_first() -> None:
+    space = SearchSpace(
+        correctors=("linear", "knn"),
+        residual_windows=(7,),
+        alphas=(1.0,),
+        ensemble_methods=("equal", "median", "inverse_mse", "nnls", "trimmed_mean"),
+    )
+    linear = CandidateSpec.standalone("linear", {"lags": 7}, family="linear")
+    linear14 = CandidateSpec.standalone("linear", {"lags": 14}, family="linear")
+    knn = CandidateSpec.standalone("knn", {"lags": 7}, family="kernel")
+    naive = CandidateSpec.standalone("naive", family="statistical")
+    hybrids = [
+        CandidateSpec(
+            "residual",
+            "residual_additive",
+            ModelSpec.of(b),
+            ModelSpec.of("linear"),
+            7,
+            1.0,
+            "historical_oof_1step",
+        )
+        for b in ("naive", "seasonal_naive")
+    ]
+    proposals = space.ensemble_proposals([linear, linear14, knn, naive], hybrids, REGISTRY)
+    candidates = [p.candidate for p in proposals]
+    assert {c.family for c in candidates} == {"ensemble"}
+    # One base per family (linear14 left out), three members.
+    base_ensembles = [
+        c for c in candidates if c.strategy == "ensemble" and not c.components[0].corrector
+    ]
+    assert all(
+        {m.base.name for m in c.components} == {"linear", "knn", "naive"} for c in base_ensembles
+    )
+    assert {c.options["method"] for c in base_ensembles} == {
+        "equal",
+        "median",
+        "inverse_mse",
+        "nnls",
+    }
+    # Ensembles of hybrids: weighted methods only; corrected ensembles: one per corrector.
+    of_hybrids = [c for c in candidates if c.strategy == "ensemble" and c.components[0].corrector]
+    assert {c.options["method"] for c in of_hybrids} == {"equal", "inverse_mse", "nnls"}
+    corrected = [c for c in candidates if c.strategy == "residual_composite"]
+    assert [c.corrector.name for c in corrected] == ["linear", "knn"]  # type: ignore[union-attr]
+    # The simplest version of each kind comes first.
+    assert [c.strategy for c in candidates[:3]] == ["ensemble", "ensemble", "residual_composite"]
+    assert candidates[0].options["method"] == candidates[1].options["method"] == "equal"
+    assert SearchSpace().ensemble_proposals([linear, knn], hybrids, REGISTRY) == []
+    with pytest.raises(ConfigurationError, match="ensemble"):
+        SearchSpace(ensemble_methods=("vote",))

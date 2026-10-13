@@ -41,9 +41,67 @@ def test_default_registry_contents() -> None:
         "tree",
         "random_forest",
         "mlp",
+        # opt-in additions of the ensemble plan (F1a, F1c): registered, not searched by default
+        "historic_average",
+        "window_average",
+        "seasonal_window_average",
+        "random_walk_drift",
+        "exponential_smoothing",
+        "harmonic_regression",
+        "sf_auto_arima",
+        "sf_auto_ets",
+        "sf_auto_theta",
+        "sf_auto_ces",
+        "ridge_regression",
+        "lasso_regression",
+        "elastic_net_regression",
+        "extra_trees_regressor",
+        "hist_gradient_boosting",
+        "adaboost_r2",
+        "lightgbm_regressor",
+        "xgboost_regressor",
+        "catboost_regressor",
+        # intermittent demand (L08), a family of its own
+        "croston_sba",
+        "tsb",
+        "adida",
+        "imapa",
     }
-    assert registry.families() == ("statistical", "linear", "kernel", "tree", "neural")
-    assert registry.names(family="tree") == ("random_forest", "tree")
+    assert set(registry.names("corrector")) == {
+        "linear",
+        "knn",
+        "mlp",
+        "svm",
+        "tree",
+        "random_forest",
+        "hist_gradient_boosting",
+        "adaboost_r2",
+        "lightgbm_regressor",
+        "xgboost_regressor",
+        "catboost_regressor",
+        # residual sequence correctors (F1e)
+        "arima_sequence",
+        "exponential_smoothing_sequence",
+    }
+    # Known families first, in the default order; the others (intermittent) after them.
+    assert registry.families() == (
+        "statistical",
+        "linear",
+        "kernel",
+        "tree",
+        "neural",
+        "intermittent",
+    )
+    assert registry.names(family="tree") == (
+        "adaboost_r2",
+        "catboost_regressor",
+        "extra_trees_regressor",
+        "hist_gradient_boosting",
+        "lightgbm_regressor",
+        "random_forest",
+        "tree",
+        "xgboost_regressor",
+    )
     assert registry.entry("arima").capabilities.requires_extra == "stats"
 
 
@@ -96,7 +154,7 @@ def test_declared_in_sample_capability_is_checked() -> None:
 
 
 def test_unknown_model_lists_alternatives() -> None:
-    with pytest.raises(ConfigurationError, match="Disponíveis: arima"):
+    with pytest.raises(ConfigurationError, match="Disponíveis: adaboost_r2, adida, arima"):
         default_registry().make_base("prophet")
 
 
@@ -140,13 +198,13 @@ def test_factory_output_is_checked_on_every_build() -> None:
 
 def test_default_correctors() -> None:
     registry = default_registry()
-    assert registry.names("corrector") == ("knn", "linear", "mlp")
+    assert {"knn", "linear", "mlp"} <= set(registry.names("corrector"))
     corrector = registry.make_corrector("knn", {"estimator_params": {"n_neighbors": 3}})
     assert corrector.get_params()["estimator"] == "knn"
     with pytest.raises(ConfigurationError, match="estimator='mlp'"):
         registry.make_corrector("knn", {"estimator": "mlp"})
     with pytest.raises(ConfigurationError, match="não registrado"):
-        registry.make_corrector("svm")
+        registry.make_corrector("arima")
 
 
 def test_corrector_contract_is_checked() -> None:

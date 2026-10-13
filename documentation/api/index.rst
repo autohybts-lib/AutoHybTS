@@ -5,7 +5,8 @@ Experimento
 -----------
 
 .. autoclass:: autohybts.AutoHybridExperiment
-   :members: fit, splits, models, register_model, create_model, create_hybrid, create_decomposition,
+   :members: fit, splits, models, register_model, create_model, create_ensemble, create_hybrid,
+             create_decomposition,
              create_combination, tune_model, compare_models, finalize_model, predict_model,
              evaluate_external, cross_validate, compare_external, nested_cross_validate,
              data_profile, plot_data, plot_model, get_metrics, export_evidence
@@ -66,7 +67,7 @@ Especificações
 --------------
 
 .. autoclass:: autohybts.domain.specs.CandidateSpec
-   :members: name, label, stages, options, describe
+   :members: name, label, stages, options, describe, ensemble, corrected, depth, model_names
 
 .. autoclass:: autohybts.domain.specs.ModelSpec
    :members: of, params, label
@@ -90,6 +91,15 @@ Estratégias
 
 .. automodule:: autohybts.strategies.combination
    :members: FixedCombinationForecaster
+
+.. automodule:: autohybts.strategies.ensemble
+   :members: EnsembleForecaster
+
+.. autoclass:: autohybts.registry.capabilities.Capabilities
+   :no-members:
+
+.. automodule:: autohybts.domain.fit_count
+   :members: count_fits, record_fit
 
 .. automodule:: autohybts.strategies.multistage
    :members: stack_stages

@@ -44,6 +44,12 @@ optuna = ["optuna>=3.5"]
 # the PEP 440 version requirements of registered models (ADR-0006).
 torch = ["torch>=2.2", "packaging>=22"]
 tensorflow = ["tensorflow>=2.16", "packaging>=22"]
+# Gradient boosting on lags (LightGBM, XGBoost, CatBoost); scikit-learn's
+# HistGradientBoosting and AdaBoost.R2 need no extra.
+boosting = ["lightgbm>=4", "xgboost>=2", "catboost>=1.2"]
+# Nixtla StatsForecast (AutoARIMA, AutoETS, AutoTheta, AutoCES). Its releases require
+# pandas<3, so this extra brings pandas 2.x.
+nixtla-stats = ["statsforecast>=2"]
 # Reading the M3 benchmark (R data file of the Mcomp package).
 datasets = ["rdata>=0.11"]
 # Building documentation/ with Sphinx.
@@ -98,7 +104,7 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 # No type information shipped by these libraries (matplotlib/plot, optuna,
 # rdata/datasets, keras/tensorflow and torch: optional extras, may be absent).
-module = ["statsmodels.*", "sklearn.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*", "keras", "keras.*", "tensorflow", "tensorflow.*", "torch", "torch.*"]
+module = ["statsmodels.*", "sklearn.*", "threadpoolctl", "lightgbm", "lightgbm.*", "xgboost", "xgboost.*", "catboost", "catboost.*", "scipy.*", "matplotlib.*", "optuna", "optuna.*", "rdata", "rdata.*", "keras", "keras.*", "tensorflow", "tensorflow.*", "torch", "torch.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

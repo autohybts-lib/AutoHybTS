@@ -29,6 +29,11 @@ Copie o nome e passe para ``get_data``; o resultado é uma ``pd.Series`` com
      - diária
      - 730
      - gerada pela AutoHybTS
+   * - ``intermittent_daily``
+     - sintética: demanda esparsa (venda em ~25% dos dias, tamanho 1 + Poisson)
+     - diária
+     - 730
+     - gerada pela AutoHybTS
    * - ``air_passengers``
      - passageiros aéreos, 1949–1960
      - mensal

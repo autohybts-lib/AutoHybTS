@@ -165,6 +165,12 @@ class _Search:
         return self.compare.search.unit_count + sum(len(r.trials) for r in finalists)
 
     @property
+    def fits(self) -> int:
+        finalists = self.compare.selection.finalists
+        selected = sum(t.n_fits or 0 for r in finalists for t in r.trials)
+        return self.compare.search.fit_count + selected
+
+    @property
     def seconds_search(self) -> float:
         return self.compare.search.elapsed_s
 
@@ -285,6 +291,7 @@ def run_case(
                 "search_candidates": search.candidates,
                 "nested_candidates": nested.total_candidates if with_nested else 0,
                 "units": search.units + (nested_units if with_nested else 0),
+                "fits": search.fits + (nested.total_fits if with_nested else 0),
                 "max_trials_total": search.compare.snapshot["guard"]["max_trials_total"],
                 "stop_reason": search.compare.search.stop_reason,
                 # proposals cut by each budget limit (the search's own, not the nested CV's)

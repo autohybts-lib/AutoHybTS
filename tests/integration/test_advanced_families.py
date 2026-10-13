@@ -124,7 +124,7 @@ def test_compare_models_with_every_family(experiment: AutoHybridExperiment) -> N
     with pytest.raises(ConfigurationError, match="inclua 'residual'"):
         experiment.compare_models(include=("standalone", "multistage"))
     with pytest.raises(ConfigurationError, match="include"):
-        experiment.compare_models(include=("standalone", "ensemble"))
+        experiment.compare_models(include=("standalone", "bagging"))
 
 
 def test_create_the_new_structures_by_hand(experiment: AutoHybridExperiment) -> None:

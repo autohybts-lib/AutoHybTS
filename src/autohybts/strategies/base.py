@@ -16,6 +16,7 @@ from autohybts.strategies.additive_residual import ResidualHybridForecaster
 from autohybts.strategies.combination import CorrectorCombination, FixedCombinationForecaster
 from autohybts.strategies.decomposition import DecompositionForecaster
 from autohybts.strategies.dynamic import DynamicSelectionForecaster
+from autohybts.strategies.ensemble import EnsembleForecaster
 from autohybts.strategies.multistage import stack_stages
 
 __all__ = ["build_model"]
@@ -167,6 +168,49 @@ def build_model(
             settings=residual_settings,
         )
         return dynamic, unit_seed if seeded else None
+    if candidate.strategy == "ensemble":
+        components = []
+        seeded = False
+        for index, component in enumerate(candidate.components):
+            model, component_seed = build_model(
+                component,
+                registry,
+                unit_seed=derive_seed(unit_seed, f"component-{index}"),
+                residual_settings=residual_settings,
+            )
+            components.append(model)
+            seeded = seeded or component_seed is not None
+        options = candidate.options
+        ensemble = EnsembleForecaster(
+            components,
+            method=str(options["method"]),
+            trim=float(options.get("trim", 0.2)),
+            shrinkage=float(options.get("shrinkage", 0.5)),
+            settings=residual_settings,
+        )
+        return ensemble, unit_seed if seeded else None
+    if candidate.strategy == "residual_composite":
+        if candidate.corrector is None:
+            raise ConfigurationError("Composição residual sem corretor.")
+        inner, inner_seed = build_model(
+            candidate.components[0],
+            registry,
+            unit_seed=derive_seed(unit_seed, "component-0"),
+            residual_settings=residual_settings,
+        )
+        corrector, corrector_seed = _seeded(
+            registry.make_corrector, candidate.corrector, derive_seed(unit_seed, "corrector")
+        )
+        hybrid = ResidualHybridForecaster(
+            inner,
+            corrector,
+            window_size=int(candidate.window_size or 0),
+            alpha=float(candidate.alpha if candidate.alpha is not None else 1.0),
+            residual_source=str(candidate.residual_source),
+            settings=residual_settings,
+        )
+        used = inner_seed is not None or corrector_seed is not None
+        return hybrid, unit_seed if used else None
     raise UnsupportedCapabilityError(f"Estratégia {candidate.strategy!r} não implementada.")
 
 

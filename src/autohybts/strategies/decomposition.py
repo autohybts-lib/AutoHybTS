@@ -19,6 +19,7 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
 from autohybts.adapters.base import BaseForecaster, FloatArray, ForecasterBase
+from autohybts.domain.fit_count import record_fit
 from autohybts.exceptions import (
     ConfigurationError,
     InsufficientHistoryError,
@@ -71,10 +72,13 @@ def stl_smooth(y: FloatArray, period: int) -> FloatArray:
             'A decomposição STL requer o extra `stats`: pip install "autohybts[stats]".'
         ) from error
     result = STL(y, period=int(period), robust=True).fit()
+    record_fit()
     return np.asarray(result.trend + result.seasonal, dtype=np.float64)
 
 
 class DecompositionForecaster(ForecasterBase):
+    composite = True
+
     def __init__(
         self,
         smooth: BaseForecaster,

@@ -44,6 +44,8 @@ __all__ = ["DynamicSelectionForecaster"]
 
 
 class DynamicSelectionForecaster(ForecasterBase):
+    composite = True
+
     def __init__(
         self,
         base: BaseForecaster,

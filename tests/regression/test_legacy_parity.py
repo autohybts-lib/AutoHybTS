@@ -1,7 +1,10 @@
-"""Parity with the legacy project on captured outputs (I1; fixture from capture_legacy.py).
+"""Parity with the legacy project on captured outputs (fixtures from capture_legacy*.py).
 
 Covered: the causal moving average and the kurtosis window of the decomposition, the
-mean-rank convention (ADR-0004) and the paired gain/win share of the selection rule.
+mean-rank convention (ADR-0004), the paired gain/win share of the selection rule (I1) and
+the forecasts of the four KNN residual hybrids of the replication in variants A and B
+(plano de ensembles F1e). The three statistical-ANN hybrids need StatsForecast, which
+cannot be installed with pandas 3, and are not covered.
 """
 
 from __future__ import annotations
@@ -94,3 +97,129 @@ def test_paired_gain_and_win_share_match_the_legacy() -> None:
     legacy = FIXTURE["ranking"]["gain_arima_mlp_over_arima"]
     assert paired.median_gain == pytest.approx(legacy["median_gain"])
     assert paired.win_rate == pytest.approx(legacy["win_share"])
+
+
+# --------------------------------------------------------------------------------------
+# The four KNN residual hybrids of the replication (plano de ensembles F1e), built only
+# from candidate specs: same lags, same KNN, the legacy's 120-point residual tail and its
+# per-column scaling (scale="columns") where the estimator depends on scale.
+HYBRIDS = json.loads(
+    (Path(__file__).parent / "fixtures" / "legacy_hybrids.json").read_text(encoding="utf-8")
+)
+KNN_CORRECTOR = ModelSpec.of(
+    "knn", {"scale": "columns", "estimator_params": {"n_neighbors": 5, "weights": "distance"}}
+)
+LEGACY_BASES = {
+    "linear_knn_residual": ModelSpec.of("linear", {"lags": 7, "scale": False}),
+    "tree_knn_residual": ModelSpec.of(
+        "tree",
+        {
+            "lags": 7,
+            "scale": False,
+            "random_state": 42,
+            "estimator_params": {"min_samples_leaf": 5},
+        },
+    ),
+    "svm_knn_residual": ModelSpec.of(
+        "svm",
+        {
+            "lags": 7,
+            "scale": "columns",
+            "estimator_params": {"kernel": "rbf", "gamma": "scale", "epsilon": 0.1, "C": 10},
+        },
+    ),
+    "knn_knn_residual": ModelSpec.of(
+        "knn",
+        {
+            "lags": 7,
+            "scale": "columns",
+            "estimator_params": {"n_neighbors": 5, "weights": "distance"},
+        },
+    ),
+}
+
+
+# The three statistical-ANN hybrids: StatsForecast bases with the replication's settings
+# and the MLP corrector it used (5 logistic units, L-BFGS, min-max scaling per column,
+# features ordered by lag).
+ANN_CORRECTOR = ModelSpec.of(
+    "mlp",
+    {
+        "scale": "minmax",
+        "feature_order": "lag",
+        "random_state": 42,
+        "estimator_params": {
+            "hidden_layer_sizes": [5],
+            "activation": "logistic",
+            "solver": "lbfgs",
+            "max_iter": 2000,
+            "alpha": 0.0001,
+            "tol": 0.0001,
+        },
+    },
+)
+STATISTICAL_BASES = {
+    name: ModelSpec.of(
+        model,
+        {
+            "season_length": HYBRIDS["hybrids"][name]["params"]["base_params"]["season_length"],
+            "model_params": {
+                key: value
+                for key, value in HYBRIDS["hybrids"][name]["params"]["base_params"].items()
+                if key != "season_length"
+            },
+        },
+    )
+    for name, model in (
+        ("ets_ann_residual", "sf_auto_ets"),
+        ("arima_ann_residual", "sf_auto_arima"),
+        ("sarima_ann_residual", "sf_auto_arima"),
+    )
+    if name in HYBRIDS["hybrids"]
+}
+CASES = {
+    **{name: (base, KNN_CORRECTOR) for name, base in LEGACY_BASES.items()},
+    **{name: (base, ANN_CORRECTOR) for name, base in STATISTICAL_BASES.items()},
+}
+
+
+def test_the_fixture_has_the_seven_hybrids() -> None:
+    assert set(CASES) == {
+        "linear_knn_residual",
+        "tree_knn_residual",
+        "svm_knn_residual",
+        "knn_knn_residual",
+        "ets_ann_residual",
+        "arima_ann_residual",
+        "sarima_ann_residual",
+    }
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_residual_hybrids_match_the_legacy_in_both_variants(name: str) -> None:
+    from autohybts.registry import default_registry
+    from autohybts.residuals.generation import ResidualSettings, local_context
+    from autohybts.strategies.base import build_model
+
+    base, corrector = CASES[name]
+    if base.name.startswith("sf_"):
+        pytest.importorskip("statsforecast")  # extra nixtla-stats (pandas 2.x)
+    y = np.asarray(HYBRIDS["y"], dtype=float)
+    train, horizon = int(HYBRIDS["train"]), int(HYBRIDS["horizon"])
+    legacy = HYBRIDS["hybrids"][name]
+    spec = CandidateSpec(
+        "residual",
+        "residual_additive",
+        base,
+        corrector,
+        int(legacy["params"]["residual_lags"]),
+        1.0,
+        "historical_oof_1step",
+    )
+    settings = ResidualSettings(tail_fraction=0.99, max_tail=int(legacy["params"]["residual_tail"]))
+    model, _ = build_model(spec, default_registry(), unit_seed=0, residual_settings=settings)
+    model.fit(y[:train])
+    variant_a = model.predict(horizon, local_context(y, train))
+    variant_b = [model.predict(1, local_context(y, train + k))[0] for k in range(horizon)]
+    np.testing.assert_allclose(variant_a, legacy["variant_a"], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(variant_b, legacy["variant_b"], rtol=0, atol=1e-9)

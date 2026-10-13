@@ -38,6 +38,10 @@ _COLORS: Final = {
 def complexity(candidate: CandidateSpec) -> int:
     """Number of fitted models in the structure (a base is 1, each corrector adds 1)."""
 
+    if candidate.strategy == "ensemble":
+        return sum(complexity(component) for component in candidate.components)
+    if candidate.strategy == "residual_composite":
+        return complexity(candidate.components[0]) + 1
     if candidate.strategy == "fixed_combination":
         return 1 + len(candidate.members)
     if candidate.corrector is None:

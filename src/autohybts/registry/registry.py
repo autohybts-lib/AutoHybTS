@@ -28,6 +28,8 @@ Factory: TypeAlias = Callable[[Mapping[str, Any]], Any]
 
 # Default family order of the incremental selection (§24 `family_order`).
 FAMILIES: Final = ("statistical", "linear", "kernel", "tree", "neural")
+# Lag estimators that need the `boosting` extra.
+BOOSTING_EXTRA: Final = frozenset({"lightgbm_regressor", "xgboost_regressor", "catboost_regressor"})
 _NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -270,8 +272,23 @@ class ModelRegistry:
 def default_registry() -> ModelRegistry:
     """A new registry with the built-in base models and correctors (§8.1)."""
 
-    from autohybts.adapters.naive import NaiveForecaster, SeasonalNaiveForecaster
+    from autohybts.adapters.harmonic import HarmonicRegressionForecaster
+    from autohybts.adapters.intermittent import (
+        AdidaForecaster,
+        CrostonSBAForecaster,
+        ImapaForecaster,
+        TSBForecaster,
+    )
+    from autohybts.adapters.naive import (
+        HistoricAverageForecaster,
+        NaiveForecaster,
+        RandomWalkWithDriftForecaster,
+        SeasonalNaiveForecaster,
+        SeasonalWindowAverageForecaster,
+        WindowAverageForecaster,
+    )
     from autohybts.adapters.statsmodels_arima import ArimaForecaster
+    from autohybts.adapters.statsmodels_ets import ExponentialSmoothingForecaster
 
     registry = ModelRegistry()
     registry.register_base(
@@ -286,6 +303,72 @@ def default_registry() -> ModelRegistry:
         family="statistical",
         description="Repete a última temporada (season_length).",
     )
+    # Extra baselines (plano de ensembles F1a); not in the default search space.
+    registry.register_base(
+        "historic_average",
+        lambda p: HistoricAverageForecaster(**p),
+        family="statistical",
+        description="Média do treino (parâmetro congelado).",
+    )
+    registry.register_base(
+        "window_average",
+        lambda p: WindowAverageForecaster(**p),
+        family="statistical",
+        description="Média das últimas window observações.",
+    )
+    registry.register_base(
+        "seasonal_window_average",
+        lambda p: SeasonalWindowAverageForecaster(**p),
+        family="statistical",
+        description="Média de cada posição sazonal nas últimas window temporadas.",
+    )
+    registry.register_base(
+        "random_walk_drift",
+        lambda p: RandomWalkWithDriftForecaster(**p),
+        family="statistical",
+        description="Passeio aleatório com drift: último valor + h · variação média do treino.",
+    )
+    # Intermittent demand (L08): their own family, out of the default search space; the
+    # family enters the selection chain only when one of them is a base of the search.
+    for name, factory, description in (
+        ("croston_sba", CrostonSBAForecaster, "Croston-SBA: tamanho / intervalo entre demandas."),
+        ("tsb", TSBForecaster, "TSB: probabilidade de demanda × tamanho."),
+        ("adida", AdidaForecaster, "ADIDA: suavização em blocos de k períodos."),
+        ("imapa", ImapaForecaster, "IMAPA: média do ADIDA nos níveis 1..k."),
+    ):
+        registry.register_base(
+            name,
+            _plain_factory(factory),
+            family="intermittent",
+            description=description,
+        )
+    registry.register_base(
+        "exponential_smoothing",
+        lambda p: ExponentialSmoothingForecaster(**p),
+        family="statistical",
+        capabilities=Capabilities(requires_extra="stats"),
+        description="Suavização exponencial aditiva (Holt, Holt-Winters, amortecida; statsmodels).",
+    )
+    registry.register_base(
+        "harmonic_regression",
+        lambda p: HarmonicRegressionForecaster(**p),
+        family="statistical",
+        description="Regressão harmônica dinâmica: tendência + Fourier de vários períodos + AR.",
+    )
+    # Nixtla StatsForecast (F1d): extra `nixtla-stats`, out of the default search space.
+    for name, description in (
+        ("sf_auto_arima", "AutoARIMA do StatsForecast (ordem automática, sazonal)."),
+        ("sf_auto_ets", "AutoETS do StatsForecast (erro, tendência e sazonalidade automáticos)."),
+        ("sf_auto_theta", "AutoTheta do StatsForecast (variantes do método Theta)."),
+        ("sf_auto_ces", "AutoCES do StatsForecast (suavização exponencial complexa)."),
+    ):
+        registry.register_base(
+            name,
+            _statsforecast_factory(name),
+            family="statistical",
+            capabilities=Capabilities(requires_extra="nixtla-stats"),
+            description=description,
+        )
     registry.register_base(
         "arima",
         lambda p: ArimaForecaster(**p),
@@ -300,29 +383,106 @@ def default_registry() -> ModelRegistry:
         "tree": ("tree", True, "Árvore de decisão sobre lags."),
         "random_forest": ("tree", False, "Floresta aleatória sobre lags."),
         "mlp": ("neural", False, "Perceptron multicamadas sobre lags."),
+        # Opt-in additions of the ensemble plan (L07, F1c); not in the default search space.
+        "ridge_regression": ("linear", True, "Regressão Ridge sobre lags."),
+        "lasso_regression": ("linear", True, "Regressão Lasso sobre lags."),
+        "elastic_net_regression": ("linear", True, "Elastic Net sobre lags."),
+        "extra_trees_regressor": ("tree", False, "Árvores extremamente aleatórias sobre lags."),
+        "hist_gradient_boosting": (
+            "tree",
+            False,
+            "HistGradientBoosting (scikit-learn) sobre lags.",
+        ),
+        "adaboost_r2": ("tree", False, "AdaBoost.R2 (scikit-learn) sobre lags."),
+        "lightgbm_regressor": ("tree", False, "LightGBM sobre lags (extra boosting)."),
+        "xgboost_regressor": ("tree", False, "XGBoost sobre lags (extra boosting)."),
+        "catboost_regressor": ("tree", False, "CatBoost sobre lags (extra boosting)."),
     }
     for name, (family, deterministic, description) in lag_models.items():
         registry.register_base(
             name,
             _lag_factory(name),
             family=family,
-            capabilities=Capabilities(deterministic=deterministic),
+            capabilities=Capabilities(
+                deterministic=deterministic,
+                requires_extra="boosting" if name in BOOSTING_EXTRA else None,
+            ),
             description=description,
         )
     for name, (deterministic, description) in {
         "linear": (True, "Regressão linear sobre janelas de resíduos."),
         "knn": (True, "k vizinhos mais próximos sobre janelas de resíduos."),
         "mlp": (False, "Perceptron multicamadas sobre janelas de resíduos."),
+        "svm": (True, "SVR sobre janelas de resíduos."),
+        "tree": (True, "Árvore de decisão sobre janelas de resíduos."),
+        "random_forest": (False, "Floresta aleatória sobre janelas de resíduos."),
+        "hist_gradient_boosting": (False, "HistGradientBoosting sobre janelas de resíduos."),
+        "adaboost_r2": (False, "AdaBoost.R2 sobre janelas de resíduos."),
+        "lightgbm_regressor": (False, "LightGBM sobre janelas de resíduos (extra boosting)."),
+        "xgboost_regressor": (False, "XGBoost sobre janelas de resíduos (extra boosting)."),
+        "catboost_regressor": (False, "CatBoost sobre janelas de resíduos (extra boosting)."),
     }.items():
         registry.register_corrector(
             name,
             _corrector_factory(name),
             capabilities=Capabilities(
-                multi_step=False, online_state_update=False, deterministic=deterministic
+                multi_step=False,
+                online_state_update=False,
+                deterministic=deterministic,
+                requires_extra="boosting" if name in BOOSTING_EXTRA else None,
+            ),
+            description=description,
+        )
+    # Residual sequence correctors (F1e): a time-series model of the residual series that
+    # forecasts the whole horizon; only the additive hybrid (and its stages) can use them.
+    for name, model, description in (
+        ("arima_sequence", "arima", "ARIMA sobre a série de resíduos (horizonte inteiro)."),
+        (
+            "exponential_smoothing_sequence",
+            "exponential_smoothing",
+            "Suavização exponencial sobre a série de resíduos (horizonte inteiro).",
+        ),
+    ):
+        registry.register_corrector(
+            name,
+            _sequence_factory(model),
+            capabilities=Capabilities(
+                multi_step=True,
+                horizon_strategy="recursive",
+                requires_extra="stats",
             ),
             description=description,
         )
     return registry
+
+
+def _statsforecast_factory(model: str) -> Factory:
+    from autohybts.adapters.statsforecast_models import StatsForecastForecaster
+
+    def factory(params: Mapping[str, Any]) -> StatsForecastForecaster:
+        if params.get("model", model) != model:
+            raise ConfigurationError(f"O modelo {model!r} não aceita model={params['model']!r}.")
+        return StatsForecastForecaster(**{**params, "model": model})
+
+    return factory
+
+
+def _sequence_factory(model: str) -> Factory:
+    from autohybts.residuals.sequence import SequenceCorrector
+
+    def factory(params: Mapping[str, Any]) -> SequenceCorrector:
+        if params.get("model", model) != model:
+            raise ConfigurationError(
+                f"O corretor de {model!r} não aceita model={params['model']!r}."
+            )
+        return SequenceCorrector(**{**params, "model": model})
+
+    return factory
+
+
+def _plain_factory(cls: Callable[..., BaseForecaster]) -> Factory:
+    # A function, not a lambda in a loop: each factory keeps its own class.
+    return lambda params: cls(**params)
 
 
 def _corrector_factory(estimator: str) -> Factory:

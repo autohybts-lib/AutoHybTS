@@ -133,6 +133,8 @@ class SearchEngine:
         advanced_reserve = len({p.candidate.family for p in advanced if p.skip_reason is None})
         if self.space.dynamic_methods and self.space.correctors:
             advanced_reserve += 1
+        if self.space.ensemble_methods:
+            advanced_reserve += 1
         structures: list[EvaluationResult] = []
         if self.space.correctors and self.space.residual_windows and self.space.alphas:
             # Keep room for S3: refinement is the point of the staged search (§8.2).
@@ -163,8 +165,9 @@ class SearchEngine:
         best_structures = [r.candidate for r in structures]
         dynamic = self.space.dynamic_proposals(best_structures, registry)
         dynamic += self.space.corrector_combination_proposals(best_structures, registry)
-        if advanced or dynamic:
-            self._stage(round_robin([*advanced, *dynamic]), plan, state)
+        ensembles = self.space.ensemble_proposals(retained_specs, best_structures, registry)
+        if advanced or dynamic or ensembles:
+            self._stage(round_robin([*advanced, *dynamic, *ensembles]), plan, state)
 
         pruned = {e.reason for e in state.ledger if e.status == "PRUNED_BUDGET"}
         if state.stopped:

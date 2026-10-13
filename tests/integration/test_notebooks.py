@@ -2,19 +2,29 @@
 
 Each notebook lists in ``metadata.autohybts.requires`` the public names it calls. It is
 skipped while any of them is missing and runs end to end once they all exist, so a
-stage that ships the API automatically switches its notebook on.
+stage that ships the API automatically switches its notebook on. Notebooks marked
+``heavy`` run only with ``AUTOHYBTS_RUN_HEAVY=1``; one whose ``extras`` are not installed
+is skipped and says which (a skip is never evidence that it runs). The metadata schema
+is checked in ``tests/contracts/test_notebook_metadata.py``.
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import json
+import os
+import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 NOTEBOOKS_DIR = Path(__file__).parents[2] / "notebooks"
 NOTEBOOKS = sorted(NOTEBOOKS_DIR.glob("*.ipynb"))
+EXTRAS: dict[str, list[str]] = tomllib.loads(
+    (NOTEBOOKS_DIR.parent / "pyproject.toml").read_text(encoding="utf-8")
+)["project"]["optional-dependencies"]
 
 
 def _metadata(path: Path) -> dict[str, object]:
@@ -45,6 +55,22 @@ def _resolves(dotted: str) -> bool:
     return False
 
 
+def _missing_extras(extras: object) -> list[str]:
+    """Distributions of the declared extras that are not installed, as ``extra (dist)``."""
+
+    assert isinstance(extras, list)
+    missing = []
+    for extra in extras:
+        for requirement in EXTRAS[extra]:
+            match = re.match(r"[A-Za-z0-9_.\-]+", requirement)
+            assert match is not None, requirement
+            try:
+                importlib.metadata.version(match.group(0))
+            except importlib.metadata.PackageNotFoundError:
+                missing.append(f"{extra} ({match.group(0)})")
+    return missing
+
+
 def _params() -> list[object]:
     params = []
     for path in NOTEBOOKS:
@@ -61,6 +87,12 @@ def test_every_notebook_declares_its_requirements() -> None:
         requires = _metadata(path).get("requires")
         assert isinstance(requires, list), path.name
         assert requires, path.name
+
+
+def test_missing_extras_names_the_distribution(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _missing_extras([]) == []
+    monkeypatch.setitem(EXTRAS, "fake_extra", ["not-a-real-distribution>=1"])
+    assert _missing_extras(["fake_extra"]) == ["fake_extra (not-a-real-distribution)"]
 
 
 def test_resolver() -> None:
@@ -90,6 +122,12 @@ def test_notebook_executes(path: Path, tmp_path: Path) -> None:
     missing = [name for name in requires if not _resolves(name)]
     if missing:
         pytest.skip(f"API not implemented yet: {', '.join(missing)}")
+    meta = _metadata(path)
+    if meta.get("heavy") and os.environ.get("AUTOHYBTS_RUN_HEAVY") != "1":
+        pytest.skip("heavy notebook: set AUTOHYBTS_RUN_HEAVY=1 to run it")
+    absent = _missing_extras(meta.get("extras", []))
+    if absent:
+        pytest.skip(f"extras not installed: {', '.join(absent)}")
 
     nbformat = pytest.importorskip("nbformat")
     nbclient = pytest.importorskip("nbclient")

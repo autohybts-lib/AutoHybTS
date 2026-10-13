@@ -36,17 +36,30 @@ def _white_noise_daily(n: int = 730, seed: int = 42) -> pd.Series:
     return pd.Series(50 + rng.normal(0.0, 1.0, n), index=index, name="value")
 
 
+def _intermittent_daily(
+    n: int = 730, seed: int = 42, probability: float = 0.25, mean_size: float = 4.0
+) -> pd.Series:
+    """Sparse demand: a sale happens with ``probability``; sizes are 1 + Poisson."""
+
+    rng = np.random.default_rng(seed)
+    occurs = rng.random(n) < probability
+    sizes = 1 + rng.poisson(mean_size - 1, n)
+    index = pd.date_range("2024-01-01", periods=n, freq="D")
+    return pd.Series(np.where(occurs, sizes, 0).astype(float), index=index, name="value")
+
+
 SYNTHETIC: Final[dict[str, Callable[..., pd.Series]]] = {
     "synthetic_daily": _synthetic_daily,
     "white_noise_daily": _white_noise_daily,
+    "intermittent_daily": _intermittent_daily,
 }
 
 
 def get_data(name: str, **kwargs: Any) -> pd.Series:
     """A named series as ``pd.Series`` with a regular ``DatetimeIndex``.
 
-    * Offline examples: ``"synthetic_daily"``, ``"white_noise_daily"``; keyword
-      arguments go to the generator (``n``, ``seed`` ...).
+    * Offline examples: ``"synthetic_daily"``, ``"white_noise_daily"``,
+      ``"intermittent_daily"``; keyword arguments go to the generator (``n``, ``seed`` ...).
     * Benchmark series: ``"m4:D1"`` or ``"m3:N1402"`` — downloaded once to the cache
       (keywords ``offline``, ``cache_dir``). The official test is at the end; seal it
       with ``test_size`` equal to the benchmark horizon.

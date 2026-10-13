@@ -170,6 +170,13 @@ class NestedCVResult:
         return int(self.cost["search_candidates"].fillna(0).sum())
 
     @property
+    def total_fits(self) -> int:
+        """Leaf model fits of every inner search and selection together."""
+
+        columns = [c for c in ("search_fits", "select_fits") if c in self.cost]
+        return int(self.cost[columns].fillna(0).sum().sum()) if columns else 0
+
+    @property
     def total_seconds(self) -> float:
         if "seconds_total" not in self.cost:
             return 0.0
