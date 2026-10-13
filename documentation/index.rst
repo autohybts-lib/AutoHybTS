@@ -60,6 +60,7 @@ estratégias de montar sistemas híbridos:
    :caption: Guia do usuário
 
    user_guide/temporal_validation
+   user_guide/diagnostics
    user_guide/datasets
    user_guide/models
    user_guide/model_reference

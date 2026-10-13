@@ -48,6 +48,7 @@ def test_default_registry_contents() -> None:
         "random_walk_drift",
         "exponential_smoothing",
         "harmonic_regression",
+        "sarima",
         "sf_auto_arima",
         "sf_auto_ets",
         "sf_auto_theta",

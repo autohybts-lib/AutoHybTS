@@ -61,7 +61,10 @@ Opções comuns aos modelos sobre defasagens e aos corretores de janela:
 
 * ``scale``: ``True`` (média e desvio da série), ``"columns"`` (por coluna, como o
   ``StandardScaler``), ``"minmax"`` (por coluna, para [0, 1]) ou ``False``;
-* ``differencing`` (só bases): diferenças ajustadas no treino de cada origem;
+* ``differencing`` (só bases): número de diferenças (0, 1, 2 …) ou ``"auto"``, que as
+  escolhe no treino de cada origem (:doc:`diagnostics`); ``seasonal_differencing`` (0 ou
+  1) com ``season_length`` acrescenta uma diferença sazonal; ``differencing_test``
+  (``"kpss"`` ou ``"adf"``) é o teste do ``"auto"``;
 * ``random_state``: semente; na busca, cada origem recebe uma semente derivada da
   semente do experimento, salvo se você a fixar;
 * ``feature_order`` (só corretores): ``"chronological"`` ou ``"lag"``.

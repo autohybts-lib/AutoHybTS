@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Literal, overload
+from typing import Any, Final, Literal, cast, overload
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ from autohybts.adapters.base import Parametrized
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
 from autohybts.data.schema import SeriesFrame
+from autohybts.data.seasonality import detect_seasonality
 from autohybts.data.splitter import (
     CrossValidationPlan,
     SealedTest,
@@ -84,6 +85,9 @@ _DEFAULT_INCLUDE: Final = ("standalone", "residual")
 # Origins per validation layer of fold='auto': the acceptance rule's calibration
 # (D5, ADR-0008) met its error targets with 7 units on one series.
 AUTO_FOLD: Final = 7
+# Cycles the seasonality test of seasonal_period="auto" needs before it may drop the
+# frequency's period: with fewer, simulated strong cycles were almost never detected.
+AUTO_MIN_CYCLES: Final = 6
 
 # Seasonal period by frequency prefix, as commonly used for daily/weekly/monthly data.
 _SEASONALITY: Final = {
@@ -141,6 +145,11 @@ class AutoHybridExperiment(Parametrized):
         fold_strategy: ``"expanding"`` or ``"rolling"`` (needs ``window_size``).
         window_size: training window length of each origin with ``fold_strategy="rolling"``.
         seasonal_period: ``None`` infers it from the frequency (daily: 7, monthly: 12 ...).
+            ``"auto"`` keeps that period for the metrics but tests the seasonality on the
+            training vector of the earliest validation origin (data every origin has
+            seen): when that vector has at least 6 cycles and shows no evidence of one,
+            the search uses period 1, so seasonal models and the STL are skipped; with
+            fewer cycles the period stays. ``seasonality_`` holds the test.
         test_size: points sealed at the end of the series; ``None`` means ``fh``, ``0``
             disables the sealed test (operational forecasting).
         profile: ``"quickstart"`` (variability criterion off), ``"standard"``,
@@ -184,6 +193,14 @@ class AutoHybridExperiment(Parametrized):
             default). It needs at least 5 paired units with different errors, all series
             together, for ``0.05``: with 3 origins on one series it can never pass. It
             controls each comparison, not the whole chain (see ``SelectionPolicy``).
+        differencing: ``"auto"`` makes every built-in lag model of the search choose its
+            differences on each origin's training vector: one seasonal difference when the
+            seasonality test finds a strong cycle (period ``search_period_``), then ``d``
+            up to 2 by ``differencing_test``. ``None`` (default) keeps each model's own
+            setting (no differencing), so candidate IDs do not change.
+        differencing_test: ``"kpss"`` (KPSS does not reject stationarity, as
+            ``auto.arima``) or ``"adf"`` (ADF rejects a unit root, as the replication
+            project).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -196,7 +213,7 @@ class AutoHybridExperiment(Parametrized):
         fold: int | str = "auto",
         fold_strategy: str = "expanding",
         window_size: int | None = None,
-        seasonal_period: int | None = None,
+        seasonal_period: int | str | None = None,
         test_size: int | None = None,
         profile: Profile = "standard",
         variant: ProtocolVariant = "A",
@@ -216,6 +233,8 @@ class AutoHybridExperiment(Parametrized):
         ensemble_methods: Sequence[str] = ("equal", "median", "inverse_mse", "nnls"),
         stage_params: str = "shared",
         significance_alpha: float | None = None,
+        differencing: str | None = None,
+        differencing_test: str = "kpss",
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -245,6 +264,8 @@ class AutoHybridExperiment(Parametrized):
         self.ensemble_methods = ensemble_methods
         self.stage_params = stage_params
         self.significance_alpha = significance_alpha
+        self.differencing = differencing
+        self.differencing_test = differencing_test
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -277,7 +298,19 @@ class AutoHybridExperiment(Parametrized):
         frame = next(iter(panel))
         history = dev_panel[frame.series_id]
         sealed = sealed_map.get(frame.series_id)
-        period = self.seasonal_period or infer_seasonal_period(panel.frequency)
+        if self.seasonal_period == "auto":
+            period = infer_seasonal_period(panel.frequency)
+        elif self.seasonal_period is None or (
+            isinstance(self.seasonal_period, int)
+            and not isinstance(self.seasonal_period, bool)
+            and self.seasonal_period >= 1
+        ):
+            period = self.seasonal_period or infer_seasonal_period(panel.frequency)
+        else:
+            raise ConfigurationError(
+                "seasonal_period deve ser None, 'auto' ou inteiro >= 1; "
+                f"recebido {self.seasonal_period!r}."
+            )
         self.fold_ = self._resolve_fold(dev_panel)
         splitter = self._splitter_for(self.fold_)
         self.panel_: PanelFrame = dev_panel
@@ -291,6 +324,12 @@ class AutoHybridExperiment(Parametrized):
         else:
             self.work_plan_ = plan_panel(splitter, dev_panel)
         self.seasonal_period_ = period
+        self.seasonality_: pd.DataFrame | None = None
+        self.search_period_ = period
+        if self.seasonal_period == "auto":
+            self.seasonality_ = self._decision_seasonality(dev_panel, period)
+            keep = bool(self.seasonality_["keep_period"].mean() >= 0.5) if period >= 3 else False
+            self.search_period_ = period if keep else 1
         self.registry_: ModelRegistry = (self.registry or default_registry()).copy()
         self.evaluator_ = TemporalEvaluator(
             self.registry_,
@@ -537,7 +576,7 @@ class AutoHybridExperiment(Parametrized):
         self._require("VALIDATED")
         options: dict[str, Any] = {"method": method, "ma_window": ma_window}
         if method == "stl":
-            options["period"] = self.seasonal_period_
+            options["period"] = self.search_period_
         candidate = CandidateSpec(
             "decomposition",
             "decomposition",
@@ -863,6 +902,52 @@ class AutoHybridExperiment(Parametrized):
             {sid: profile_series(frame)["value"] for sid, frame in self.panel_.series.items()},
             axis=1,
         )
+
+    def seasonality_report(
+        self, series_id: str | None = None, periods: Sequence[int] | None = None
+    ) -> pd.DataFrame:
+        """Seasonality evidence on the development history (never the sealed test).
+
+        One row per candidate period (default: the experiment's period): number of cycles,
+        strength ``F_s`` of the classical decomposition, autocorrelation of the detrended
+        series at the period, Kruskal-Wallis p-value by position in the cycle, the rule's
+        decision and the suggested number of seasonal differences. Exploratory: the
+        search decides inside the training data (see ``seasonal_period="auto"``).
+        """
+
+        self._require("VALIDATED")
+        candidates = tuple(periods) if periods else (self.seasonal_period_,)
+        frames = (
+            [self._series(series_id)]
+            if series_id is not None or not self.is_panel
+            else list(self.panel_)
+        )
+        rows = [
+            {"series_id": frame.series_id, **asdict(detect_seasonality(frame.values, int(m)))}
+            for frame in frames
+            for m in candidates
+        ]
+        return pd.DataFrame(rows).set_index(["series_id", "period"])
+
+    def _decision_seasonality(self, panel: PanelFrame, period: int) -> pd.DataFrame:
+        """The test behind ``seasonal_period="auto"``, on data seen by every origin."""
+
+        plans = cast(
+            dict[str, TemporalPlan],
+            {panel.series_ids[0]: self.plan_}
+            if panel.is_single
+            else dict(cast(PanelPlan, self.work_plan_).plans),
+        )
+        rows = []
+        for sid, plan in plans.items():
+            first = min(plan.search_origins, key=lambda o: o.origin_index)
+            window = panel[sid].values[: first.origin_index + 1]
+            test = detect_seasonality(window, period)
+            # A test on few cycles has almost no power: not rejecting there is no evidence
+            # that the cycle is absent, so the frequency's period stays.
+            keep = test.seasonal or (period >= 3 and test.n_cycles < AUTO_MIN_CYCLES)
+            rows.append({"series_id": sid, **asdict(test), "keep_period": keep})
+        return pd.DataFrame(rows).set_index("series_id")
 
     def plot_data(self, plot: str = "series", series_id: str | None = None) -> PlotArtifact:
         """``series``, ``acf``, ``seasonality`` or ``distribution`` of the development history."""
@@ -1362,7 +1447,7 @@ class AutoHybridExperiment(Parametrized):
     def _registered_space(self, name: str) -> dict[str, Distribution]:
         entry = self.registry_.entry(name)
         if entry.tuning_space is None:
-            return default_space(name, self.seasonal_period_)
+            return default_space(name, self.search_period_)
         return {key: _as_distribution(key, value) for key, value in entry.tuning_space.items()}
 
     def _external_requirements(self, spec: CandidateSpec) -> set[str]:
@@ -1475,7 +1560,9 @@ class AutoHybridExperiment(Parametrized):
             residual_sources=tuple(self.residual_sources or defaults.residual_sources),
             base_params=_grids(self.base_params),
             corrector_params=_grids(self.corrector_params),
-            seasonal_period=self.seasonal_period_,
+            seasonal_period=self.search_period_,
+            differencing=self.differencing,
+            differencing_test=self.differencing_test,
             variant=self.variant,
             max_stages=self.max_stages if "multistage" in include else 1,
             stage_params=self.stage_params,

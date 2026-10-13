@@ -30,7 +30,8 @@ Parâmetros
        fold="auto",               # origens por camada: 7 se couber
        fold_strategy="expanding", # ou "rolling" com window_size
        test_size=None,            # None = fh; 0 desliga o teste selado
-       seasonal_period=None,      # inferido pela frequência (diária: 7, mensal: 12 ...)
+       seasonal_period=None,      # pela frequência (diária: 7, mensal: 12 ...); "auto" testa
+                                  # o ciclo antes da busca (veja Diagnóstico da série)
    )
 
 Resíduos do corretor

@@ -31,7 +31,8 @@ Parameters
        fold="auto",               # origins per layer: 7 if they fit
        fold_strategy="expanding", # or "rolling" with window_size
        test_size=None,            # None = fh; 0 turns the sealed test off
-       seasonal_period=None,      # inferred from the frequency (daily: 7, monthly: 12 ...)
+       seasonal_period=None,      # from the frequency (daily: 7, monthly: 12 ...); "auto"
+                                  # tests the cycle before the search (see Series diagnostics)
    )
 
 Corrector residuals

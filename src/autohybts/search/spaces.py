@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from autohybts.data.stationarity import DIFFERENCING_TESTS
 from autohybts.domain.identity import canonical_json
 from autohybts.domain.specs import (
     COMBINATION_WEIGHTS,
@@ -100,6 +101,8 @@ class SearchSpace:
     dynamic_methods: tuple[str, ...] = ()
     stage_params: str = "shared"
     ensemble_methods: tuple[str, ...] = ()
+    differencing: str | None = None
+    differencing_test: str = "kpss"
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -139,6 +142,15 @@ class SearchSpace:
             raise ConfigurationError(
                 f"Métodos de ensemble desconhecidos: {sorted(unknown_ensembles)}."
             )
+        if self.differencing not in (None, "auto"):
+            raise ConfigurationError(
+                f"differencing da busca deve ser None ou 'auto'; recebido {self.differencing!r}."
+            )
+        if self.differencing_test not in DIFFERENCING_TESTS:
+            raise ConfigurationError(
+                f"differencing_test deve ser um de {list(DIFFERENCING_TESTS)}; "
+                f"recebido {self.differencing_test!r}."
+            )
         unknown_weights = set(self.combination_weights) - set(COMBINATION_WEIGHTS)
         if unknown_weights:
             raise ConfigurationError(
@@ -160,6 +172,9 @@ class SearchSpace:
             described["stage_params"] = self.stage_params
         if self.ensemble_methods:
             described["ensemble_methods"] = list(self.ensemble_methods)
+        if self.differencing is not None:
+            described["differencing"] = self.differencing
+            described["differencing_test"] = self.differencing_test
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -189,6 +204,8 @@ class SearchSpace:
                 reason = None
                 if name == "seasonal_naive" and self.seasonal_period == 1:
                     reason = "sem sazonalidade declarada: equivale ao naive"
+                elif name == "sarima" and self.seasonal_period == 1:
+                    reason = "sem sazonalidade declarada: equivale ao arima"
                 proposals.append(Proposal(candidate, "S0", skip_reason=reason))
         return proposals
 
@@ -542,10 +559,21 @@ class SearchSpace:
 
         if name == "seasonal_naive":
             return {"season_length": self.seasonal_period}
-        if name in ("seasonal_window_average", "exponential_smoothing") or name.startswith("sf_"):
+        if name in (
+            "seasonal_window_average",
+            "exponential_smoothing",
+            "sarima",
+        ) or name.startswith("sf_"):
             return {"season_length": self.seasonal_period}
         if name in _LAG_MODELS:
-            return {"lags": max(7, self.seasonal_period)}
+            params: dict[str, Any] = {"lags": max(7, self.seasonal_period)}
+            if self.differencing is not None:
+                params.update(
+                    differencing=self.differencing,
+                    season_length=self.seasonal_period,
+                    differencing_test=self.differencing_test,
+                )
+            return params
         return {}
 
     def _base_grid(self, name: str) -> list[dict[str, Any]]:

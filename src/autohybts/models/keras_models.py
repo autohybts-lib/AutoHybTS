@@ -128,7 +128,7 @@ class KerasForecaster(_KerasState, LaggedModelForecaster):
         builder: Builder,
         builder_params: Mapping[str, Any] | None = None,
         lags: int | tuple[int, ...] = 14,
-        differencing: int = 0,
+        differencing: int | str = 0,
         scale: bool = True,
         epochs: int = 100,
         batch_size: int = 32,
@@ -137,12 +137,18 @@ class KerasForecaster(_KerasState, LaggedModelForecaster):
         patience: int = 10,
         random_state: int | None = 0,
         requires: Mapping[str, str] | None = None,
+        seasonal_differencing: int = 0,
+        season_length: int = 1,
+        differencing_test: str = "kpss",
     ) -> None:
         if not callable(builder):
             raise ConfigurationError("builder deve ser uma função ou classe que cria o modelo.")
         super().__init__(
             lags=lags,
             differencing=differencing,
+            seasonal_differencing=seasonal_differencing,
+            season_length=season_length,
+            differencing_test=differencing_test,
             scale=scale,
             epochs=epochs,
             batch_size=batch_size,

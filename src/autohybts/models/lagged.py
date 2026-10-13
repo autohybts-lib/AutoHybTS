@@ -35,7 +35,8 @@ from typing import Any
 import numpy as np
 
 from autohybts.adapters.base import FloatArray, ForecasterBase, Parametrized
-from autohybts.data.preprocessing import DifferenceTransform
+from autohybts.data.preprocessing import Differencer
+from autohybts.data.stationarity import check_differencing, differencer_for, max_lost
 from autohybts.data.windows import lag_matrix, latest_lags, normalize_lags
 from autohybts.domain.fit_count import record_fit
 from autohybts.exceptions import ConfigurationError, InsufficientHistoryError
@@ -105,7 +106,7 @@ class LaggedModelForecaster(ForecasterBase):
     def __init__(
         self,
         lags: int | tuple[int, ...] = 14,
-        differencing: int = 0,
+        differencing: int | str = 0,
         scale: bool = True,
         epochs: int = 100,
         batch_size: int = 32,
@@ -114,12 +115,12 @@ class LaggedModelForecaster(ForecasterBase):
         patience: int = 10,
         random_state: int | None = 0,
         requires: Mapping[str, str] | None = None,
+        seasonal_differencing: int = 0,
+        season_length: int = 1,
+        differencing_test: str = "kpss",
     ) -> None:
         super().__init__()
-        if isinstance(differencing, bool) or not isinstance(differencing, int) or differencing < 0:
-            raise ConfigurationError(
-                f"differencing deve ser inteiro >= 0; recebido {differencing!r}."
-            )
+        check_differencing(differencing, seasonal_differencing, season_length, differencing_test)
         _check_training(epochs, batch_size, learning_rate, validation_fraction)
         self._lags = normalize_lags(lags)
         self.lags = lags
@@ -132,6 +133,9 @@ class LaggedModelForecaster(ForecasterBase):
         self.patience = patience
         self.random_state = random_state
         self.requires = requires
+        self.seasonal_differencing = seasonal_differencing
+        self.season_length = season_length
+        self.differencing_test = differencing_test
 
     @property
     def n_lags(self) -> int:
@@ -139,7 +143,12 @@ class LaggedModelForecaster(ForecasterBase):
 
     @property
     def min_history(self) -> int:
-        return max(self._lags) + self.differencing
+        differencer: Differencer | None = getattr(self, "differencer_", None)
+        if differencer is not None:
+            return max(self._lags) + differencer.lost
+        return max(self._lags) + max_lost(
+            self.differencing, self.seasonal_differencing, self.season_length
+        )
 
     @property
     def min_train_size(self) -> int:
@@ -147,6 +156,13 @@ class LaggedModelForecaster(ForecasterBase):
 
     def _fit(self, y: FloatArray) -> None:
         require(self.requires)
+        self.differencer_ = differencer_for(
+            y,
+            self.differencing,
+            self.seasonal_differencing,
+            self.season_length,
+            self.differencing_test,
+        )
         level = self._differenced(y)
         max_lag = max(self._lags)
         rows = max(0, len(level) - max_lag)
@@ -171,8 +187,8 @@ class LaggedModelForecaster(ForecasterBase):
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         anchors = None
         level = history
-        if self.differencing:
-            anchors, level = DifferenceTransform(self.differencing).fit_transform(history)
+        if self.differencer_.lost:
+            anchors, level = self.differencer_.fit_transform(history)
         window = list(self._standardized(level))
         steps = []
         for _ in range(horizon):
@@ -208,9 +224,9 @@ class LaggedModelForecaster(ForecasterBase):
         """Predictions (standardized scale) for rows of chronological windows."""
 
     def _differenced(self, y: FloatArray) -> FloatArray:
-        if not self.differencing:
+        if not self.differencer_.lost:
             return y
-        return DifferenceTransform(self.differencing).fit_transform(y)[1]
+        return self.differencer_.fit_transform(y)[1]
 
     def _standardized(self, values: FloatArray) -> FloatArray:
         return (values - self.center_) / self.spread_

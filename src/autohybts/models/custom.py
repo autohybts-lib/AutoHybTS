@@ -73,9 +73,12 @@ class RegressorForecaster(LaggedModelForecaster):
         self,
         estimator: Any,
         lags: int | tuple[int, ...] = 14,
-        differencing: int = 0,
+        differencing: int | str = 0,
         scale: bool = True,
         requires: Mapping[str, str] | None = None,
+        seasonal_differencing: int = 0,
+        season_length: int = 1,
+        differencing_test: str = "kpss",
     ) -> None:
         if not (
             callable(getattr(estimator, "fit", None))
@@ -85,6 +88,9 @@ class RegressorForecaster(LaggedModelForecaster):
         super().__init__(
             lags=lags,
             differencing=differencing,
+            seasonal_differencing=seasonal_differencing,
+            season_length=season_length,
+            differencing_test=differencing_test,
             scale=scale,
             validation_fraction=0.0,
             requires=requires,
