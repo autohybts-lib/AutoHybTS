@@ -43,6 +43,10 @@ def structure_key(candidate: CandidateSpec) -> tuple[str, ...]:
     for name in ("method", "weights"):
         if name in options:
             extra += (f"{name}={options[name]}",)
+    if candidate.components:
+        # Compositions: the structure is the set of component structures.
+        parts = sorted("/".join(structure_key(c)) for c in candidate.components)
+        extra += (f"components=[{';'.join(parts)}]",)
     return key + extra
 
 

@@ -64,12 +64,24 @@ class SearchResult:
         """Units (origin x series) actually evaluated, cache hits excluded.
 
         Each unit is one fresh model trained at one origin; how many model fits a unit
-        needs depends on the strategy (a residual hybrid also fits the base to produce its
-        training residuals), so this counts units, not fits.
+        needs depends on the strategy, see ``fit_count``.
         """
 
+        return sum(len(r.trials) for r in self._computed())
+
+    @property
+    def fit_count(self) -> int:
+        """Leaf model fits behind the evaluated candidates, cache hits excluded.
+
+        A residual hybrid at one origin counts its base, the extra base fit that produces
+        the out-of-fold residuals and its corrector (``domain.fit_count``).
+        """
+
+        return sum(t.n_fits or 0 for r in self._computed() for t in r.trials)
+
+    def _computed(self) -> list[EvaluationResult]:
         cached = {e.candidate_id for e in self.ledger if e.status == "EVALUATED" and e.cached}
-        return sum(len(r.trials) for r in self.results if r.candidate_id not in cached)
+        return [r for r in self.results if r.candidate_id not in cached]
 
     @property
     def trials_by_family(self) -> dict[str, int]:

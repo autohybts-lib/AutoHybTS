@@ -70,6 +70,26 @@ def test_future_perturbation_does_not_change_hybrid_forecasts(source: str, corre
         assert any(path != reference[f][1] for f, (index, path) in changed.items() if index >= cut)
 
 
+@pytest.mark.parametrize("corrector", ["exponential_smoothing_sequence", "arima_sequence"])
+def test_future_perturbation_does_not_change_sequence_corrections(corrector: str) -> None:
+    # Residual sequence correctors (F1e): fitted on the residual series, same guarantee.
+    pytest.importorskip("statsmodels")
+    rng = np.random.default_rng(6)
+    noise = np.zeros(160)
+    for i in range(1, 160):
+        noise[i] = 0.7 * noise[i - 1] + rng.normal()
+    values = 20 + 3 * np.sin(2 * np.pi * np.arange(160) / 7) + noise
+    candidate = hybrid("historical_oof_1step", corrector)
+    reference = forecasts(candidate, values)
+    perturbed = values.copy()
+    perturbed[135:] += 40.0
+    changed = forecasts(candidate, perturbed)
+    for fold_id, (index, path) in changed.items():
+        if index < 135:
+            assert path == reference[fold_id][1], f"{fold_id} saw data after 135"
+    assert any(path != reference[f][1] for f, (index, path) in changed.items() if index >= 135)
+
+
 class SpyCorrector(Parametrized):
     """Records every window it is asked about; predicts mean(window) + 1."""
 

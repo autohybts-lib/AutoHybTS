@@ -23,7 +23,25 @@ REGISTRY = default_registry()
 FAST_PARAMS: dict[str, dict[str, Any]] = {
     "arima": {"order": (1, 1, 1)},
     "random_forest": {"estimator_params": {"n_estimators": 10}},
+    "extra_trees_regressor": {"estimator_params": {"n_estimators": 10}},
     "mlp": {"estimator_params": {"hidden_layer_sizes": (8,), "max_iter": 300}},
+    "hist_gradient_boosting": {"estimator_params": {"max_iter": 20}},
+    "adaboost_r2": {"estimator_params": {"n_estimators": 10}},
+    "lightgbm_regressor": {"estimator_params": {"n_estimators": 20}},
+    "xgboost_regressor": {"estimator_params": {"n_estimators": 20}},
+    "catboost_regressor": {"estimator_params": {"iterations": 20}},
+}
+# Models from optional extras are skipped when their library is missing.
+EXTRA_MODULES: dict[str, str] = {
+    "arima": "statsmodels",
+    "exponential_smoothing": "statsmodels",
+    "lightgbm_regressor": "lightgbm",
+    "sf_auto_arima": "statsforecast",
+    "sf_auto_ets": "statsforecast",
+    "sf_auto_theta": "statsforecast",
+    "sf_auto_ces": "statsforecast",
+    "xgboost_regressor": "xgboost",
+    "catboost_regressor": "catboost",
 }
 BASES = REGISTRY.names("base")
 HORIZON = 7
@@ -43,8 +61,8 @@ def plan_for(values: np.ndarray) -> TemporalPlan:
 
 
 def make(name: str) -> BaseForecaster:
-    if name == "arima":
-        pytest.importorskip("statsmodels")
+    if name in EXTRA_MODULES:
+        pytest.importorskip(EXTRA_MODULES[name])
     return REGISTRY.make_base(name, FAST_PARAMS.get(name))
 
 

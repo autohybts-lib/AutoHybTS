@@ -60,8 +60,10 @@ estratégias de montar sistemas híbridos:
    user_guide/temporal_validation
    user_guide/datasets
    user_guide/models
+   user_guide/nixtla
    user_guide/custom_models
    user_guide/strategies
+   user_guide/ensembles
    user_guide/selection
    user_guide/comparison
    user_guide/panels
@@ -75,9 +77,11 @@ estratégias de montar sistemas híbridos:
    :caption: Referência
 
    api/index
+   references
 
 .. toctree::
    :maxdepth: 1
    :caption: Projeto
 
+   contributing
    about

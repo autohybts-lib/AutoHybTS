@@ -2,7 +2,8 @@ Estratégias de sistemas híbridos
 ================================
 
 Cada candidata tem um **nome curto** que descreve a estrutura (``arima-mlp``) e um
-rótulo completo com a configuração (janela, alfa, fonte de resíduos).
+rótulo completo com a configuração (janela, alfa, fonte de resíduos). Os artigos de
+origem de cada estratégia estão em :doc:`../references`.
 
 ==========================  ========================  ============================================
 Estratégia                  Nome                      Ideia

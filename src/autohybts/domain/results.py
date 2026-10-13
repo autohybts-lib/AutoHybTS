@@ -51,6 +51,9 @@ class TrialResult:
     predict_seconds: float = 0.0
     reason: str | None = None
     diagnostics: Mapping[str, float] = field(default_factory=lambda: MappingProxyType({}))
+    # Leaf model fits made by this trial (domain.fit_count); None for trials built
+    # outside the evaluator.
+    n_fits: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metrics", MappingProxyType(dict(self.metrics)))

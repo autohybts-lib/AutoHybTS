@@ -14,6 +14,10 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [09_ablation](09_ablation.ipynb) | Ablação do procedimento de seleção (§30.5): 4 procedimentos, mesmo orçamento e mesmos testes externos, em 12 séries sintéticas × 3 sementes, orçamento `small` | pesado (≈55 min) |
 | [10_external_models](10_external_models.ipynb) | Modelos próprios: PyTorch (LSTM, Transformer, Mamba, GRU escrito na hora), TensorFlow/Keras (LSTM, Transformer, convolução), Holt-Winters do statsmodels e gradient boosting, como bases, corretores, na busca, no ajuste e na persistência | extras `torch` e `tensorflow`; pesado |
 | [11_calibration](11_calibration.ipynb) | Calibração da regra de aceite em controles com resposta conhecida (ruído branco e resíduo previsível): falsos aceites, ganhos recusados, efeito do número de origens e do teste de Wilcoxon, conjunto de confirmação | — |
+| [12_baselines_and_boosting](12_baselines_and_boosting.ipynb) | Baselines (média histórica, média em janela, média sazonal em janela, passeio aleatório com drift), boosting sobre lags (HistGradientBoosting, AdaBoost.R2, LightGBM) como bases e corretores, RMAE e contagem de ajustes | LightGBM no extra `boosting` |
+| [13_ensembles](13_ensembles.ipynb) | Ensembles de candidatas completas (média, mediana, média aparada, inverso do MSE, NNLS com encolhimento), ensemble de híbridos, ensemble corrigido e ensembles na busca com a regra de aceite | — |
+| [14_intermittent_demand](14_intermittent_demand.ipynb) | Demanda intermitente: Croston-SBA, TSB, ADIDA e IMAPA contra médias simples, por que a RMSSE em vez da MASE, mudança de taxa, demanda que para e a família `intermittent` na busca | — |
+| [15_statsforecast](15_statsforecast.ipynb) | AutoARIMA, AutoETS, AutoTheta e AutoCES do StatsForecast contra statsmodels e baselines, parâmetros congelados (`forward`), os híbridos estatístico-ANN da replicação e a busca com esses modelos | extra `nixtla-stats` (traz pandas 2.x) |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar
@@ -38,10 +42,26 @@ No VS Code, abra o notebook e selecione o kernel do `.venv`.
 | 05_benchmark_m4 | roda (≈25 s com cache; o primeiro download do M4 diário tem ~100 MB) |
 | 06_compare_and_cross_validate | roda (≈50 s) |
 | 10_external_models | roda (≈6 min); nos testes só com `AUTOHYBTS_RUN_HEAVY=1` |
-| 11_calibration | roda (≈5 min) |
+| 11_calibration | roda (≈8 min) |
+| 12_baselines_and_boosting | roda (≈1,5 min) |
+| 13_ensembles | roda (≈4–5 min) |
+| 14_intermittent_demand | roda (≈15 s) |
+| 15_statsforecast | roda no ambiente com o extra `nixtla-stats` (pandas 2.x) |
 
 O teste `tests/integration/test_notebooks.py` executa cada notebook assim que todos os nomes listados em `metadata.autohybts.requires` existem no pacote:
 
 ```bash
 .venv/Scripts/python -m pytest tests/integration/test_notebooks.py -m slow -rs
 ```
+
+Notebooks marcados `heavy` só rodam com `AUTOHYBTS_RUN_HEAVY=1`; um notebook cujos `extras` (declarados nos metadados) não estão instalados é pulado com o nome do que falta.
+
+## Novo tutorial
+
+O esqueleto no modelo de aula, com os metadados já no esquema, sai de:
+
+```bash
+.venv/Scripts/python notebooks/new_notebook.py 15_temporal_bagging "Bagging temporal" --guide user_guide/ensembles --requires autohybts.AutoHybridExperiment.compare_models
+```
+
+As regras (seções, metadados, execução e saídas) estão em `documentation/contributing.rst`.

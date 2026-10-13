@@ -124,8 +124,14 @@ def run_calibration(
     budget: BudgetPreset = "smoke",
     seed: int = 0,
     progress: Callable[[str], None] | None = None,
+    include: Sequence[str] = ("standalone", "residual"),
 ) -> pd.DataFrame:
-    """One row per series, number of select origins and policy (see the module docstring)."""
+    """One row per series, number of select origins and policy (see the module docstring).
+
+    ``include`` are the families of the search; with ``"ensemble"`` the rates measure the
+    calibration gate of the composed families (plano de ensembles §6): any champion that
+    is not a single model counts as a composed champion.
+    """
 
     rows: list[dict[str, object]] = []
     for case in cases:
@@ -135,7 +141,7 @@ def run_calibration(
             exp = AutoHybridExperiment(
                 fh=fh, fold=fold, budget=budget, session_id=seed, **CONTROL_SPACE[case.control]
             ).fit(case.values)
-            compare = exp.compare_models()
+            compare = exp.compare_models(include=include)
             selection = compare.selection
             finalists = {r.candidate.family: r for r in selection.finalists}
             initial_id = (
@@ -161,6 +167,7 @@ def run_calibration(
                         "select_units": len(initial.unit_ids),
                         "champion": champion.candidate.name,
                         "champion_is_hybrid": _is_hybrid(champion),
+                        "champion_strategy": champion.candidate.strategy,
                         "hybrid_comparisons": len(hybrid),
                         "hybrid_accepts": sum(d.accepted for d in hybrid),
                         "accepted_families": "+".join(d.family for d in decisions if d.accepted),
@@ -238,6 +245,7 @@ def calibration_protocol(
     fh: int = 7,
     budget: BudgetPreset = "smoke",
     seed: int = 0,
+    include: Sequence[str] = ("standalone", "residual"),
 ) -> dict[str, Any]:
     """Resolved settings of a calibration run, to save next to its table."""
 
@@ -258,6 +266,7 @@ def calibration_protocol(
         "metric": DEFAULT_METRICS[0],
         "policies": {k: dict(v) for k, v in policies.items()},
         "fh": fh,
+        "include": list(include),
         "budget": budget,
         "session_seed": seed,
     }
@@ -269,18 +278,27 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--split", default="calibration", choices=sorted(SPLITS))
     parser.add_argument("--folds", type=int, nargs="+", default=[2, 3, 5])
     parser.add_argument("--budget", default="smoke")
+    parser.add_argument(
+        "--include", nargs="+", default=["standalone", "residual"], help="famílias da busca"
+    )
     parser.add_argument("--out", default=None)
     args = parser.parse_args(argv)
     warnings.filterwarnings("ignore")
     cases = list(control_cases(args.series, args.split))
     table = run_calibration(
-        cases, args.folds, budget=args.budget, progress=lambda m: print(m, flush=True)
+        cases,
+        args.folds,
+        budget=args.budget,
+        progress=lambda m: print(m, flush=True),
+        include=args.include,
     )
     report = calibration_report(table)
     if args.out:
         table.to_csv(args.out, index=False)
         report.to_csv(f"{args.out}.report.csv")
-        protocol = calibration_protocol(args.series, args.split, args.folds, budget=args.budget)
+        protocol = calibration_protocol(
+            args.series, args.split, args.folds, budget=args.budget, include=args.include
+        )
         Path(f"{args.out}.protocol.json").write_text(
             json.dumps(protocol, indent=2, ensure_ascii=False, default=str), encoding="utf-8"
         )

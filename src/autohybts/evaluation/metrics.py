@@ -8,6 +8,7 @@ coverage, instead of entering the ranking with an arbitrary value.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final
@@ -65,12 +66,24 @@ def _mase(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
     return _ratio(_mae(a, p, train, m), scale)
 
 
+def _rmsse(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
+    if train.size <= m:
+        return float("nan")
+    scale = float(np.mean((train[m:] - train[:-m]) ** 2))
+    mse = float(np.mean((a - p) ** 2))
+    return math.sqrt(mse / scale) if scale > MIN_SCALE else float("nan")
+
+
 def _wape(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
     return _ratio(float(np.sum(np.abs(a - p))), float(np.sum(np.abs(a))))
 
 
 def _rrmse(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
     return _ratio(_rmse(a, p, train, m), float(np.mean(a)))
+
+
+def _rmae(a: FloatArray, p: FloatArray, train: FloatArray, m: int) -> float:
+    return _ratio(_mae(a, p, train, m), float(np.mean(a)))
 
 
 def _ratio(numerator: float, scale: float) -> float:
@@ -97,6 +110,16 @@ METRICS: Final[dict[str, Metric]] = {
             True,
             _mase,
         ),
+        Metric(
+            "RMSSE",
+            1,
+            "sqrt(mean((y - ŷ)^2) / mean((y_t - y_{t-m})^2)) over the origin's training "
+            "window, m = seasonal period; NaN if the scale is <= 1e-12 or training has <= m "
+            "points. Squared error rewards unbiased levels on intermittent demand, where "
+            "MAE-based metrics favour forecasting zero",
+            True,
+            _rmsse,
+        ),
         Metric("WAPE", 1, "sum(|y - ŷ|) / sum(|y|); NaN if sum(|y|) <= 1e-12", True, _wape),
         Metric(
             "RRMSE",
@@ -104,6 +127,14 @@ METRICS: Final[dict[str, Metric]] = {
             "RMSE / mean(y) over steps 1..H; NaN if mean(y) <= 1e-12 (legacy parity)",
             True,
             _rrmse,
+        ),
+        Metric(
+            "RMAE",
+            1,
+            "MAE / mean(y) over steps 1..H; NaN if mean(y) <= 1e-12 (parity with "
+            "projeto_st_replicacao)",
+            True,
+            _rmae,
         ),
     )
 }

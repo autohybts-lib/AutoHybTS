@@ -53,6 +53,7 @@ COMPARISON_PLOTS: Final = (
     "critical_difference",
     "forecasts",
 )
+_SUBSCRIPTS: Final = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
 _LAYER_COLORS: Final = {"search": "#4C72B0", "select": "#DD8452", "cv": "#55A868"}
 
 
@@ -341,11 +342,15 @@ def _model_structure(candidate: CandidateSpec) -> Any:
     figure, (ax,) = _figure(width=8, height=2.4)
     ax.set_axis_off()
     boxes: Sequence[tuple[float, str]]
-    if candidate.corrector is None:
+    if candidate.strategy == "ensemble":
+        method = candidate.options["method"]
+        boxes = [(0.3, "componentes\n" + _members(candidate)), (0.7, f"agregação\n{method}")]
+    elif candidate.corrector is None:
         boxes = [(0.5, f"base\n{candidate.base.label}")]
     else:
+        base = _node(candidate.components[0]) if candidate.components else candidate.base.label
         boxes = [
-            (0.15, f"base\n{candidate.base.label}"),
+            (0.15, f"base\n{base}"),
             (0.5, f"resíduos\n{candidate.residual_source}\njanela {candidate.window_size}"),
             (0.85, f"corretor\n{candidate.corrector.label}\nα = {candidate.alpha}"),
         ]
@@ -366,11 +371,29 @@ def _model_structure(candidate: CandidateSpec) -> Any:
             xytext=(x0 + 0.12, 0.5),
             arrowprops={"arrowstyle": "->", "color": "gray"},
         )
-    formula = "ŷ = b" if candidate.corrector is None else f"ŷ = b + {candidate.alpha} · r̂"
+    if candidate.strategy == "ensemble":
+        last = str(len(candidate.components)).translate(_SUBSCRIPTS)
+        formula = f"ŷ = {candidate.options['method']}(ŷ₁, …, ŷ{last})"
+    elif candidate.corrector is None:
+        formula = "ŷ = b"
+    else:
+        formula = f"ŷ = b + {candidate.alpha} · r̂"
     ax.set_title(
         f"Estrutura ({candidate.strategy}, variante {candidate.variant}): {formula}", fontsize=10
     )
     return figure
+
+
+def _node(candidate: CandidateSpec) -> str:
+    """Box text of a candidate drawn as one block: an ensemble lists its components."""
+
+    if candidate.strategy == "ensemble":
+        return f"ensemble ({candidate.options['method']})\n" + _members(candidate)
+    return _short(candidate.label)
+
+
+def _members(candidate: CandidateSpec) -> str:
+    return "\n".join(_short(component.name) for component in candidate.components)
 
 
 def _short(label: str, width: int = 28) -> str:

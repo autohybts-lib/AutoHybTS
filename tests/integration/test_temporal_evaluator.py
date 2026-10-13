@@ -247,7 +247,7 @@ def test_residual_candidates_are_evaluated(registry: ModelRegistry) -> None:
                 "residual",
                 "residual_additive",
                 ModelSpec.of("naive"),
-                ModelSpec.of("svm"),
+                ModelSpec.of("arima"),
                 7,
                 1.0,
                 "historical_oof_1step",

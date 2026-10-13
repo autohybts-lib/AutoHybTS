@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 import autohybts
+from autohybts.adapters.base import BaseForecaster, FloatArray
 from autohybts.data.panel import PanelPlan
 from autohybts.data.splitter import (
     CrossValidationPlan,
@@ -21,6 +22,7 @@ from autohybts.data.splitter import (
     TemporalPlan,
     ensure_not_sealed,
 )
+from autohybts.domain.fit_count import count_fits
 from autohybts.domain.identity import derive_seed
 from autohybts.domain.results import (
     EvaluationResult,
@@ -171,11 +173,46 @@ class TemporalEvaluator:
             )
 
         if unsupported is not None:
-            return result("SKIPPED", reason=_reason(unsupported))
+            return result("SKIPPED", reason=_reason(unsupported), n_fits=0)
         train = plan.train_values(origin)
         started = time.perf_counter()
+        with count_fits() as fits:
+            outcome = self._fit_and_forecast(candidate, model, plan, origin, train)
+        if isinstance(outcome, BaseException):
+            status: TrialStatus = (
+                "SKIPPED" if isinstance(outcome, UnsupportedCapabilityError) else "FAILED"
+            )
+            return result(status, reason=_reason(outcome), n_fits=fits.total)
+        forecast, fitted, done = outcome
+
+        actual = plan.target_values(origin)
+        metrics = compute_metrics(
+            resolve_metrics(self.metrics), actual, forecast, train, self.seasonal_period
+        )
+        return result(
+            "SUCCEEDED",
+            y_pred=tuple(float(v) for v in forecast),
+            y_true=tuple(float(v) for v in actual),
+            metrics=metrics,
+            fit_seconds=fitted - started,
+            predict_seconds=done - fitted,
+            diagnostics=_diagnostics(model),
+            n_fits=fits.total,
+        )
+
+    def _fit_and_forecast(
+        self,
+        candidate: CandidateSpec,
+        model: BaseForecaster,
+        plan: TemporalPlan | CrossValidationPlan,
+        origin: Origin,
+        train: FloatArray,
+    ) -> tuple[FloatArray, float, float] | BaseException:
+        """Fit at the origin and forecast; candidate failures are returned, not raised."""
+
         try:
             self._check_variant(candidate)
+            self._check_capabilities(candidate, origin.horizon)
             model.fit(train)
             fitted = time.perf_counter()
             if candidate.variant == "B":
@@ -191,28 +228,13 @@ class TemporalEvaluator:
             else:
                 forecast = model.predict(origin.horizon, plan.context(origin))
             done = time.perf_counter()
-        except UnsupportedCapabilityError as error:
-            return result("SKIPPED", reason=_reason(error))
-        except (CandidateFitError, InsufficientHistoryError) as error:
-            return result("FAILED", reason=_reason(error))
+        except (UnsupportedCapabilityError, CandidateFitError, InsufficientHistoryError) as error:
+            return error
         except AutoHybTSError:
             raise  # configuration errors and leakage are never swallowed
         except Exception as error:  # a third-party model outside ForecasterBase
-            return result("FAILED", reason=_reason(error))
-
-        actual = plan.target_values(origin)
-        metrics = compute_metrics(
-            resolve_metrics(self.metrics), actual, forecast, train, self.seasonal_period
-        )
-        return result(
-            "SUCCEEDED",
-            y_pred=tuple(float(v) for v in forecast),
-            y_true=tuple(float(v) for v in actual),
-            metrics=metrics,
-            fit_seconds=fitted - started,
-            predict_seconds=done - fitted,
-            diagnostics=_diagnostics(model),
-        )
+            return error
+        return forecast, fitted, done
 
     def _check_variant(self, candidate: CandidateSpec) -> None:
         if candidate.variant != "B":
@@ -221,6 +243,35 @@ class TemporalEvaluator:
             if not self.registry.entry(name).capabilities.online_state_update:
                 raise UnsupportedCapabilityError(
                     f"{name} não incorpora observações sem reajuste; incompatível com a variante B."
+                )
+
+    def _check_capabilities(self, candidate: CandidateSpec, horizon: int) -> None:
+        """Models whose declared capabilities do not fit this protocol are SKIPPED, not fitted.
+
+        The search is univariate, local and point-valued: a model trained globally on a
+        panel, producing quantiles/samples, forecasting several targets or needing
+        covariates needs its own contract (plano de ensembles, L02/L03); a model with a
+        maximum horizon cannot forecast a longer one.
+        """
+
+        for kind, name in candidate.model_names():
+            capabilities = self.registry.entry(name, kind).capabilities
+            if capabilities.training_scope == "global":
+                raise UnsupportedCapabilityError(
+                    f"{name} treina globalmente num painel; a busca avalia modelos locais."
+                )
+            if capabilities.target_mode != "univariate":
+                raise UnsupportedCapabilityError(
+                    f"{name} é {capabilities.target_mode}; a busca é univariada, sem covariáveis."
+                )
+            if capabilities.output_type != "point":
+                raise UnsupportedCapabilityError(
+                    f"{name} produz {capabilities.output_type}; a busca compara previsões pontuais."
+                )
+            step = 1 if candidate.variant == "B" else horizon
+            if capabilities.max_horizon is not None and step > capabilities.max_horizon:
+                raise UnsupportedCapabilityError(
+                    f"{name} prevê no máximo {capabilities.max_horizon} passos; pedido {step}."
                 )
 
     def protocol(self) -> dict[str, Any]:
@@ -250,18 +301,12 @@ def _diagnostics(model: object) -> dict[str, float]:
 
 
 def _base_names(candidate: CandidateSpec) -> tuple[str, ...]:
-    """Registered bases a candidate uses (combination members are bases)."""
+    """Registered bases a candidate uses, components of compositions included."""
 
-    if candidate.strategy == "fixed_combination":
-        return tuple(spec.name for spec in (candidate.base, *candidate.members))
-    return (candidate.base.name,)
+    return tuple(name for kind, name in candidate.model_names() if kind == "base")
 
 
 def _corrector_names(candidate: CandidateSpec) -> tuple[str, ...]:
     """Registered correctors a candidate uses (extra stages are correctors)."""
 
-    if candidate.corrector is None:
-        return ()
-    if candidate.strategy in ("residual_multistage", "dynamic_selection", "residual_combination"):
-        return tuple(spec.name for spec in (candidate.corrector, *candidate.members))
-    return (candidate.corrector.name,)
+    return tuple(name for kind, name in candidate.model_names() if kind == "corrector")

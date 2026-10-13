@@ -37,6 +37,7 @@ import numpy as np
 from autohybts.adapters.base import FloatArray, ForecasterBase, Parametrized
 from autohybts.data.preprocessing import DifferenceTransform
 from autohybts.data.windows import lag_matrix, latest_lags, normalize_lags
+from autohybts.domain.fit_count import record_fit
 from autohybts.exceptions import ConfigurationError, InsufficientHistoryError
 from autohybts.models.requirements import require
 
@@ -263,6 +264,7 @@ class WindowCorrector(Parametrized):
         )
         with TRAINING_LOCK:
             self.history_ = self._train(x_train, y_train, x_val, y_val)
+        record_fit()
         return self
 
     def predict_next(self, window: Any) -> float:

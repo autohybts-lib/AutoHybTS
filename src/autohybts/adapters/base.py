@@ -14,12 +14,13 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import Any, ClassVar, Protocol, Self, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
 
 from autohybts.domain.context import TemporalContext
+from autohybts.domain.fit_count import record_fit
 from autohybts.exceptions import (
     AutoHybTSError,
     CandidateFitError,
@@ -73,7 +74,13 @@ class Parametrized:
 
 
 class ForecasterBase(Parametrized, ABC):
-    """Validation shared by adapters; subclasses implement ``_fit`` and ``_predict``."""
+    """Validation shared by adapters; subclasses implement ``_fit`` and ``_predict``.
+
+    ``composite`` marks compositions (hybrids, combinations, ensembles): their own ``fit``
+    is not counted as a model fit, only those of their members (``domain.fit_count``).
+    """
+
+    composite: ClassVar[bool] = False
 
     def __init__(self) -> None:
         self._is_fitted = False
@@ -112,6 +119,8 @@ class ForecasterBase(Parametrized, ABC):
         with candidate_errors(self, "ajuste"):
             self._fit(values)
         self._is_fitted = True
+        if not self.composite:
+            record_fit()
         return self
 
     def predict(self, horizon: int, context: TemporalContext) -> FloatArray:

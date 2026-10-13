@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from autohybts.domain.identity import canonical_json, stable_hash
 from autohybts.exceptions import ConfigurationError
@@ -13,7 +13,11 @@ from autohybts.types import PROTOCOL_VARIANTS, RESIDUAL_SOURCES, ProtocolVariant
 
 __all__ = [
     "COMBINATION_WEIGHTS",
+    "COMPOSITE_BASE",
     "DECOMPOSITION_METHODS",
+    "ENSEMBLE_METHODS",
+    "MAX_COMPONENTS",
+    "MAX_DEPTH",
     "MAX_STAGES",
     "STRATEGIES",
     "CandidateSpec",
@@ -30,12 +34,25 @@ STRATEGIES: Final = (
     "fixed_combination",
     "residual_combination",
     "dynamic_selection",
+    "ensemble",
+    "residual_composite",
 )
 _RESIDUAL_FIELDS: Final = ("corrector", "window_size", "alpha", "residual_source")
 # Corrections of corrections are capped (§16): each stage adds a model fitted on fewer rows.
 MAX_STAGES: Final = 3
 DECOMPOSITION_METHODS: Final = ("ma", "stl")
 COMBINATION_WEIGHTS: Final = ("equal", "inverse_mse")
+# Compositions of candidates (ADR-0007): ensembles of any candidates and residual
+# corrections of a composed candidate. Weights never see data after the origin.
+ENSEMBLE_METHODS: Final = ("equal", "median", "trimmed_mean", "inverse_mse", "nnls")
+ENSEMBLE_DEFAULTS: Final[dict[str, dict[str, float]]] = {
+    "trimmed_mean": {"trim": 0.2},
+    "nnls": {"shrinkage": 0.5},
+}
+MAX_COMPONENTS: Final = 5
+MAX_DEPTH: Final = 3
+_COMPOSITIONS: Final = ("ensemble", "residual_composite")
+_CORRECTOR_MEMBERS: Final = ("residual_multistage", "dynamic_selection", "residual_combination")
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +97,10 @@ class ModelSpec:
         return f"{self.name}({inner})"
 
 
+# Placeholder ``base`` of compositions whose real bases are their ``components``.
+COMPOSITE_BASE: Final = ModelSpec("composite")
+
+
 @dataclass(frozen=True, slots=True)
 class CandidateSpec:
     """One configuration to evaluate: strategy, base, optional corrector, variant.
@@ -101,9 +122,20 @@ class CandidateSpec:
       training vector only).
     * ``residual_combination``: ``base + alpha * Σ w_j r̂_j``, the corrector and the
       correctors in ``members`` combined with fixed weights (``options["weights"]``).
+    * ``ensemble``: ``components`` (2 to ``MAX_COMPONENTS`` candidates of any strategy,
+      including other compositions) combined by ``options["method"]`` in
+      ``ENSEMBLE_METHODS``; ``trim`` (``trimmed_mean``) and ``shrinkage`` (``nnls``,
+      towards equal weights) are filled with their defaults. The order of components is
+      canonical (by ``candidate_id``): the combination is commutative. ``base`` is
+      ``COMPOSITE_BASE``.
+    * ``residual_composite``: ``component + alpha * corrector`` on the residual windows of
+      one composed candidate (``components`` holds it), e.g. a residual correction of an
+      ensemble; residual fields as in ``residual_additive``. ``base`` is
+      ``COMPOSITE_BASE``.
 
-    ``members`` and ``options`` enter ``candidate_id`` only when non-empty, so identities
-    of the other strategies do not change.
+    ``members``, ``options`` and ``components`` enter ``candidate_id`` only when
+    non-empty, so identities of the other strategies do not change. Compositions nest up
+    to ``MAX_DEPTH`` levels.
     """
 
     family: str
@@ -116,6 +148,7 @@ class CandidateSpec:
     variant: ProtocolVariant = "A"
     members: tuple[ModelSpec, ...] = ()
     options_json: str = "{}"
+    components: tuple[CandidateSpec, ...] = ()
     candidate_id: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -138,18 +171,77 @@ class CandidateSpec:
         options = json.loads(self.options_json)
         if not isinstance(options, dict):
             raise ConfigurationError("options de CandidateSpec deve ser um objeto JSON.")
+        if self.strategy == "ensemble" and options.get("method") in ENSEMBLE_DEFAULTS:
+            options = {**ENSEMBLE_DEFAULTS[options["method"]], **options}
         object.__setattr__(self, "options_json", canonical_json(options))
+        self._validate_components()
         self._validate_fields(options)
         object.__setattr__(
             self, "candidate_id", stable_hash({"schema": "candidate/1", **self.describe()})
         )
+
+    def _validate_components(self) -> None:
+        components = tuple(self.components)
+        if not all(isinstance(c, CandidateSpec) for c in components):
+            raise ConfigurationError("components deve conter apenas CandidateSpec.")
+        strategy = self.strategy
+        if strategy not in _COMPOSITIONS:
+            if components:
+                raise ConfigurationError(f"Candidata {strategy} não aceita components.")
+            return
+        if self.base != COMPOSITE_BASE:
+            raise ConfigurationError(
+                f"{strategy} usa base=COMPOSITE_BASE; os modelos ficam em components."
+            )
+        if any(c.variant != self.variant for c in components):
+            raise ConfigurationError("Todos os componentes devem ter a variante da composição.")
+        if strategy == "ensemble":
+            if not 2 <= len(components) <= MAX_COMPONENTS:
+                raise ConfigurationError(
+                    f"Um ensemble tem de 2 a {MAX_COMPONENTS} componentes; recebidos "
+                    f"{len(components)}."
+                )
+            if len({c.candidate_id for c in components}) != len(components):
+                raise ConfigurationError("Componentes repetidos no ensemble.")
+            components = tuple(sorted(components, key=lambda c: c.candidate_id))
+        elif len(components) != 1:
+            raise ConfigurationError("residual_composite corrige exatamente um componente.")
+        object.__setattr__(self, "components", components)
+        if self.depth > MAX_DEPTH:
+            raise ConfigurationError(f"Composição com {self.depth} níveis; o máximo é {MAX_DEPTH}.")
+
+    @property
+    def depth(self) -> int:
+        """Levels of composition: 0 for a single structure (a base, a hybrid ...), 1 + the
+        deepest component for an ensemble or a residual composition."""
+
+        if self.strategy not in _COMPOSITIONS:
+            return 0
+        return 1 + max(c.depth for c in self.components)
+
+    def model_names(self) -> tuple[tuple[Literal["base", "corrector"], str], ...]:
+        """Every registered model this candidate uses, as ``(kind, name)``, in order."""
+
+        names: list[tuple[Literal["base", "corrector"], str]] = []
+        if self.strategy in _COMPOSITIONS:
+            for component in self.components:
+                names.extend(component.model_names())
+        elif self.strategy == "fixed_combination":
+            names.extend(("base", spec.name) for spec in (self.base, *self.members))
+        else:
+            names.append(("base", self.base.name))
+        if self.corrector is not None:
+            names.append(("corrector", self.corrector.name))
+            if self.strategy in _CORRECTOR_MEMBERS:
+                names.extend(("corrector", spec.name) for spec in self.members)
+        return tuple(dict.fromkeys(names))
 
     def _validate_fields(self, options: dict[str, Any]) -> None:
         residual = {name: getattr(self, name) for name in _RESIDUAL_FIELDS}
         given = [name for name, value in residual.items() if value is not None]
         missing = [name for name, value in residual.items() if value is None]
         strategy = self.strategy
-        if strategy in ("standalone", "fixed_combination"):
+        if strategy in ("standalone", "fixed_combination", "ensemble"):
             if given:
                 raise ConfigurationError(f"Candidata {strategy} não aceita {given}.")
         elif strategy == "decomposition":
@@ -197,6 +289,7 @@ class CandidateSpec:
             "residual_combination": {"weights"},
             "residual_multistage": {"stages"},
             "dynamic_selection": {"method", "neighbors", "lag_size", "dsel_size", "local_alpha"},
+            "ensemble": {"method", "trim", "shrinkage"},
         }.get(strategy, set())
         unknown = set(options) - allowed
         if unknown:
@@ -229,6 +322,8 @@ class CandidateSpec:
             "local",
         ):
             raise ConfigurationError("Seleção dinâmica exige method 'dref' ou 'local'.")
+        if strategy == "ensemble":
+            _check_ensemble_options(options, len(self.components))
         if (
             strategy in ("fixed_combination", "residual_combination")
             and options.get("weights") not in COMBINATION_WEIGHTS
@@ -253,9 +348,56 @@ class CandidateSpec:
             return 1
         if self.strategy == "residual_multistage":
             return 1 + len(self.members)
-        if self.strategy == "residual_combination":
+        if self.strategy in ("residual_combination", "residual_composite"):
             return 1
         return 0
+
+    @classmethod
+    def ensemble(
+        cls,
+        components: Sequence[CandidateSpec],
+        *,
+        method: str = "equal",
+        family: str = "ensemble",
+        **options: Any,
+    ) -> CandidateSpec:
+        """Ensemble of ``components`` (variant taken from them; they must agree)."""
+
+        parts = tuple(components)
+        variant: ProtocolVariant = parts[0].variant if parts else "A"
+        return cls(
+            family,
+            "ensemble",
+            COMPOSITE_BASE,
+            variant=variant,
+            options_json=canonical_json({"method": method, **options}),
+            components=parts,
+        )
+
+    @classmethod
+    def corrected(
+        cls,
+        component: CandidateSpec,
+        corrector: ModelSpec,
+        window_size: int,
+        alpha: float,
+        residual_source: str,
+        *,
+        family: str = "ensemble",
+    ) -> CandidateSpec:
+        """Residual correction of a composed ``component`` (e.g. of an ensemble)."""
+
+        return cls(
+            family,
+            "residual_composite",
+            COMPOSITE_BASE,
+            corrector,
+            window_size,
+            float(alpha),
+            residual_source,
+            variant=component.variant,
+            components=(component,),
+        )
 
     @classmethod
     def standalone(
@@ -285,6 +427,8 @@ class CandidateSpec:
             described["members"] = [member.describe() for member in self.members]
         if self.options:
             described["options"] = self.options
+        if self.components:
+            described["components"] = [component.describe() for component in self.components]
         return described
 
     @property
@@ -296,6 +440,12 @@ class CandidateSpec:
 
         if self.strategy == "fixed_combination":
             return "comb(" + ",".join(s.name for s in (self.base, *self.members)) + ")"
+        if self.strategy == "ensemble":
+            # Alphabetical for reading; ``label`` keeps the canonical order of the weights.
+            names = sorted(c.name for c in self.components)
+            return f"{self.options['method']}[" + ",".join(names) + "]"
+        if self.strategy == "residual_composite" and self.corrector is not None:
+            return f"({self.components[0].name})-{self.corrector.name}"
         if self.corrector is None:
             return self.base.name
         if self.strategy == "decomposition":
@@ -310,6 +460,16 @@ class CandidateSpec:
 
     @property
     def label(self) -> str:
+        if self.strategy == "ensemble":
+            options = self.options
+            extra = "".join(f", {k}={options[k]}" for k in ("trim", "shrinkage") if k in options)
+            parts = " | ".join(c.label for c in self.components)
+            return f"ensemble[{options['method']}{extra}: {parts}]"
+        if self.strategy == "residual_composite" and self.corrector is not None:
+            return (
+                f"({self.components[0].label}) + {self.corrector.label} "
+                f"[w={self.window_size}, alpha={self.alpha}, {self.residual_source}]"
+            )
         if self.strategy == "fixed_combination":
             names = " | ".join(spec.label for spec in (self.base, *self.members))
             return f"combinação[{names}; {self.options['weights']}]"
@@ -347,6 +507,34 @@ class CandidateSpec:
             f"{self.base.label} + {correctors} "
             f"[w={self.window_size}, alpha={self.alpha}, {self.residual_source}]"
         )
+
+
+def _check_ensemble_options(options: dict[str, Any], n_components: int) -> None:
+    method = options.get("method")
+    if method not in ENSEMBLE_METHODS:
+        raise ConfigurationError(
+            f"ensemble exige method em {ENSEMBLE_METHODS}; recebido {method!r}."
+        )
+    if "trim" in options and method != "trimmed_mean":
+        raise ConfigurationError("trim só vale para method='trimmed_mean'.")
+    if "shrinkage" in options and method != "nnls":
+        raise ConfigurationError("shrinkage só vale para method='nnls'.")
+    if method == "trimmed_mean":
+        trim = options["trim"]
+        if isinstance(trim, bool) or not isinstance(trim, int | float) or not 0 < trim < 0.5:
+            raise ConfigurationError("trim deve estar em (0, 0.5).")
+        if n_components < 3:
+            raise ConfigurationError("A média aparada precisa de ao menos 3 componentes.")
+    if method == "median" and n_components < 3:
+        raise ConfigurationError("A mediana precisa de ao menos 3 componentes (com 2 é a média).")
+    if method == "nnls":
+        shrinkage = options["shrinkage"]
+        if (
+            isinstance(shrinkage, bool)
+            or not isinstance(shrinkage, int | float)
+            or not 0 <= shrinkage <= 1
+        ):
+            raise ConfigurationError("shrinkage deve estar em [0, 1].")
 
 
 _STAGE_KEYS: Final = frozenset({"window_size", "alpha", "residual_source"})

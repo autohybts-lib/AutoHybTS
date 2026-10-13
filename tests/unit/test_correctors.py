@@ -77,7 +77,7 @@ def test_fit_warnings_are_recorded_not_emitted() -> None:
 
 def test_unknown_corrector() -> None:
     with pytest.raises(ConfigurationError, match="Corretor desconhecido"):
-        SklearnCorrector("svm")
+        SklearnCorrector("arima")
 
 
 def test_roll_forward_and_recursion() -> None:

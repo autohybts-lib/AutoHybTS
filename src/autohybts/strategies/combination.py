@@ -28,6 +28,8 @@ __all__ = ["CorrectorCombination", "FixedCombinationForecaster"]
 
 
 class FixedCombinationForecaster(ForecasterBase):
+    composite = True
+
     def __init__(
         self,
         members: Sequence[BaseForecaster],

@@ -104,3 +104,13 @@ def test_calibration_never_reads_the_sealed_test(monkeypatch: pytest.MonkeyPatch
     assert protocol["base_policy"]["median_gain_threshold"] == 0.01
     assert protocol["base_policy"]["variability"]["version"] == 2
     assert protocol["metric"] == "MASE"
+
+
+def test_calibration_can_include_the_composed_families() -> None:
+    table = run_calibration(
+        control_cases(1), folds=(2,), policies={"rule": {}}, include=("standalone", "ensemble")
+    )
+    assert set(table["control"]) == {"white_noise", "ar_residual"}
+    assert "champion_strategy" in table.columns
+    protocol = calibration_protocol(1, "calibration", (2,), include=("standalone", "ensemble"))
+    assert protocol["include"] == ["standalone", "ensemble"]
