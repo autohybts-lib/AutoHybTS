@@ -1,4 +1,4 @@
-"""Exception hierarchy (architecture §11.3).
+"""Exception hierarchy.
 
 Configuration errors stop a run. Errors raised while fitting or predicting a single
 candidate are caught by the search and recorded as auditable ``FAILED`` trials.

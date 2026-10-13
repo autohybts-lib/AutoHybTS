@@ -159,9 +159,10 @@ Arquiteturas de exemplo
 * ``LSTMNet``: LSTM sobre os lags como sequência;
 * ``TransformerNet``: encoder Transformer com posições aprendidas e máscara causal;
 * ``MambaNet``: bloco de espaço de estados seletivo no estilo Mamba (Gu e Dao, 2023) em
-  PyTorch puro, com varredura sequencial. Não é o pacote otimizado ``mamba-ssm``, que
-  exige CUDA no Linux; para as janelas curtas de modelos de lags a varredura simples
-  basta.
+  PyTorch puro. A varredura seletiva calcula todos os passos de uma vez (somas
+  acumuladas em escala logarítmica com máscara causal), sem laço em Python, e dá o mesmo
+  resultado da recursão passo a passo. Não é o pacote otimizado ``mamba-ssm``, que
+  exige CUDA no Linux; para as janelas curtas de modelos de lags, esta versão basta.
 
 ``autohybts.models.keras_zoo``: ``mlp``, ``lstm`` e ``transformer``.
 

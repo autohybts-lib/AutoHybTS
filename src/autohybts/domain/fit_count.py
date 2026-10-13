@@ -1,4 +1,4 @@
-"""Count model fits per trial (cost accounting of the search, plano de ensembles F0).
+"""Count model fits per trial (cost accounting of the search).
 
 A *fit* is the training of one leaf model: a base forecaster that is not a composition
 (naive, ARIMA, a lag regressor, a user model), a residual corrector or a fitted

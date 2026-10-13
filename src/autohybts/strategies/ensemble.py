@@ -1,4 +1,4 @@
-"""Ensembles of complete forecasters (plano de ensembles E01–E04, E18; ADR-0007).
+"""Ensembles of complete forecasters.
 
 ``ŷ = agg(ŷ_1, ..., ŷ_K)`` over components that may themselves be hybrids or other
 compositions:

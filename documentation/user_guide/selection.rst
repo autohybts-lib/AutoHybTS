@@ -2,9 +2,20 @@ Seleção incremental
 ===================
 
 A seleção começa no melhor modelo individual e visita as famílias na ordem
-``family_order`` (estatística, linear, kernel, árvore, neural, residual, decomposição,
-combinação). A finalista de cada família — sua melhor estrutura na busca — desafia o
-**campeão do momento** em ``V_select``.
+``family_order``: estatística, linear, kernel, árvore, neural, residual, decomposição,
+combinação e seleção dinâmica. A finalista de cada família — sua melhor estrutura na
+busca — desafia o **campeão do momento** em ``V_select``.
+
+Algumas famílias só entram na cadeia quando são usadas, e o protocolo padrão não muda
+sem elas:
+
+* ``intermittent`` (``croston_sba``, ``tsb``, ``adida``, ``imapa``), quando um desses
+  modelos está em ``base_models``, e as famílias de modelos registrados com
+  ``register_model``, assim que registrados: logo antes de ``residual``;
+* ``ensemble``, quando incluída em ``compare_models(include=...)``: por último, antes de
+  ``dynamic``.
+
+Famílias sem finalista (não pedidas no ``include`` ou sem candidata válida) são puladas.
 
 Regra de aceite
 ---------------
@@ -34,7 +45,7 @@ Calibração da regra
 ~~~~~~~~~~~~~~~~~~~
 
 Os limiares e o número de origens vêm de uma calibração com resposta conhecida
-(``autohybts.benchmarks.calibration``; ADR-0008): 50 séries de ruído branco, onde
+(``autohybts.benchmarks.calibration``): 50 séries de ruído branco, onde
 qualquer estrutura composta é um falso aceite, e 50 com resíduo AR(0,8), onde a
 correção é útil. A meta, fixada antes de medir, era falso aceite ≤ 10 % e ganho útil
 aceito ≥ 50 %, por cadeia.
@@ -46,7 +57,7 @@ aceito ≥ 50 %, por cadeia.
    * - Regra
      - Falso aceite
      - Ganho útil aceito
-   * - ganho ≥ 1 %, ``fold=3`` (padrão anterior, §9.3 da arquitetura)
+   * - ganho ≥ 1 %, ``fold=3`` (padrão anterior)
      - 38 %
      - 66 %
    * - ganho ≥ 5 %, ``fold=3``

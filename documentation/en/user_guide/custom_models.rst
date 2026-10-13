@@ -162,8 +162,10 @@ Example architectures
 * ``LSTMNet``: LSTM over the lags as a sequence;
 * ``TransformerNet``: Transformer encoder with learned positions and a causal mask;
 * ``MambaNet``: Mamba-style selective state-space block (Gu and Dao, 2023) in plain
-  PyTorch, with a sequential scan. It is not the optimized ``mamba-ssm`` package, which
-  requires CUDA on Linux; for the short windows of lag models the simple scan is enough.
+  PyTorch. The selective scan computes every step at once (cumulative sums in log scale
+  with a causal mask), without a Python loop, and gives the same result as the
+  step-by-step recursion. It is not the optimized ``mamba-ssm`` package, which requires
+  CUDA on Linux; for the short windows of lag models this version is enough.
 
 ``autohybts.models.keras_zoo``: ``mlp``, ``lstm`` and ``transformer``.
 

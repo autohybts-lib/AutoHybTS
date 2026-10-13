@@ -1,4 +1,4 @@
-"""Ablation of the selection procedure (architecture §30.5).
+"""Ablation of the selection procedure.
 
 Four procedures, the same search budget and the same external origins (each series'
 sealed test):
@@ -334,7 +334,7 @@ def ablation_protocol(
     space: dict[str, Any] | None = None,
     outer_folds: int = 2,
 ) -> dict[str, Any]:
-    """Resolved settings of a run, to save next to its table (§27).
+    """Resolved settings of a run, to save next to its table.
 
     Local changes not committed cannot be detected without running ``git``; record them
     by hand when the working tree is not clean.
@@ -444,7 +444,7 @@ def ablation_uncertainty(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Ablação do procedimento de seleção (§30.5).")
+    parser = argparse.ArgumentParser(description="Ablação do procedimento de seleção.")
     parser.add_argument("--dataset", default="synthetic", help="synthetic, m4-daily, m3-monthly")
     parser.add_argument("--series", type=int, default=6)
     parser.add_argument("--seeds", type=int, nargs="+", default=[0])

@@ -126,6 +126,11 @@ In the search
        include=("standalone", "residual", "multistage", "decomposition", "combination")
    )
 
+``include`` accepts ``"standalone"`` (required), ``"residual"`` (with it, the default),
+``"multistage"``, ``"decomposition"``, ``"combination"``, ``"ensemble"``
+(:doc:`ensembles`) and ``"dynamic"`` (variant B only). ``"multistage"`` and
+``"dynamic"`` build on the residual structures and require ``"residual"``.
+
 ========  ===================================================================
 Stage     What it does
 ========  ===================================================================
@@ -136,9 +141,9 @@ S2        residual grid (corrector × window × alpha × source) on the retained
 S3        refines the 2 best residual structures: source, corrector
           parameters and extra stages
 S4        decompositions of the retained bases, combination of the 2 best from
-          different families and, in variant B, dynamic selection around the
-          best residual structures, with the leftover budget (one slot per
-          family)
+          different families, ensembles and, in variant B, dynamic selection
+          around the best residual structures, with the leftover budget (one
+          slot per family)
 ========  ===================================================================
 
 Every proposal — evaluated, pruned by the budget, skipped for capability or

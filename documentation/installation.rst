@@ -71,7 +71,7 @@ Combine os extras entre colchetes, preservando a versão. Por exemplo:
    * - ``datasets``
      - Leitura do benchmark M3
    * - ``yaml``
-     - PyYAML para trabalhar com configurações YAML
+     - PyYAML; reservado: nenhum recurso desta versão depende dele
 
 Desenvolvimento
 ---------------

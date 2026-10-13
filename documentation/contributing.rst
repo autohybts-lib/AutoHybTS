@@ -16,7 +16,7 @@ Modelo de aula
 
 Um tutorial novo segue esta ordem:
 
-1. **Objetivo e requisitos**: tema, referência científica, fase do plano, variantes A/B
+1. **Objetivo e requisitos**: tema, referência científica, issue ou PR relacionado, variantes A/B
    suportadas, dependências.
 2. **Dados e protocolo**: origem, frequência, ``fh``, ``test_size``, ``fold``, sementes e
    orçamento. A busca nunca toca o teste selado.

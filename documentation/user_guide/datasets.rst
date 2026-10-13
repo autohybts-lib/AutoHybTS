@@ -177,6 +177,9 @@ M4
 
 .. code-block:: python
 
+   from autohybts import AutoHybridExperiment
+   from autohybts.datasets import list_datasets, load_benchmark
+
    list_datasets("m4", subset="daily")
    series = load_benchmark("m4", subset="daily", series_id="D1")
    series.train, series.test, series.descriptor.horizon
@@ -195,6 +198,8 @@ M3
 Do pacote R ``Mcomp`` (CRAN, GPL-3). Ler o arquivo R requer o extra ``datasets``.
 
 .. code-block:: python
+
+   from autohybts.datasets import load_benchmark
 
    m3 = load_benchmark("m3", subset="monthly")      # BenchmarkDataset
    panel = m3.panel(m3.series_ids[:5])              # PanelFrame, testes oficiais no fim

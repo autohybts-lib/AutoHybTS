@@ -60,7 +60,7 @@ class VariabilityCriterion:
         if self.direction not in ("gte", "lte"):
             raise ConfigurationError("direction deve ser 'gte' ou 'lte'.")
         if self.aggregation != "median":
-            raise ConfigurationError("Só a agregação 'median' está definida (ADR-0003).")
+            raise ConfigurationError("Só a agregação 'median' está definida.")
 
     def applies_to(self, result: EvaluationResult) -> bool:
         """Only challengers with a corrector have a correction to measure."""
@@ -118,7 +118,7 @@ class SelectionPolicy:
     Profiles:
 
     * ``quickstart``: variability off by default, declared in every decision.
-    * ``standard``: protocol thresholds with variability (ADR-0003) on.
+    * ``standard``: protocol thresholds with the variability criterion on.
     * ``research_strict``: like ``standard``; refuses to run without a variability
       criterion or with ``min_coverage < 1``.
     * ``exploratory``: decisions are flagged as exploratory, never as unbiased.
@@ -167,7 +167,7 @@ class SelectionPolicy:
         if self.profile == "research_strict":
             if self.variability is None:
                 raise ProtocolConfigurationError(
-                    "research_strict exige o critério de variabilidade definido (R09, ADR-0003)."
+                    "research_strict exige o critério de variabilidade definido."
                 )
             if self.min_coverage < 1.0:
                 raise ProtocolConfigurationError("research_strict exige cobertura completa.")

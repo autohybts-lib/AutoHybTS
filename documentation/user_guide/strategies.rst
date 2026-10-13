@@ -121,6 +121,11 @@ Na busca
        include=("standalone", "residual", "multistage", "decomposition", "combination")
    )
 
+``include`` aceita ``"standalone"`` (obrigatório), ``"residual"`` (com ele, o padrão),
+``"multistage"``, ``"decomposition"``, ``"combination"``, ``"ensemble"``
+(:doc:`ensembles`) e ``"dynamic"`` (só na variante B). ``"multistage"`` e ``"dynamic"``
+partem das estruturas residuais e exigem ``"residual"``.
+
 ========  ===================================================================
 Etapa     O que faz
 ========  ===================================================================
@@ -130,8 +135,9 @@ S2        grade residual (corretor × janela × alfa × fonte) nas bases retidas
 S3        refina as 2 melhores estruturas residuais: fonte, parâmetros do
           corretor e estágios extras
 S4        decomposições das bases retidas, combinação das 2 melhores de famílias
-          diferentes e, na variante B, seleção dinâmica em torno das melhores
-          estruturas residuais, com o orçamento que sobrar (uma vaga por família)
+          diferentes, ensembles e, na variante B, seleção dinâmica em torno das
+          melhores estruturas residuais, com o orçamento que sobrar (uma vaga
+          por família)
 ========  ===================================================================
 
 Todas as propostas — avaliadas, podadas pelo orçamento, puladas por capacidade ou

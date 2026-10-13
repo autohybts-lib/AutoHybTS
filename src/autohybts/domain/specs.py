@@ -161,7 +161,7 @@ class CandidateSpec:
         if self.strategy == "dynamic_selection" and self.variant != "B":
             raise ConfigurationError(
                 "A seleção dinâmica só existe na variante B: em A não há observação nova entre "
-                "os passos para escolher o especialista (R07)."
+                "os passos para escolher o especialista."
             )
         if not isinstance(self.family, str) or not self.family:
             raise ConfigurationError("CandidateSpec precisa de uma família.")

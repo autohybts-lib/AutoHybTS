@@ -16,7 +16,7 @@ Lesson model
 
 A new tutorial follows this order:
 
-1. **Goal and requirements**: topic, scientific reference, plan phase, supported A/B
+1. **Goal and requirements**: topic, scientific reference, related issue or PR, supported A/B
    variants, dependencies.
 2. **Data and protocol**: source, frequency, ``fh``, ``test_size``, ``fold``, seeds and
    budget. The search never touches the sealed test.
