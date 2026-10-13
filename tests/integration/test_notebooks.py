@@ -21,7 +21,8 @@ from pathlib import Path
 import pytest
 
 NOTEBOOKS_DIR = Path(__file__).parents[2] / "notebooks"
-NOTEBOOKS = sorted(NOTEBOOKS_DIR.glob("*.ipynb"))
+# Portuguese tutorials and their English copies in notebooks/en/.
+NOTEBOOKS = sorted(NOTEBOOKS_DIR.glob("*.ipynb")) + sorted(NOTEBOOKS_DIR.glob("en/*.ipynb"))
 EXTRAS: dict[str, list[str]] = tomllib.loads(
     (NOTEBOOKS_DIR.parent / "pyproject.toml").read_text(encoding="utf-8")
 )["project"]["optional-dependencies"]
@@ -77,7 +78,8 @@ def _params() -> list[object]:
         marks = [pytest.mark.slow]
         if _metadata(path).get("network"):
             marks.append(pytest.mark.network)
-        params.append(pytest.param(path, id=path.stem, marks=marks))
+        name = path.relative_to(NOTEBOOKS_DIR).with_suffix("").as_posix()
+        params.append(pytest.param(path, id=name, marks=marks))
     return params
 
 

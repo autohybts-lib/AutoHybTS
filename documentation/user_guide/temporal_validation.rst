@@ -27,7 +27,7 @@ Parâmetros
 
    AutoHybridExperiment(
        fh=14,                     # horizonte por origem
-       fold=3,                    # origens em cada camada
+       fold="auto",               # origens por camada: 7 se couber (ADR-0008)
        fold_strategy="expanding", # ou "rolling" com window_size
        test_size=None,            # None = fh; 0 desliga o teste selado
        seasonal_period=None,      # inferido pela frequência (diária: 7, mensal: 12 ...)

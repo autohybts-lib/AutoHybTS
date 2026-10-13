@@ -31,3 +31,6 @@ runs/
 # Documentation build and notebooks copied at build time
 documentation/_build/
 documentation/tutorials/notebooks/
+documentation/user_guide/_generated/
+documentation/en/tutorials/notebooks/
+documentation/en/user_guide/_generated/

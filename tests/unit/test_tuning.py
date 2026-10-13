@@ -9,6 +9,8 @@ from autohybts.domain.specs import CandidateSpec
 from autohybts.exceptions import ConfigurationError, UnsupportedCapabilityError
 from autohybts.registry import default_registry
 from autohybts.search.tuning import (
+    LAG_SPACES,
+    PLAIN_SPACES,
     TUNING_SPACES,
     Distribution,
     Tuner,
@@ -35,13 +37,40 @@ def test_distributions_sample_inside_their_bounds() -> None:
 
 def test_default_spaces_cover_the_lag_models() -> None:
     registry = default_registry()
-    for name in TUNING_SPACES:
+    for name in LAG_SPACES:
         space = default_space(name, seasonal_period=7)
         assert space["lags"].high == 28
         registry.make_base(name, {"lags": 7})
     assert default_space("linear", 30)["lags"].high == 60
     with pytest.raises(UnsupportedCapabilityError):
         default_space("arima", 7)
+
+
+def test_models_without_lags_get_no_lags() -> None:
+    for name in PLAIN_SPACES:
+        assert "lags" not in default_space(name, seasonal_period=7)
+    assert set(TUNING_SPACES) == set(LAG_SPACES) | set(PLAIN_SPACES)
+
+
+OPTIONAL = {"lightgbm_regressor": "lightgbm", "xgboost_regressor": "xgboost"}
+OPTIONAL["catboost_regressor"] = "catboost"
+OPTIONAL["exponential_smoothing"] = "statsmodels"
+
+
+@pytest.mark.parametrize("name", sorted(TUNING_SPACES))
+def test_every_sampled_configuration_fits(name: str) -> None:
+    # Every parameter name and range of a built-in space is accepted by the model.
+    if name in OPTIONAL:
+        pytest.importorskip(OPTIONAL[name])
+    rng = np.random.default_rng(0)
+    y = 20 + np.sin(np.arange(160) / 2) * 3 + rng.normal(0, 0.3, 160) + (np.arange(160) % 4 == 0)
+    space = default_space(name, seasonal_period=7)
+    base = CandidateSpec.standalone(name, family="any")
+    for _ in range(2):
+        sampled = {key: dist.sample(rng) for key, dist in space.items()}
+        tuned = _with_base_params(base, sampled)
+        model = default_registry().make_base(name, dict(tuned.base.params))
+        model.fit(y)
 
 
 def test_sampled_values_set_nested_parameters() -> None:

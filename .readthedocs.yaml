@@ -1,4 +1,6 @@
-# Read the Docs: builds documentation/ with Sphinx.
+# Read the Docs: main project (English), builds documentation/en with Sphinx.
+# The Portuguese translation is a second Read the Docs project whose
+# "Build configuration file" setting points to documentation/.readthedocs.yaml.
 version: 2
 
 build:
@@ -7,7 +9,7 @@ build:
     python: "3.12"
 
 sphinx:
-  configuration: documentation/conf.py
+  configuration: documentation/en/conf.py
   fail_on_warning: true
 
 python:

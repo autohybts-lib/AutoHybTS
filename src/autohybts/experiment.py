@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import time
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
@@ -80,6 +81,9 @@ _INCLUDE: Final = (
     "ensemble",
 )
 _DEFAULT_INCLUDE: Final = ("standalone", "residual")
+# Origins per validation layer of fold='auto': the acceptance rule's calibration
+# (D5, ADR-0008) met its error targets with 7 units on one series.
+AUTO_FOLD: Final = 7
 
 # Seasonal period by frequency prefix, as commonly used for daily/weekly/monthly data.
 _SEASONALITY: Final = {
@@ -130,6 +134,10 @@ class AutoHybridExperiment(Parametrized):
         fh: forecast horizon (steps per origin, and default horizon of predictions).
         session_id: seed of the whole experiment.
         fold: origins in each validation layer (``V_search`` and ``V_select``).
+            ``"auto"`` (default) uses 7 when the history allows and otherwise the largest
+            number that fits, with a warning: the acceptance rule is calibrated for 7
+            units on one series (ADR-0008); with fewer it accepts spurious structures
+            more often. An integer is used as given.
         fold_strategy: ``"expanding"`` or ``"rolling"`` (needs ``window_size``).
         seasonal_period: ``None`` infers it from the frequency (daily: 7, monthly: 12 ...).
         test_size: points sealed at the end of the series; ``None`` means ``fh``, ``0``
@@ -144,6 +152,12 @@ class AutoHybridExperiment(Parametrized):
             change between machines; budgets by count are the reproducible ones.
         base_models, correctors, residual_windows, alphas, residual_sources: search space
             (``None`` keeps the protocol presets of §8.1).
+        base_params: grid of each base in stage S0, by model name: a list of parameter
+            dicts, one candidate each (e.g. ``{"knn": [{"lags": 7}, {"lags": 14}]}``). A
+            base without a grid uses its search defaults.
+        corrector_params: alternative settings of each corrector, tried in stage S3
+            (refinement) around the best residual structures; S2 uses each corrector's
+            defaults.
         max_stages: most correction stages tried when ``compare_models`` includes
             ``"multistage"`` (2 or 3).
         decomposition_methods: decompositions tried when ``compare_models`` includes
@@ -161,7 +175,7 @@ class AutoHybridExperiment(Parametrized):
         significance_alpha: optional extra acceptance predicate: a one-sided paired
             Wilcoxon test on ``V_select`` must give ``p < significance_alpha`` (off by
             default). It needs at least 5 paired units with different errors, all series
-            together, for ``0.05``: with ``fold=3`` on one series it can never pass. It
+            together, for ``0.05``: with 3 origins on one series it can never pass. It
             controls each comparison, not the whole chain (see ``SelectionPolicy``).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
@@ -172,7 +186,7 @@ class AutoHybridExperiment(Parametrized):
         self,
         fh: int = 14,
         session_id: int = 42,
-        fold: int = 3,
+        fold: int | str = "auto",
         fold_strategy: str = "expanding",
         window_size: int | None = None,
         seasonal_period: int | None = None,
@@ -187,6 +201,8 @@ class AutoHybridExperiment(Parametrized):
         residual_windows: Sequence[int] | None = None,
         alphas: Sequence[float] | None = None,
         residual_sources: Sequence[str] | None = None,
+        base_params: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+        corrector_params: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
         max_stages: int = 2,
         decomposition_methods: Sequence[str] | None = None,
         combination_weights: Sequence[str] = ("equal", "inverse_mse"),
@@ -214,6 +230,8 @@ class AutoHybridExperiment(Parametrized):
         self.residual_windows = residual_windows
         self.alphas = alphas
         self.residual_sources = residual_sources
+        self.base_params = base_params
+        self.corrector_params = corrector_params
         self.max_stages = max_stages
         self.decomposition_methods = decomposition_methods
         self.combination_weights = combination_weights
@@ -253,13 +271,8 @@ class AutoHybridExperiment(Parametrized):
         history = dev_panel[frame.series_id]
         sealed = sealed_map.get(frame.series_id)
         period = self.seasonal_period or infer_seasonal_period(panel.frequency)
-        splitter = TemporalSplitter(
-            horizon=self.fh,
-            n_search_folds=self.fold,
-            n_select_folds=self.fold,
-            fold_strategy=self.fold_strategy,  # type: ignore[arg-type]
-            window_size=self.window_size,
-        )
+        self.fold_ = self._resolve_fold(dev_panel)
+        splitter = self._splitter_for(self.fold_)
         self.panel_: PanelFrame = dev_panel
         self._sealed_map: dict[str, SealedTest] = sealed_map
         self._splitter = splitter
@@ -1271,6 +1284,45 @@ class AutoHybridExperiment(Parametrized):
         raise ConfigurationError(f"Referência {reference!r} não está entre os modelos comparados.")
 
     # ------------------------------------------------------------------ helpers
+    def _splitter_for(self, fold: int) -> TemporalSplitter:
+        return TemporalSplitter(
+            horizon=self.fh,
+            n_search_folds=fold,
+            n_select_folds=fold,
+            fold_strategy=self.fold_strategy,  # type: ignore[arg-type]
+            window_size=self.window_size,
+        )
+
+    def _resolve_fold(self, panel: PanelFrame) -> int:
+        """``fold`` as given, or for ``"auto"`` the most origins up to ``AUTO_FOLD`` that fit."""
+
+        if self.fold != "auto":
+            if isinstance(self.fold, bool) or not isinstance(self.fold, int) or self.fold < 1:
+                raise ConfigurationError(
+                    f"fold deve ser inteiro >= 1 ou 'auto'; recebido {self.fold!r}."
+                )
+            return self.fold
+        error: InsufficientHistoryError | None = None
+        for fold in range(AUTO_FOLD, 0, -1):
+            splitter = self._splitter_for(fold)
+            try:
+                for frame in panel:
+                    splitter.plan(frame)
+            except InsufficientHistoryError as exc:
+                error = exc
+                continue
+            if fold < AUTO_FOLD:
+                warnings.warn(
+                    f"fold='auto': o histórico comporta {fold} origem(ns) por camada, menos que "
+                    f"as {AUTO_FOLD} da calibração da regra de aceite (ADR-0008); com menos "
+                    "unidades a regra aceita estruturas espúrias com mais frequência.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+            return fold
+        assert error is not None
+        raise error
+
     def _family_order(self, include: Sequence[str] = ()) -> tuple[str, ...]:
         """Default order with extra base families right before ``residual``.
 
@@ -1414,6 +1466,8 @@ class AutoHybridExperiment(Parametrized):
             residual_windows=tuple(self.residual_windows or defaults.residual_windows),
             alphas=tuple(float(a) for a in (self.alphas or defaults.alphas)),
             residual_sources=tuple(self.residual_sources or defaults.residual_sources),
+            base_params=_grids(self.base_params),
+            corrector_params=_grids(self.corrector_params),
             seasonal_period=self.seasonal_period_,
             variant=self.variant,
             max_stages=self.max_stages if "multistage" in include else 1,
@@ -1489,6 +1543,9 @@ class AutoHybridExperiment(Parametrized):
         ):
             if params.get(key) is not None:
                 params[key] = list(params[key])
+        for key in ("base_params", "corrector_params"):
+            if params.get(key) is not None:
+                params[key] = {k: [dict(p) for p in v] for k, v in _grids(params[key]).items()}
         return params
 
     def _require(self, state: str) -> None:
@@ -1582,3 +1639,22 @@ def _clone_with(template: Any, params: Mapping[str, Any]) -> Any:
     if not params:
         return template.clone()
     return type(template)(**{**template.get_params(), **dict(params)})
+
+
+def _grids(
+    grids: Mapping[str, Sequence[Mapping[str, Any]]] | None,
+) -> dict[str, tuple[dict[str, Any], ...]]:
+    """Per-model parameter grids as tuples of plain dicts; a lone dict is a one-item grid."""
+
+    if not grids:
+        return {}
+    if not isinstance(grids, Mapping):
+        raise ConfigurationError("As grades devem mapear nome do modelo -> lista de parâmetros.")
+    out: dict[str, tuple[dict[str, Any], ...]] = {}
+    for name, grid in grids.items():
+        items: list[object] = [grid] if isinstance(grid, Mapping) else list(grid)
+        dicts = [dict(item) for item in items if isinstance(item, Mapping)]
+        if not dicts or len(dicts) != len(items):
+            raise ConfigurationError(f"A grade de {name!r} deve ser uma lista de dicionários.")
+        out[str(name)] = tuple(dicts)
+    return out
