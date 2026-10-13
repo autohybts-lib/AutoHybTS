@@ -1,6 +1,7 @@
-# Read the Docs: Portuguese translation (project language "Portuguese (Brazil)",
-# linked as a translation of the English main project, which uses the root
-# .readthedocs.yaml). Set this file in the project's "Build configuration file".
+# Read the Docs: Portuguese documentation. Set the project's language to
+# "Portuguese (Brazil)" and its "Build configuration file" to
+# documentation/.readthedocs.yaml. Paths below are relative to the repository root.
+# Dashboard setup and translation linking: documentation/contributing.rst.
 version: 2
 
 build:
