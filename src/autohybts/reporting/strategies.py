@@ -84,7 +84,7 @@ def strategy_table(results: Sequence[EvaluationResult], metric: str) -> pd.DataF
     table = pd.DataFrame(rows)
     if table.empty:
         return table
-    valid = table["coverage"] == 1.0
+    valid = table["coverage"] >= 1.0
     score = table["score"].where(valid, math.inf)
     table["pareto_cost"] = pareto_front(table["cost_seconds"], score)
     table["pareto_complexity"] = pareto_front(table["complexity"], score)
@@ -116,7 +116,7 @@ def strategy_plot(
         raise ConfigurationError(f"Gráfico desconhecido {kind!r}; opções: {STRATEGY_PLOTS}.")
     if x not in ("cost", "complexity"):
         raise ConfigurationError("x deve ser 'cost' ou 'complexity'.")
-    data = table[table["coverage"] == 1.0]
+    data = table[table["coverage"] >= 1.0]
     if data.empty:
         raise ConfigurationError("Nenhuma candidata com cobertura completa para desenhar.")
     if kind == "pareto":

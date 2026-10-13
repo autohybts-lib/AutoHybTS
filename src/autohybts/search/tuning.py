@@ -258,7 +258,7 @@ class Tuner:
             spec = _with_base_params(candidate, params)
             if spec.candidate_id not in scored:
                 result = self.evaluator.evaluate(spec, plan, "search")
-                full = result.coverage(self.metric) == 1.0
+                full = result.coverage(self.metric) >= 1.0
                 score = result.mean(self.metric) if full else math.inf
                 scored[spec.candidate_id] = (score, spec)
                 rows.append(

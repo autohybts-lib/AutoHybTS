@@ -72,7 +72,7 @@ def _normalize(obj: object) -> JsonValue:
         if not math.isfinite(obj):
             raise ValueError(f"Non-finite float has no stable identity: {obj!r}")
         # -0.0 == 0.0 but serializes differently; both must map to one identity.
-        return 0.0 if obj == 0.0 else float(obj)
+        return 0.0 if not obj else float(obj)
     if isinstance(obj, str):
         return str(obj)
     if isinstance(obj, Mapping):
