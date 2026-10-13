@@ -281,7 +281,7 @@ def test_unknown_model_and_invalid_settings(registry: ModelRegistry) -> None:
     with pytest.raises(ConfigurationError):
         TemporalEvaluator(registry, seasonal_period=0)
     with pytest.raises(ConfigurationError):
-        TemporalEvaluator(registry, metrics=("MAPE",))
+        TemporalEvaluator(registry, metrics=("MSLE",))
     with pytest.raises(ConfigurationError, match="plano temporal"):
         TemporalEvaluator(registry).evaluate(spec(registry, "naive"), "plan")
 

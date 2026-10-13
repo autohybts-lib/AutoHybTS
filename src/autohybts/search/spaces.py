@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from autohybts.data.stationarity import DIFFERENCING_TESTS
+from autohybts.data.target_prep import check_preprocessing
 from autohybts.domain.identity import canonical_json
 from autohybts.domain.specs import (
     COMBINATION_WEIGHTS,
@@ -103,6 +104,8 @@ class SearchSpace:
     ensemble_methods: tuple[str, ...] = ()
     differencing: str | None = None
     differencing_test: str = "kpss"
+    transform: str | None = None
+    outliers: str | None = None
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -151,6 +154,7 @@ class SearchSpace:
                 f"differencing_test deve ser um de {list(DIFFERENCING_TESTS)}; "
                 f"recebido {self.differencing_test!r}."
             )
+        check_preprocessing(self.transform, self.outliers)
         unknown_weights = set(self.combination_weights) - set(COMBINATION_WEIGHTS)
         if unknown_weights:
             raise ConfigurationError(
@@ -175,6 +179,10 @@ class SearchSpace:
         if self.differencing is not None:
             described["differencing"] = self.differencing
             described["differencing_test"] = self.differencing_test
+        if self.transform is not None:
+            described["transform"] = self.transform
+        if self.outliers is not None:
+            described["outliers"] = self.outliers
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -573,6 +581,10 @@ class SearchSpace:
                     season_length=self.seasonal_period,
                     differencing_test=self.differencing_test,
                 )
+            if self.transform is not None:
+                params["transform"] = self.transform
+            if self.outliers is not None:
+                params["outliers"] = self.outliers
             return params
         return {}
 

@@ -277,6 +277,40 @@ parameters you pass, and a registered network gets ``differencing="auto"`` at
 registration (``torch_model(LSTMNet, differencing="auto")``). The
 default (``differencing=None``) does not difference, and candidate IDs do not change.
 
+Optional preprocessing: Box-Cox and outliers
+--------------------------------------------
+
+Off by default; the user turns them on per model or for every lag model of the search.
+Everything is fitted on each origin's training data, and the metric targets remain the
+observed values.
+
+``transform="boxcox"`` or ``"log"``
+   λ by maximum likelihood on the training data (with a shift when there are values
+   ≤ 0), frozen; the forecast context goes through the same transform and the forecast
+   returns to the original scale. Applied before the differences.
+``outliers="winsorize"`` or ``"interpolate"``
+   points with a robust z above 4 (in absolute value) against a rolling median are clipped at the threshold or
+   replaced by interpolation, only in the values the model learns from. The forecast
+   context is not changed.
+
+.. code-block:: python
+
+   exp.create_model("linear", lags=12, transform="boxcox", differencing="auto", season_length=12)
+   AutoHybridExperiment(fh=12, transform="boxcox", outliers="winsorize")   # the whole search
+
+On ``air_passengers`` (monthly, 4 origins), the linear model on 12 lags had MASE 0.822;
+with ``transform="log"``, 0.881; with ``"boxcox"``, 0.927; with Box-Cox and
+``differencing="auto"``, 0.773. The transform alone did not help: combined with the
+differences, it did. Use it as one more option to validate, not as a default.
+
+Missing values
+--------------
+
+By default (``missing="reject"``) a series with missing values is refused in ``fit``.
+With ``AutoHybridExperiment(missing="ffill")``, each gap gets the last observed value
+(only the past is used, no leakage) and leading gaps are dropped. Filled points enter the
+metrics as observed: prefer handling long gaps with your domain's criterion.
+
 Seasonal ARIMA
 --------------
 

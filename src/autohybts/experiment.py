@@ -208,6 +208,15 @@ class AutoHybridExperiment(Parametrized):
             position in the cycle, at least 6 cycles to drop the period) or ``"strength"``
             (the replication project: a series that ADF finds stationary has no
             seasonality; otherwise STL strength on the Box-Cox series above 0.5).
+        transform: ``"boxcox"`` or ``"log"`` makes every built-in lag model of the search
+            fit the transform on each origin's training data and invert its forecasts;
+            ``None`` (default) leaves the target as observed (ADR-0009).
+        outliers: ``"winsorize"`` or ``"interpolate"`` treats points with robust z > 4
+            (against a rolling median) in each origin's training data only; forecast
+            contexts and metric targets stay as observed. ``None`` (default) keeps them.
+        missing: ``"reject"`` (default) refuses a series with missing values;
+            ``"ffill"`` fills each gap with the last observed value (causal: only the
+            past is used) and drops leading gaps. Filled points are scored as observed.
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -243,6 +252,9 @@ class AutoHybridExperiment(Parametrized):
         differencing: str | None = None,
         differencing_test: str = "kpss",
         seasonality_test: str = "friedman",
+        transform: str | None = None,
+        outliers: str | None = None,
+        missing: str = "reject",
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -275,6 +287,9 @@ class AutoHybridExperiment(Parametrized):
         self.differencing = differencing
         self.differencing_test = differencing_test
         self.seasonality_test = seasonality_test
+        self.transform = transform
+        self.outliers = outliers
+        self.missing = missing
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -301,6 +316,12 @@ class AutoHybridExperiment(Parametrized):
         started = time.perf_counter()
         if self.variant not in ("A", "B"):
             raise ConfigurationError(f"variant deve ser 'A' ou 'B'; recebido {self.variant!r}.")
+        if self.missing not in ("reject", "ffill"):
+            raise ConfigurationError(
+                f"missing deve ser 'reject' ou 'ffill'; recebido {self.missing!r}."
+            )
+        if self.missing == "ffill":
+            y = _forward_fill(y, series_col=series_col, target=target)
         panel = _as_panel(y, series_col=series_col, date_col=date_col, target=target)
         test_size = self.fh if self.test_size is None else self.test_size
         dev_panel, sealed_map = split_panel_sealed_test(panel, test_size)
@@ -1707,6 +1728,8 @@ class AutoHybridExperiment(Parametrized):
             seasonal_period=self.search_period_,
             differencing=self.differencing,
             differencing_test=self.differencing_test,
+            transform=self.transform,
+            outliers=self.outliers,
             variant=self.variant,
             max_stages=self.max_stages if "multistage" in include else 1,
             stage_params=self.stage_params,
@@ -1835,6 +1858,23 @@ def _rolling_table(model: FinalizedForecaster, test: SeriesFrame) -> pd.DataFram
         },
         index=pd.DatetimeIndex(test.timestamps, name="timestamp"),
     )
+
+
+def _forward_fill(y: Any, *, series_col: str | None, target: str | None) -> Any:
+    """Causal fill of missing values (last observation carried forward), per series."""
+
+    if isinstance(y, pd.Series):
+        return y.ffill().dropna()
+    if isinstance(y, pd.DataFrame) and series_col is not None and target is not None:
+        filled = y.copy()
+        filled[target] = filled.groupby(series_col)[target].ffill()
+        return filled.dropna(subset=[target])
+    if isinstance(y, Mapping):
+        return {
+            key: (value.ffill().dropna() if isinstance(value, pd.Series) else value)
+            for key, value in y.items()
+        }
+    return y
 
 
 def _as_panel(

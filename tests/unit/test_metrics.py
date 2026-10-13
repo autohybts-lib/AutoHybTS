@@ -79,7 +79,7 @@ def test_every_metric_documents_itself() -> None:
         assert metric.formula
 
 
-@pytest.mark.parametrize("names", [["MAPE"], [], ["MAE", "MAE"]])
+@pytest.mark.parametrize("names", [["MSLE"], [], ["MAE", "MAE"]])
 def test_invalid_metric_lists(names: list[str]) -> None:
     with pytest.raises(ConfigurationError):
         resolve_metrics(names)
