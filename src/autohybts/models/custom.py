@@ -79,6 +79,8 @@ class RegressorForecaster(LaggedModelForecaster):
         seasonal_differencing: int = 0,
         season_length: int = 1,
         differencing_test: str = "kpss",
+        transform: str | None = None,
+        outliers: str | None = None,
     ) -> None:
         if not (
             callable(getattr(estimator, "fit", None))
@@ -91,6 +93,8 @@ class RegressorForecaster(LaggedModelForecaster):
             seasonal_differencing=seasonal_differencing,
             season_length=season_length,
             differencing_test=differencing_test,
+            transform=transform,
+            outliers=outliers,
             scale=scale,
             validation_fraction=0.0,
             requires=requires,

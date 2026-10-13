@@ -37,6 +37,7 @@ import numpy as np
 from autohybts.adapters.base import FloatArray, ForecasterBase, Parametrized
 from autohybts.data.preprocessing import Differencer
 from autohybts.data.stationarity import check_differencing, differencer_for, max_lost
+from autohybts.data.target_prep import check_preprocessing, clean_outliers, fit_target_transform
 from autohybts.data.windows import lag_matrix, latest_lags, normalize_lags
 from autohybts.domain.fit_count import record_fit
 from autohybts.exceptions import ConfigurationError, InsufficientHistoryError
@@ -118,9 +119,12 @@ class LaggedModelForecaster(ForecasterBase):
         seasonal_differencing: int = 0,
         season_length: int = 1,
         differencing_test: str = "kpss",
+        transform: str | None = None,
+        outliers: str | None = None,
     ) -> None:
         super().__init__()
         check_differencing(differencing, seasonal_differencing, season_length, differencing_test)
+        check_preprocessing(transform, outliers)
         _check_training(epochs, batch_size, learning_rate, validation_fraction)
         self._lags = normalize_lags(lags)
         self.lags = lags
@@ -136,6 +140,8 @@ class LaggedModelForecaster(ForecasterBase):
         self.seasonal_differencing = seasonal_differencing
         self.season_length = season_length
         self.differencing_test = differencing_test
+        self.transform = transform
+        self.outliers = outliers
 
     @property
     def n_lags(self) -> int:
@@ -155,6 +161,7 @@ class LaggedModelForecaster(ForecasterBase):
         return self.min_history + 10
 
     def _fit(self, y: FloatArray) -> None:
+        y = self._prepare(y)
         require(self.requires)
         self.differencer_ = differencer_for(
             y,
@@ -186,6 +193,8 @@ class LaggedModelForecaster(ForecasterBase):
 
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         anchors = None
+        target = getattr(self, "target_", None)
+        history = history if target is None else target.apply(history)
         level = history
         if self.differencer_.lost:
             anchors, level = self.differencer_.fit_transform(history)
@@ -197,7 +206,8 @@ class LaggedModelForecaster(ForecasterBase):
             window.append(step)
             steps.append(step)
         forecast = np.asarray(steps) * self.spread_ + self.center_
-        return forecast if anchors is None else anchors.inverse_forecast(forecast)
+        forecast = forecast if anchors is None else anchors.inverse_forecast(forecast)
+        return forecast if target is None else target.invert(forecast)
 
     def diagnostics(self) -> dict[str, float]:
         """Training summary plus the internal split (rows, never values)."""
@@ -222,6 +232,14 @@ class LaggedModelForecaster(ForecasterBase):
     @abstractmethod
     def _infer(self, x: FloatArray) -> FloatArray:
         """Predictions (standardized scale) for rows of chronological windows."""
+
+    def _prepare(self, y: FloatArray) -> FloatArray:
+        """Outliers and Box-Cox fitted on the training values only (ADR-0009)."""
+
+        if self.outliers is not None:
+            y = clean_outliers(y, self.outliers)
+        self.target_ = None if self.transform is None else fit_target_transform(y, self.transform)
+        return y if self.target_ is None else self.target_.apply(y)
 
     def _differenced(self, y: FloatArray) -> FloatArray:
         if not self.differencer_.lost:

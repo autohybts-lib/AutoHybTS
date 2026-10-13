@@ -208,6 +208,12 @@ class AutoHybridExperiment(Parametrized):
             position in the cycle, at least 6 cycles to drop the period) or ``"strength"``
             (the replication project: a series that ADF finds stationary has no
             seasonality; otherwise STL strength on the Box-Cox series above 0.5).
+        transform: ``"boxcox"`` or ``"log"`` makes every built-in lag model of the search
+            fit the transform on each origin's training data and invert its forecasts;
+            ``None`` (default) leaves the target as observed (ADR-0009).
+        outliers: ``"winsorize"`` or ``"interpolate"`` treats points with robust z > 4
+            (against a rolling median) in each origin's training data only; forecast
+            contexts and metric targets stay as observed. ``None`` (default) keeps them.
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -243,6 +249,8 @@ class AutoHybridExperiment(Parametrized):
         differencing: str | None = None,
         differencing_test: str = "kpss",
         seasonality_test: str = "friedman",
+        transform: str | None = None,
+        outliers: str | None = None,
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -275,6 +283,8 @@ class AutoHybridExperiment(Parametrized):
         self.differencing = differencing
         self.differencing_test = differencing_test
         self.seasonality_test = seasonality_test
+        self.transform = transform
+        self.outliers = outliers
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -1707,6 +1717,8 @@ class AutoHybridExperiment(Parametrized):
             seasonal_period=self.search_period_,
             differencing=self.differencing,
             differencing_test=self.differencing_test,
+            transform=self.transform,
+            outliers=self.outliers,
             variant=self.variant,
             max_stages=self.max_stages if "multistage" in include else 1,
             stage_params=self.stage_params,

@@ -275,6 +275,32 @@ passa, e uma rede registrada recebe ``differencing="auto"`` no registro
 (``torch_model(LSTMNet, differencing="auto")``). O padrão
 (``differencing=None``) não diferencia, e os IDs das candidatas não mudam.
 
+Pré-processamento opcional: Box-Cox e outliers
+----------------------------------------------
+
+Desligados por padrão; o usuário liga por modelo ou para todos os modelos sobre
+defasagens da busca. Tudo é ajustado no treino de cada origem, e os alvos das métricas
+continuam os valores observados.
+
+``transform="boxcox"`` ou ``"log"``
+   λ por máxima verossimilhança no treino (com deslocamento quando há valores ≤ 0),
+   congelado; o contexto da previsão passa pela mesma transformação e a previsão volta à
+   escala original. Aplicado antes das diferenças.
+``outliers="winsorize"`` ou ``"interpolate"``
+   pontos com z robusto acima de 4 (em módulo) contra uma mediana móvel são cortados no limiar ou
+   substituídos por interpolação, só nos valores com que o modelo aprende. O contexto da
+   previsão não é alterado.
+
+.. code-block:: python
+
+   exp.create_model("linear", lags=12, transform="boxcox", differencing="auto", season_length=12)
+   AutoHybridExperiment(fh=12, transform="boxcox", outliers="winsorize")   # toda a busca
+
+No ``air_passengers`` (mensal, 4 origens), o linear sobre 12 lags teve MASE 0,822; com
+``transform="log"``, 0,881; com ``"boxcox"``, 0,927; com Box-Cox e ``differencing="auto"``,
+0,773. A transformação sozinha não melhorou: combinada com as diferenças, sim. Use-a como
+mais uma opção a validar, não como padrão.
+
 ARIMA sazonal
 -------------
 

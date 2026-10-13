@@ -175,6 +175,8 @@ class TorchForecaster(_TorchState, LaggedModelForecaster):
         seasonal_differencing: int = 0,
         season_length: int = 1,
         differencing_test: str = "kpss",
+        transform: str | None = None,
+        outliers: str | None = None,
     ) -> None:
         if not callable(module):
             raise ConfigurationError("module deve ser uma classe ou função que cria a rede.")
@@ -184,6 +186,8 @@ class TorchForecaster(_TorchState, LaggedModelForecaster):
             seasonal_differencing=seasonal_differencing,
             season_length=season_length,
             differencing_test=differencing_test,
+            transform=transform,
+            outliers=outliers,
             scale=scale,
             epochs=epochs,
             batch_size=batch_size,
