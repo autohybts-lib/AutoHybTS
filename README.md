@@ -16,7 +16,7 @@
 
 A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
 
-> **Status: candidata à v1 (`1.0.0rc1`), [publicada no PyPI](https://pypi.org/project/autohybts/1.0.0rc1/).** A API funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Esta é uma pré-versão para validação; a `1.0.0` estável depende da conferência final e do estudo em séries reais. Veja as [notas e a política de compatibilidade](documentation/releasing.rst).
+> **Status: candidata à v1 (`1.0.0rc2`), [publicada no PyPI](https://pypi.org/project/autohybts/1.0.0rc2/).** A API funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Esta é uma pré-versão para validação; a `1.0.0` estável depende da conferência final e do estudo em séries reais. Veja as [notas e a política de compatibilidade](https://autohybts.readthedocs.io/pt-br/latest/releasing.html).
 
 ## Instalação
 
@@ -25,15 +25,15 @@ Requer Python 3.11 ou mais novo.
 Instale pelo PyPI com os modelos estatísticos e gráficos usados nos exemplos:
 
 ```bash
-python -m pip install "autohybts[stats,plot]==1.0.0rc1"
+python -m pip install "autohybts[stats,plot]==1.0.0rc2"
 ```
 
-A versão está fixada porque `1.0.0rc1` é uma candidata. Para instalar apenas o núcleo,
-use `python -m pip install "autohybts==1.0.0rc1"`. A instalação pelo PyPI não requer Git.
+A versão está fixada porque `1.0.0rc2` é uma candidata. Para instalar apenas o núcleo,
+use `python -m pip install "autohybts==1.0.0rc2"`. A instalação pelo PyPI não requer Git.
 
 Para usar modelos próprios em PyTorch ou TensorFlow, acrescente os extras `torch` e/ou
-`tensorflow` (ex.: `autohybts[stats,plot,torch]==1.0.0rc1`). Para notebooks, use o extra
-`notebook`. Veja o [guia de instalação](documentation/installation.rst) para Jupyter,
+`tensorflow` (ex.: `autohybts[stats,plot,torch]==1.0.0rc2`). Para notebooks, use o extra
+`notebook`. Veja o [guia de instalação](https://autohybts.readthedocs.io/pt-br/latest/installation.html) para Jupyter,
 extras e instalação de desenvolvimento.
 
 ## Início rápido
@@ -178,7 +178,7 @@ valores ausentes: trate-os antes do `fit`.
 - Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/jvataidee/AutoHybTS/tree/main/notebooks)
 
 Para configurar a publicação no Read the Docs, veja
-[`Publicação no Read the Docs`](documentation/contributing.rst).
+[`Publicação no Read the Docs`](https://autohybts.readthedocs.io/pt-br/latest/contributing.html).
 O projeto em português (`/pt-br/latest/`) deve usar **Language: Portuguese (Brazil)**
 e **Build configuration file: `documentation/.readthedocs.yaml`**. O YAML da raiz
 (`.readthedocs.yaml`) compila a versão em inglês.

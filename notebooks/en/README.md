@@ -25,7 +25,7 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 To use the tutorials with the candidate published on PyPI:
 
 ```bash
-python -m pip install "autohybts[stats,notebook]==1.0.0rc1"
+python -m pip install "autohybts[stats,notebook]==1.0.0rc2"
 ```
 
 Notebooks 05, 10, 12 and 15 require the extras listed in the table. See the

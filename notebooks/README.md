@@ -25,7 +25,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 Para usar os tutoriais com a candidata publicada no PyPI:
 
 ```bash
-python -m pip install "autohybts[stats,notebook]==1.0.0rc1"
+python -m pip install "autohybts[stats,notebook]==1.0.0rc2"
 ```
 
 Os notebooks 05, 10, 12 e 15 requerem os extras indicados na tabela. Consulte o
