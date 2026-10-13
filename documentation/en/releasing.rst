@@ -1,6 +1,22 @@
 Version 1 and publishing
 ========================================
 
+1.0.0rc2 — PyPI documentation, October 13, 2026
+------------------------------------------------------------
+
+This candidate includes the README updated after the first PyPI publication.
+PyPI is the main installation path, commands pin ``1.0.0rc2`` and both language
+versions cover extras, Jupyter and the publishing workflow. Algorithms, public
+signatures, candidate IDs and the persistence schema retain ``1.0.0rc1`` behavior.
+This remains a release candidate; the criteria for stable ``1.0.0`` still apply
+as described below.
+
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc2"
+
+Version: `1.0.0rc2 on PyPI <https://pypi.org/project/autohybts/1.0.0rc2/>`_.
+
 1.0.0rc1 — candidate, October 13, 2026
 ------------------------------------------------------------
 
@@ -82,7 +98,7 @@ Install the published version directly from PyPI:
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[stats,plot]==1.0.0rc1"
+   python -m pip install "autohybts[stats,plot]==1.0.0rc2"
 
 The :doc:`installation` guide covers the core, extras, notebooks and the GitHub
 development option.
@@ -107,7 +123,8 @@ tagging and choose a single publishing workflow for each index.
 
 Each version uploaded to PyPI is immutable, including the README embedded in its
 metadata. Changes to the GitHub README and Read the Docs appear on PyPI only in
-the next published version, such as ``1.0.0rc2``. Do not re-upload ``1.0.0rc1``.
+the next published version. ``1.0.0rc2`` includes this update; later changes require
+another version. Do not re-upload an already published version.
 
 Local checklist
 ---------------
@@ -122,9 +139,9 @@ Local checklist
    pytest -m network --run-network
    sphinx-build -W documentation documentation/_build/html
    sphinx-build -W documentation/en documentation/_build/html-en
-   python -m build --outdir dist/1.0.0rc1
-   python -m twine check dist/1.0.0rc1/*
-   python tools/check_release.py --tag v1.0.0rc1 --dist dist/1.0.0rc1
+   python -m build --outdir dist/1.0.0rc2
+   python -m twine check dist/1.0.0rc2/*
+   python tools/check_release.py --tag v1.0.0rc2 --dist dist/1.0.0rc2
 
 After installing the wheel in a clean environment without extras, run
 ``python tools/smoke_wheel.py`` using that environment's Python. CI also validates
