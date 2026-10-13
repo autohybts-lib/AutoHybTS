@@ -106,7 +106,8 @@ def test_trial_key_depends_on_every_input() -> None:
 
 
 def test_derived_seeds_are_stable_and_distinct() -> None:
-    assert derive_seed(42, "cand", "search-0") == derive_seed(42, "cand", "search-0")
+    first = derive_seed(42, "cand", "search-0")
+    assert first == derive_seed(42, "cand", "search-0")
     seeds = {derive_seed(42, "cand", fold) for fold in ("search-0", "search-1", "select-0")}
     seeds.add(derive_seed(43, "cand", "search-0"))
     assert len(seeds) == 4

@@ -108,9 +108,9 @@ def test_components_add_up_and_choices_are_in_the_pool(method: str) -> None:
         assert prediction == pytest.approx(base[0] + correction[0])
         assert 0 <= fitted.choice_at(y[:end]) <= 2
     # Predicting twice from the same context gives the same answer (no hidden state).
-    assert (
-        fitted.predict(1, local_context(y, 260))[0] == fitted.predict(1, local_context(y, 260))[0]
-    )
+    first = fitted.predict(1, local_context(y, 260))[0]
+    second = fitted.predict(1, local_context(y, 260))[0]
+    assert first == second
 
 
 def test_dref_can_decide_not_to_correct() -> None:
