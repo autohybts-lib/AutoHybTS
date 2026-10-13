@@ -39,7 +39,8 @@ strategies for building hybrid systems together in a single workflow:
 
 .. note::
 
-   **Pre-alpha** status (|release|). The API may change between minor versions.
+   **v1 release candidate** (|release|): a prerelease for validation. See
+   :doc:`releasing` for scope, compatibility and the stable-release criteria.
 
 .. toctree::
    :maxdepth: 1
@@ -87,4 +88,5 @@ strategies for building hybrid systems together in a single workflow:
    :caption: Project
 
    contributing
+   releasing
    about

@@ -4,6 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      release-checks:
+        description: Execute slow tutorials and network checks without publishing
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      release-checks:
+        description: Execute slow tutorials and network checks before publication
+        type: boolean
+        default: false
 
 # Read-only token: CI never pushes, comments or publishes.
 permissions:
@@ -106,9 +118,68 @@ jobs:
               assert 'packaging' in str(e), e
           else:
               import importlib.util; assert importlib.util.find_spec('packaging'), 'expected an error'"
+      - name: Exercise the installed wheel
+        run: /tmp/clean/bin/python tools/smoke_wheel.py
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[docs,stats]"
+      - run: sphinx-build -W --keep-going documentation documentation/_build/html
+      - run: sphinx-build -W --keep-going documentation/en documentation/_build/html-en
+
+  nixtla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev,stats,nixtla-stats]"
+      - run: python -c "import statsforecast; print(statsforecast.__version__)"
+      - run: pytest tests/unit/test_statsforecast.py tests/regression/test_legacy_parity.py tests/contracts/test_base_forecaster.py tests/leakage/test_base_causality.py -q
+
+  release-checks:
+    if: ${{ inputs.release-checks == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [pt, en]
+    env:
+      AUTOHYBTS_RUN_HEAVY: "1"
+      AUTOHYBTS_REQUIRE_FRAMEWORKS: "1"
+      AUTOHYBTS_REQUIRE_NOTEBOOKS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e ".[dev,stats,notebook,optuna,boosting,datasets,nixtla-stats,torch,tensorflow]"
+      - name: Run slow tests and Portuguese tutorials
+        if: matrix.language == 'pt'
+        run: pytest -m slow --run-network -k "not en/" -q
+      - name: Run English tutorials
+        if: matrix.language == 'en'
+        run: pytest tests/integration/test_notebooks.py -m slow --run-network -k "en/" -q
+      - name: Check dataset downloads
+        if: matrix.language == 'pt'
+        run: pytest -m network --run-network -k "not notebook" -q
 
   audit:
-    # Known vulnerabilities in the resolved dependencies (core and every optional extra).
+    # Known vulnerabilities in core and the selected forecasting extras.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

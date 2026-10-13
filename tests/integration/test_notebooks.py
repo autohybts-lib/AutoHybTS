@@ -17,6 +17,7 @@ import os
 import re
 import tomllib
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
@@ -83,6 +84,23 @@ def _params() -> list[object]:
     return params
 
 
+def _skip_or_fail(reason: str) -> NoReturn:
+    if os.environ.get("AUTOHYBTS_REQUIRE_NOTEBOOKS") == "1":
+        pytest.fail(reason)
+    pytest.skip(reason)
+
+
+def test_required_notebooks_cannot_skip_missing_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTOHYBTS_REQUIRE_NOTEBOOKS", "1")
+    with pytest.raises(pytest.fail.Exception, match="missing extra"):
+        _skip_or_fail("missing extra")
+    monkeypatch.delenv("AUTOHYBTS_REQUIRE_NOTEBOOKS")
+    with pytest.raises(pytest.skip.Exception, match="missing extra"):
+        _skip_or_fail("missing extra")
+
+
 def test_every_notebook_declares_its_requirements() -> None:
     assert NOTEBOOKS
     for path in NOTEBOOKS:
@@ -123,17 +141,22 @@ def test_notebook_executes(path: Path, tmp_path: Path) -> None:
     assert isinstance(requires, list)
     missing = [name for name in requires if not _resolves(name)]
     if missing:
-        pytest.skip(f"API not implemented yet: {', '.join(missing)}")
+        _skip_or_fail(f"API not implemented yet: {', '.join(missing)}")
     meta = _metadata(path)
     if meta.get("heavy") and os.environ.get("AUTOHYBTS_RUN_HEAVY") != "1":
-        pytest.skip("heavy notebook: set AUTOHYBTS_RUN_HEAVY=1 to run it")
+        _skip_or_fail("heavy notebook: set AUTOHYBTS_RUN_HEAVY=1 to run it")
     absent = _missing_extras(meta.get("extras", []))
     if absent:
-        pytest.skip(f"extras not installed: {', '.join(absent)}")
+        _skip_or_fail(f"extras not installed: {', '.join(absent)}")
 
-    nbformat = pytest.importorskip("nbformat")
-    nbclient = pytest.importorskip("nbclient")
-    pytest.importorskip("ipykernel")
+    if os.environ.get("AUTOHYBTS_REQUIRE_NOTEBOOKS") == "1":
+        nbformat = importlib.import_module("nbformat")
+        nbclient = importlib.import_module("nbclient")
+        importlib.import_module("ipykernel")
+    else:
+        nbformat = pytest.importorskip("nbformat")
+        nbclient = pytest.importorskip("nbclient")
+        pytest.importorskip("ipykernel")
 
     notebook = nbformat.read(path, as_version=4)
     # Run inside tmp_path so saved artifacts never land in the repository.
