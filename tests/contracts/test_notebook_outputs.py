@@ -1,4 +1,4 @@
-"""Stored notebook outputs are published with the docs: they must not leak local paths."""
+"""Stored notebook outputs are published with the docs: no local paths, at least one figure."""
 
 from __future__ import annotations
 
@@ -38,3 +38,18 @@ def test_outputs_have_no_local_paths(notebook: Path) -> None:
         if match
     ]
     assert not leaks, f"saídas com caminhos locais (célula, trecho): {leaks}"
+
+
+@pytest.mark.parametrize(
+    "notebook", NOTEBOOKS, ids=[path.relative_to(DIR).as_posix() for path in NOTEBOOKS]
+)
+def test_every_tutorial_shows_at_least_one_figure(notebook: Path) -> None:
+    cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
+    figures = sum(
+        1
+        for cell in cells
+        for output in cell.get("outputs", [])
+        if isinstance(output.get("data"), dict)
+        and ("image/png" in output["data"] or "image/svg+xml" in output["data"])
+    )
+    assert figures > 0, "o tutorial não tem nenhuma figura salva"

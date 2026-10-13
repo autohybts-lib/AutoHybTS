@@ -48,6 +48,7 @@ estratégias de montar sistemas híbridos:
 
    installation
    quickstart
+   concepts
 
 .. toctree::
    :maxdepth: 1

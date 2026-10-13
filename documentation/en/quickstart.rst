@@ -18,7 +18,12 @@ predict. Every method returns an immutable result.
 
 ``fit`` validates the series, holds back the last ``test_size`` points (default:
 ``fh``) as the **sealed test** and freezes the validation origins. The sealed test is
-read only by ``evaluate_external``.
+read only by ``evaluate_external``. The terms (origin, ``V_search``, ``V_select``, base,
+corrector …) are in :doc:`concepts`.
+
+By default the forecast follows **variant A**: ``fh`` steps at once from each origin. To
+forecast one step at a time, receiving each actual value before the next one, use
+``variant="B"`` (:doc:`user_guide/variant_b`).
 
 2. Explore the data
 -------------------
@@ -38,8 +43,25 @@ read only by ``evaluate_external``.
    result.decisions          # incremental chain: challenger, gain, wins, reason
    result.best               # the champion
 
-The search runs on ``V_search``; the champion is chosen on ``V_select``. To include
-the other strategies for building the system:
+The search runs on ``V_search``; the champion is chosen on ``V_select``. What to look
+at:
+
+* ``leaderboard``: one row per evaluated candidate, sorted by the first metric (MASE by
+  default; lower is better), with coverage and cost;
+* ``decisions``: one row per family that challenged the champion, with ``accepted``,
+  ``median_gain`` (paired median gain), ``win_rate`` and the reason for a rejection.
+
+.. note::
+
+   With the defaults (``small`` budget and 7 origins per layer), ``compare_models`` can
+   take minutes: the whole notebook 01, on the ``synthetic_daily`` series, took about
+   1 min, and larger series, more models or a larger budget take longer. For a first
+   contact,
+   ``AutoHybridExperiment(fh=14, budget="smoke", fold=3)`` finishes in seconds, with the
+   caveat that the acceptance rule was calibrated for 7 origins
+   (:doc:`user_guide/selection`).
+
+To include the other strategies for building the system:
 
 .. code-block:: python
 
@@ -88,3 +110,14 @@ Without a sealed test (``test_size=0``), or with the one-call estimator:
 
    forecaster = AutoHybridForecaster(fh=14).fit(y)
    forecaster.predict()
+
+Next steps
+----------
+
+* :doc:`concepts`: the vocabulary and the path of the data, from the split to the
+  forecast.
+* Tutorials :doc:`tutorials/notebooks/01_quickstart` to
+  :doc:`tutorials/notebooks/04_rolling_one_step`: the same flow with figures, hybrid
+  selection, finalization and variant B.
+* :doc:`user_guide/diagnostics`: seasonality, stationarity and differences before
+  choosing models.
