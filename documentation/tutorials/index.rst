@@ -22,3 +22,4 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
    notebooks/13_ensembles
    notebooks/14_intermittent_demand
    notebooks/15_statsforecast
+   notebooks/16_series_diagnostics

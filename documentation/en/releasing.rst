@@ -1,6 +1,26 @@
 Version 1 and publishing
 ========================================
 
+Next candidate: 1.0.0rc3 (in preparation)
+------------------------------------------
+
+Compatible additions: candidate IDs, the default protocol hash and the persistence schema
+do not change, and every new feature acts only when requested.
+
+* **Seasonality:** ``exp.seasonality_report()`` (seasonal strength and a Friedman test with
+  cycles as blocks) and ``seasonal_period="auto"``, which tests the cycle on the first
+  origin's training data before passing the period to the models.
+* **SARIMA:** the ``sarima`` model (``stats`` extra), outside the default search.
+* **Automatic differences:** ``differencing="auto"`` on lag models chooses the seasonal
+  difference and up to two differences on each origin's training data, by KPSS or by the
+  ADF rule of the replication project.
+* **Characterization:** ``exp.characterize()`` with the two rules of the replication
+  project and the ``stationarity``, ``acf_pacf``, ``decomposition`` and
+  ``plot_characterization`` plots.
+* **Documentation:** the :doc:`user_guide/diagnostics` page, notebook 16 and fixes of facts
+  and references; the text of the ``fold="auto"`` warning no longer cites internal
+  documents.
+
 1.0.0rc2 — PyPI documentation, October 13, 2026
 ------------------------------------------------------------
 

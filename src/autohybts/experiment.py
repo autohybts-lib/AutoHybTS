@@ -21,6 +21,7 @@ import pandas as pd
 
 import autohybts
 from autohybts.adapters.base import Parametrized
+from autohybts.data.characterization import characterize as characterize_series
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
 from autohybts.data.schema import SeriesFrame
@@ -51,7 +52,7 @@ from autohybts.registry.registry import ModelRegistry, default_registry
 from autohybts.reporting.comparison import ComparisonResult, diebold_mariano, holm
 from autohybts.reporting.evidence import EvidenceBundle, write_evidence
 from autohybts.reporting.leaderboard import leaderboard
-from autohybts.reporting.plots import PlotArtifact, data_plot, model_plot
+from autohybts.reporting.plots import PlotArtifact, characterization_plot, data_plot, model_plot
 from autohybts.residuals.generation import ResidualSettings
 from autohybts.results import (
     CompareResult,
@@ -201,6 +202,10 @@ class AutoHybridExperiment(Parametrized):
         differencing_test: ``"kpss"`` (KPSS does not reject stationarity, as
             ``auto.arima``) or ``"adf"`` (ADF rejects a unit root, as the replication
             project).
+        seasonality_test: rule of ``seasonal_period="auto"``: ``"friedman"`` (test by
+            position in the cycle, at least 6 cycles to drop the period) or ``"strength"``
+            (the replication project: a series that ADF finds stationary has no
+            seasonality; otherwise STL strength on the Box-Cox series above 0.5).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -235,6 +240,7 @@ class AutoHybridExperiment(Parametrized):
         significance_alpha: float | None = None,
         differencing: str | None = None,
         differencing_test: str = "kpss",
+        seasonality_test: str = "friedman",
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -266,6 +272,7 @@ class AutoHybridExperiment(Parametrized):
         self.significance_alpha = significance_alpha
         self.differencing = differencing
         self.differencing_test = differencing_test
+        self.seasonality_test = seasonality_test
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -298,6 +305,11 @@ class AutoHybridExperiment(Parametrized):
         frame = next(iter(panel))
         history = dev_panel[frame.series_id]
         sealed = sealed_map.get(frame.series_id)
+        if self.seasonality_test not in ("friedman", "strength"):
+            raise ConfigurationError(
+                "seasonality_test deve ser 'friedman' ou 'strength'; "
+                f"recebido {self.seasonality_test!r}."
+            )
         if self.seasonal_period == "auto":
             period = infer_seasonal_period(panel.frequency)
         elif self.seasonal_period is None or (
@@ -328,7 +340,10 @@ class AutoHybridExperiment(Parametrized):
         self.search_period_ = period
         if self.seasonal_period == "auto":
             self.seasonality_ = self._decision_seasonality(dev_panel, period)
-            keep = bool(self.seasonality_["keep_period"].mean() >= 0.5) if period >= 3 else False
+            minimum = 2 if self.seasonality_test == "strength" else 3
+            keep = (
+                bool(self.seasonality_["keep_period"].mean() >= 0.5) if period >= minimum else False
+            )
             self.search_period_ = period if keep else 1
         self.registry_: ModelRegistry = (self.registry or default_registry()).copy()
         self.evaluator_ = TemporalEvaluator(
@@ -929,6 +944,38 @@ class AutoHybridExperiment(Parametrized):
         ]
         return pd.DataFrame(rows).set_index(["series_id", "period"])
 
+    def characterize(
+        self, series_id: str | None = None, periods: Sequence[int] | None = None
+    ) -> pd.DataFrame:
+        """The replication project's characterization of the development history.
+
+        Per series: ADF and KPSS at ``d = 0, 1, 2``, the stationarity decision and ``d``
+        (ADF: ``p <= 0.05`` and statistic below the 5 % critical value), and, for
+        non-stationary series, the strength of a robust STL on the Box-Cox series for
+        each period in ``periods`` (default: the experiment's period), the dominant
+        period and the category (``stationary``, ``nonseasonal``, ``seasonal`` when the
+        strength exceeds 0.5). Exploratory: never reads the sealed test.
+        """
+
+        self._require("VALIDATED")
+        if periods is None:
+            periods = (self.seasonal_period_,) if self.seasonal_period_ >= 2 else ()
+        frames = (
+            [self._series(series_id)]
+            if series_id is not None or not self.is_panel
+            else list(self.panel_)
+        )
+        rows = [
+            {"series_id": frame.series_id, **characterize_series(frame.values, tuple(periods))}
+            for frame in frames
+        ]
+        return pd.DataFrame(rows).set_index("series_id")
+
+    def plot_characterization(self, periods: Sequence[int] | None = None) -> PlotArtifact:
+        """ADF statistic against seasonal strength for every series (see ``characterize``)."""
+
+        return characterization_plot(self.characterize(periods=periods))
+
     def _decision_seasonality(self, panel: PanelFrame, period: int) -> pd.DataFrame:
         """The test behind ``seasonal_period="auto"``, on data seen by every origin."""
 
@@ -942,6 +989,13 @@ class AutoHybridExperiment(Parametrized):
         for sid, plan in plans.items():
             first = min(plan.search_origins, key=lambda o: o.origin_index)
             window = panel[sid].values[: first.origin_index + 1]
+            if self.seasonality_test == "strength":
+                record = characterize_series(window, (period,))
+                # Without two cycles the strength is undefined: no evidence, the period stays.
+                undefined = not record["stationary"] and not math.isfinite(record["fs"])
+                keep = record["category"] == "seasonal" or (period >= 2 and undefined)
+                rows.append({"series_id": sid, **record, "keep_period": keep})
+                continue
             test = detect_seasonality(window, period)
             # A test on few cycles has almost no power: not rejecting there is no evidence
             # that the cycle is absent, so the frequency's period stays.
@@ -950,7 +1004,13 @@ class AutoHybridExperiment(Parametrized):
         return pd.DataFrame(rows).set_index("series_id")
 
     def plot_data(self, plot: str = "series", series_id: str | None = None) -> PlotArtifact:
-        """``series``, ``acf``, ``seasonality`` or ``distribution`` of the development history."""
+        """A plot of the development history (never the sealed test).
+
+        ``series``, ``acf``, ``seasonality`` (mean by position), ``distribution``,
+        ``stationarity`` (the series at d = 0, 1, 2 with ADF/KPSS p-values and the ADF
+        choice), ``acf_pacf`` (at that order) or ``decomposition`` (robust STL of the
+        Box-Cox series at the experiment's period).
+        """
 
         self._require("VALIDATED")
         frame = self._series(series_id)

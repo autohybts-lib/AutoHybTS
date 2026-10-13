@@ -9,7 +9,7 @@ Experimento
              create_decomposition,
              create_combination, tune_model, compare_models, finalize_model, predict_model,
              evaluate_external, cross_validate, compare_external, nested_cross_validate,
-             data_profile, seasonality_report, plot_data, plot_model, get_metrics, export_evidence
+             data_profile, seasonality_report, characterize, plot_data, plot_model, plot_characterization, get_metrics, export_evidence
 
 .. autoclass:: autohybts.AutoHybridForecaster
    :members:

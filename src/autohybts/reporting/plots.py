@@ -31,12 +31,26 @@ __all__ = [
     "DATA_PLOTS",
     "MODEL_PLOTS",
     "PlotArtifact",
+    "characterization_plot",
     "comparison_plot",
     "data_plot",
     "model_plot",
 ]
 
-DATA_PLOTS: Final = ("series", "acf", "seasonality", "distribution")
+DATA_PLOTS: Final = (
+    "series",
+    "acf",
+    "seasonality",
+    "distribution",
+    "stationarity",
+    "acf_pacf",
+    "decomposition",
+)
+_CATEGORY_COLORS: Final = {
+    "stationary": "#4C72B0",
+    "nonseasonal": "#DD8452",
+    "seasonal": "#55A868",
+}
 MODEL_PLOTS: Final = (
     "cv_forecasts",
     "residuals",
@@ -83,7 +97,9 @@ class PlotArtifact:
         return buffer.getvalue()
 
 
-def _figure(width: float = 10.0, height: float = 3.6, rows: int = 1) -> tuple[Any, Any]:
+def _figure(
+    width: float = 10.0, height: float = 3.6, rows: int = 1, cols: int = 1
+) -> tuple[Any, Any]:
     try:
         from matplotlib.figure import Figure
     except ModuleNotFoundError as error:
@@ -91,7 +107,8 @@ def _figure(width: float = 10.0, height: float = 3.6, rows: int = 1) -> tuple[An
             'Gráficos exigem o extra `plot`: pip install "autohybts[plot]".'
         ) from error
     figure = Figure(figsize=(width, height * rows), layout="constrained")
-    axes = figure.subplots(rows, 1, squeeze=False)[:, 0]
+    grid = figure.subplots(rows, cols, squeeze=False)
+    axes = grid[:, 0] if cols == 1 else grid[0, :]
     return figure, axes
 
 
@@ -101,9 +118,22 @@ def data_plot(
 ) -> PlotArtifact:
     if kind not in DATA_PLOTS:
         raise ConfigurationError(f"Gráfico de dados desconhecido {kind!r}; opções: {DATA_PLOTS}.")
+    provenance: dict[str, Any] = {"observations": len(history), "sealed_test_size": sealed_size}
+    special = {
+        "stationarity": _stationarity,
+        "acf_pacf": _acf_pacf,
+        "decomposition": _decomposition,
+    }
+    if kind in special:
+        return PlotArtifact(
+            kind,
+            special[kind](history, seasonal_period, provenance),
+            "development",
+            origin_range=(history.start, history.end),
+            provenance=provenance,
+        )
     figure, (ax,) = _figure()
     values = history.values
-    provenance = {"observations": len(history), "sealed_test_size": sealed_size}
     if kind == "series":
         ax.plot(history.timestamps, values, color="#333333", linewidth=1)
         ax.set_title(f"Histórico de desenvolvimento ({len(history)} pontos; teste selado omitido)")
@@ -142,6 +172,117 @@ def data_plot(
         origin_range=(history.start, history.end),
         provenance=provenance,
     )
+
+
+def _stationarity(history: SeriesFrame, seasonal_period: int, provenance: dict[str, Any]) -> Any:
+    """The series at d = 0, 1, 2 with ADF and KPSS p-values; the ADF choice highlighted."""
+
+    from autohybts.data.characterization import characterize
+
+    values = history.values
+    record = characterize(values, periods=())
+    chosen = int(record["diff_order"])
+    figure, axes = _figure(height=2.3, rows=3)
+    for order, ax in enumerate(axes):
+        level = np.diff(values, n=order) if order else values
+        label = "nível" if order == 0 else f"{order}ª diferença"
+        mark = "  ← ordem escolhida" if order == chosen else ""
+        ax.plot(history.timestamps[order:], level, color="#333333", linewidth=0.8)
+        ax.set_title(
+            f"{label} | ADF p={record[f'adf_pvalue_d{order}']:.3g} | "
+            f"KPSS p={record[f'kpss_pvalue_d{order}']:.3g}{mark}",
+            fontsize=10,
+        )
+        if order == chosen:
+            ax.set_facecolor("#eef8ee")
+    figure.suptitle(f"Estacionariedade (ADF no histórico de desenvolvimento): d = {chosen}")
+    provenance["diff_order"] = chosen
+    return figure
+
+
+def _acf_pacf(history: SeriesFrame, seasonal_period: int, provenance: dict[str, Any]) -> Any:
+    """ACF and PACF (Yule-Walker, biased autocovariances) at the order chosen by ADF."""
+
+    from autohybts.data.characterization import characterize
+
+    values = history.values
+    chosen = int(characterize(values, periods=())["diff_order"])
+    level = np.diff(values, n=chosen) if chosen else values
+    lags = min(60, max(1, level.size // 2 - 1))
+    bound = 1.96 / math.sqrt(level.size)
+    figure, axes = _figure(width=12.0, height=3.8, cols=2)
+    for ax, name, coefficients, color in (
+        (axes[0], "ACF", _acf(level, lags), "#4C72B0"),
+        (axes[1], "PACF", _pacf(level, lags), "#DD8452"),
+    ):
+        ax.bar(range(1, lags + 1), coefficients, color=color, width=0.6)
+        ax.axhline(bound, color="gray", linestyle="--", linewidth=0.8)
+        ax.axhline(-bound, color="gray", linestyle="--", linewidth=0.8)
+        ax.set_title(f"{name} (d={chosen}, n={level.size}, faixa ±1,96/√n)")
+        ax.set_xlabel("lag")
+    provenance.update(diff_order=chosen, lags=lags)
+    return figure
+
+
+def _decomposition(history: SeriesFrame, seasonal_period: int, provenance: dict[str, Any]) -> Any:
+    """Robust STL on the Box-Cox series: transformed series, trend, seasonal and remainder."""
+
+    from autohybts.data.characterization import boxcox_transform, stl_class
+
+    values = history.values
+    if seasonal_period < 2 or values.size < 2 * seasonal_period:
+        raise ConfigurationError(
+            f"A decomposição exige período >= 2 e dois ciclos; período {seasonal_period}."
+        )
+    transformed, fitted = boxcox_transform(values)
+    result = stl_class()(transformed, period=int(seasonal_period), robust=True).fit()
+    figure, axes = _figure(height=1.9, rows=4)
+    parts = (transformed, result.trend, result.seasonal, result.resid)
+    labels = ("Box-Cox", "tendência", "sazonalidade", "resíduo")
+    for ax, part, label in zip(axes, parts, labels, strict=True):
+        if label == "resíduo":
+            ax.plot(history.timestamps, part, ".", color="#333333", markersize=2)
+        else:
+            ax.plot(history.timestamps, part, color="#333333", linewidth=0.8)
+        ax.set_ylabel(label)
+    figure.suptitle(f"STL robusta (período {seasonal_period}) da série Box-Cox (λ = {fitted:.2f})")
+    provenance.update(period=int(seasonal_period), boxcox_lambda=fitted)
+    return figure
+
+
+def characterization_plot(table: pd.DataFrame) -> PlotArtifact:
+    """ADF statistic (level) against the seasonal strength, one point per series."""
+
+    figure, (ax,) = _figure(width=7.0, height=4.8)
+    for category, color in _CATEGORY_COLORS.items():
+        part = table[table["category"] == category]
+        if part.empty:
+            continue
+        ax.scatter(part["adf_stat_d0"], part["fs"].fillna(0.0), color=color, label=category, s=36)
+    ax.axhline(0.5, color="gray", linestyle="--", linewidth=0.8)
+    ax.set_xlabel("estatística ADF (nível)")
+    ax.set_ylabel("força sazonal F_S (STL sobre Box-Cox)")
+    ax.set_title(f"Caracterização das séries ({len(table)})")
+    ax.legend(fontsize=8)
+    return PlotArtifact(
+        "characterization", figure, "development", provenance={"series": len(table)}
+    )
+
+
+def _pacf(values: np.ndarray, lags: int) -> np.ndarray:
+    """Durbin-Levinson on the biased autocorrelations (statsmodels ``method="ywm"``)."""
+
+    r = np.r_[1.0, _acf(values, lags)]
+    phi = np.zeros((lags + 1, lags + 1))
+    out = np.zeros(lags)
+    for k in range(1, lags + 1):
+        previous = phi[k - 1, 1:k]
+        denominator = 1.0 - float(np.dot(previous, r[1:k]))
+        numerator = r[k] - float(np.dot(previous, r[k - 1 : 0 : -1]))
+        phi[k, k] = numerator / denominator if denominator else 0.0
+        phi[k, 1:k] = previous - phi[k, k] * previous[::-1]
+        out[k - 1] = phi[k, k]
+    return out
 
 
 def _acf(values: np.ndarray, lags: int) -> np.ndarray:

@@ -5,6 +5,8 @@ Antes de escolher modelos, vale saber se a série tem um ciclo regular. A sazona
 decide quais modelos fazem sentido: ``seasonal_naive``, ``exponential_smoothing``
 sazonal, a decomposição ``stl`` e o ``sarima`` só ajudam quando o ciclo existe. Esta
 página mostra o diagnóstico exploratório e como a busca pode usá-lo sem vazamento.
+O notebook :doc:`../tutorials/notebooks/16_series_diagnostics` percorre tudo com
+figuras.
 
 Sazonalidade
 ------------
@@ -101,6 +103,79 @@ primeira origem) e ``white_noise_daily`` passou a 1 (p = 0,59).
    p = 0,039 e o período 12 ficaria de qualquer forma, pela regra dos 6 ciclos. Em séries
    curtas, ``"auto"`` quase sempre mantém o período da frequência; prefira um
    ``seasonal_period`` explícito, escolhido pelo conhecimento do domínio.
+
+Caracterização (regras do projeto de replicação)
+------------------------------------------------
+
+``exp.characterize()`` aplica ao histórico de desenvolvimento as duas regras do projeto de
+replicação, com o mesmo resultado (teste de paridade com o código legado):
+
+1. **Estacionariedade (ADF)**, com constante e lags pelo AIC: a série é estacionária
+   quando ``p ≤ 0,05`` e a estatística fica abaixo do valor crítico de 5 %. Se não for,
+   ``diff_order`` é a menor ordem até 2 que passa. O KPSS de cada ordem também é
+   informado, sem entrar na decisão.
+2. **Sazonalidade**, só para as séries não estacionárias: força ``F_S`` de uma STL robusta
+   sobre a série transformada por Box-Cox (λ por máxima verossimilhança entre −1 e 2),
+   para cada período candidato com ao menos dois ciclos. O de maior força é o período
+   dominante, e a série é sazonal quando ``F_S > 0,5``.
+
+.. code-block:: python
+
+   exp.characterize()                  # período do experimento
+   exp.characterize(periods=[7, 365])  # diária: semana e ano, como na replicação
+
+A categoria resume as duas regras: ``stationary``, ``nonseasonal`` ou ``seasonal``. Nas
+séries sintéticas (histórico de 716 dias):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 14 14 14 12 12 14
+
+   * - Série
+     - ADF (nível)
+     - p ADF d=0
+     - p ADF d=1
+     - ``diff_order``
+     - ``fs_7``
+     - categoria
+   * - ``synthetic_daily``
+     - −0,75
+     - 0,83
+     - < 0,001
+     - 1
+     - 0,84
+     - ``seasonal``
+   * - ``white_noise_daily``
+     - −25,0
+     - < 0,001
+     - —
+     - 0
+     - —
+     - ``stationary``
+
+Com ``seasonal_period="auto"``, ``seasonality_test="strength"`` troca o teste de Friedman
+pela regra 2: uma série que o ADF considera estacionária não tem sazonalidade, e as
+demais precisam de ``F_S > 0,5``. Sem dois ciclos a força é indefinida e o período da
+frequência fica.
+
+Gráficos
+--------
+
+Todos usam o histórico de desenvolvimento, nunca o teste selado (extras ``plot`` e
+``stats``):
+
+``exp.plot_data("stationarity")``
+   a série em nível, com uma e com duas diferenças, com os p-valores do ADF e do KPSS em
+   cada painel e a ordem escolhida pelo ADF destacada.
+``exp.plot_data("acf_pacf")``
+   ACF e PACF na ordem escolhida, com a faixa ±1,96/√n. A PACF é a de Yule-Walker com
+   autocovariâncias enviesadas (a ``method="ywm"`` do statsmodels).
+``exp.plot_data("decomposition")``
+   tendência, sazonalidade e resíduo da STL robusta da série Box-Cox, no período do
+   experimento.
+``exp.plot_characterization()``
+   estatística ADF contra ``F_S``, um ponto por série, colorido pela categoria; útil num
+   painel.
 
 Diferenças automáticas
 ----------------------
