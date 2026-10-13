@@ -113,8 +113,9 @@ Windows since version 2.11 (only through WSL2 or Linux); on Windows, Keras netwo
 on the CPU.
 
 With small networks and short windows, the GPU does not always win: the cost of
-launching each operation dominates. Measured on an RTX 3050 Laptop
-(``synthetic_daily``, 500 points, 14 lags, 60 epochs, every origin of an experiment):
+launching each operation dominates. Measured on 13 October 2026 on an RTX 3050 Laptop,
+with PyTorch 2.14.1+cu130 (``synthetic_daily``, 500 points, 14 lags, 60 epochs, the 14
+origins of an experiment with ``fold="auto"``; time of ``create_model``):
 
 .. list-table::
    :header-rows: 1
@@ -126,23 +127,26 @@ launching each operation dominates. Measured on an RTX 3050 Laptop
      - CPU, batch 128
      - GPU, batch 128
    * - ``LSTMNet``
-     - 40 s
+     - 54 s
+     - 30 s
      - 17 s
      - 7 s
-     - 6 s
    * - ``TransformerNet``
-     - 32 s
-     - 32 s
-     - 11 s
-     - 11 s
+     - 172 s
+     - 159 s
+     - 68 s
+     - 39 s
    * - ``MambaNet``
-     - 65 s
-     - 23 s
-     - 61 s
-     - 12 s
+     - 1523 s
+     - 95 s
+     - 1251 s
+     - 78 s
 
-Larger batches are faster but make fewer updates per epoch and can hurt the fit; check
-the error. With the same seed, CPU and GPU give similar, not identical, numbers.
+``MambaNet`` is slow on the CPU because the vectorized scan computes every pair of steps
+in the window at once (quadratic cost in the number of lags): that avoids a Python loop
+and favours the GPU, but multiplies the work on the CPU. Use it with a GPU. Larger
+batches are faster but make fewer updates per epoch and can hurt the fit; check the
+error. With the same seed, CPU and GPU give similar, not identical, numbers.
 
 Family and selection
 --------------------

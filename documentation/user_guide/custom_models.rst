@@ -111,8 +111,9 @@ quando existe). Instale a build do PyTorch com CUDA compatível com o driver, po
 versão 2.11 (só via WSL2 ou Linux); no Windows as redes Keras rodam na CPU.
 
 Com redes pequenas e janelas curtas, a GPU nem sempre ganha: o custo de disparar cada
-operação domina. Medido numa RTX 3050 Laptop (``synthetic_daily``, 500 pontos, 14 lags,
-60 épocas, todas as origens de um experimento):
+operação domina. Medido em 13 de outubro de 2026 numa RTX 3050 Laptop, com PyTorch
+2.14.1+cu130 (``synthetic_daily``, 500 pontos, 14 lags, 60 épocas, as 14 origens de um
+experimento com ``fold="auto"``; tempo de ``create_model``):
 
 .. list-table::
    :header-rows: 1
@@ -124,23 +125,26 @@ operação domina. Medido numa RTX 3050 Laptop (``synthetic_daily``, 500 pontos,
      - CPU, lote 128
      - GPU, lote 128
    * - ``LSTMNet``
-     - 40 s
+     - 54 s
+     - 30 s
      - 17 s
      - 7 s
-     - 6 s
    * - ``TransformerNet``
-     - 32 s
-     - 32 s
-     - 11 s
-     - 11 s
+     - 172 s
+     - 159 s
+     - 68 s
+     - 39 s
    * - ``MambaNet``
-     - 65 s
-     - 23 s
-     - 61 s
-     - 12 s
+     - 1523 s
+     - 95 s
+     - 1251 s
+     - 78 s
 
-Lotes maiores aceleram, mas fazem menos atualizações por época e podem piorar o ajuste;
-confira o erro. Com a mesma semente, CPU e GPU dão números parecidos, não idênticos.
+O ``MambaNet`` é lento na CPU porque a varredura vetorizada calcula todos os pares de
+passos da janela de uma vez (custo quadrático no número de lags): isso evita um laço em
+Python e favorece a GPU, mas multiplica o trabalho na CPU. Use-o com GPU. Lotes maiores
+aceleram, mas fazem menos atualizações por época e podem piorar o ajuste; confira o
+erro. Com a mesma semente, CPU e GPU dão números parecidos, não idênticos.
 
 Família e seleção
 -----------------
