@@ -7,8 +7,9 @@ biblioteca: causalidade, teste selado intocado e decisões auditáveis.
 Tutoriais (notebooks)
 ---------------------
 
-Os tutoriais em ``notebooks/`` são o contrato executável da API pública e ficam no
-repositório **com as saídas**, para serem lidos sem executar.
+Os tutoriais em ``notebooks/`` (português) e ``notebooks/en/`` (inglês) são o contrato
+executável da API pública e ficam no repositório **com as saídas**, para serem lidos sem
+executar.
 
 Modelo de aula
 ~~~~~~~~~~~~~~
@@ -31,11 +32,12 @@ Um tutorial novo segue esta ordem:
 9. **Leitura**: escrita depois da execução, com os números dela; o que venceu, contra
    quais controles, com quantas unidades e com quais limites.
 
-O esqueleto sai pronto do gerador:
+O esqueleto sai pronto do gerador (``--lang en`` grava a versão em inglês em
+``notebooks/en/``):
 
 .. code-block:: bash
 
-   python notebooks/new_notebook.py 15_temporal_bagging "Bagging temporal" \
+   python notebooks/new_notebook.py 16_temporal_bagging "Bagging temporal" \
        --guide user_guide/ensembles --extras plot \
        --requires autohybts.AutoHybridExperiment.compare_models
 
@@ -67,15 +69,35 @@ Cada notebook declara ``metadata.autohybts`` com estes campos, conferidos por
      - páginas desta documentação que o notebook ilustra (devem existir)
    * - ``template``
      - segue o modelo de aula: abre com um título e termina com a seção de leitura
+       ("Leitura" em português, "Reading" em inglês)
 
 Execução e saídas
 ~~~~~~~~~~~~~~~~~
 
-Execute o notebook a partir de ``notebooks/`` (``nbclient`` com
-``resources={"metadata": {"path": "notebooks"}}``) e salve as saídas. Antes de salvar,
+Execute o notebook a partir da sua pasta (``nbclient`` com
+``resources={"metadata": {"path": "notebooks"}}``, ou ``"notebooks/en"`` para os em
+inglês) e salve as saídas. Antes de salvar,
 confira figuras e tabelas; as saídas não podem conter caminhos locais
 (``tests/contracts/test_notebook_outputs.py``), chaves, dados privados ou artefatos
 grandes. O build da documentação não executa notebooks: ele mostra as saídas salvas.
+
+Traduções
+---------
+
+A documentação existe em português (``documentation/``) e em inglês
+(``documentation/en/``), com os mesmos nomes de arquivo página a página; os tutoriais, em
+``notebooks/`` e ``notebooks/en/``. Uma mudança numa página ou num notebook entra nos dois
+idiomas no mesmo PR. ``tests/contracts/test_docs_translation.py`` confere que as duas
+árvores têm as mesmas páginas e os mesmos notebooks, com os mesmos metadados. Compile as
+duas antes de abrir o PR:
+
+.. code-block:: bash
+
+   sphinx-build -W documentation documentation/_build/html
+   sphinx-build -W documentation/en documentation/_build/html-en
+
+No Read the Docs, o projeto em inglês é o principal (``.readthedocs.yaml`` da raiz) e o
+projeto em português é a tradução dele (``documentation/.readthedocs.yaml``).
 
 Documentação de uma estratégia
 ------------------------------
@@ -102,8 +124,9 @@ Uma estratégia nova está pronta quando:
 * foi comparada com o melhor modelo isolado, o híbrido correspondente e uma combinação
   simples, nas mesmas origens;
 * tem página do guia, notebook com saídas revisadas, referência de API e navegação
-  atualizadas, e a documentação compila sem avisos
-  (``sphinx-build -W documentation documentation/_build/html``);
+  atualizadas, nos dois idiomas, e a documentação compila sem avisos
+  (``sphinx-build -W documentation documentation/_build/html`` e o mesmo para
+  ``documentation/en``);
 * custos, versões, sementes e resultados estão registrados, e as decisões (aceites e
   recusas, com motivos) aparecem nos relatórios;
 * famílias compostas novas ficam fora do ``include`` padrão até passarem pelo portão de

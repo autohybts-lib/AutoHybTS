@@ -135,14 +135,15 @@ class SelectionPolicy:
     Units with equal errors are dropped before the test, so ``n`` is the number of
     non-zero paired differences (all series of a panel together). With the exact null
     distribution the smallest one-sided p-value is ``1 / 2**n``: at least 5 such units
-    for ``alpha = 0.05``; with the default ``fold=3`` on one series the predicate can
-    never pass. The p-value comes from SciPy's default method, which depends on the SciPy
-    version (exact for small ``n`` in recent versions, a normal approximation in some
-    cases), so it can move slightly between environments.
+    for ``alpha = 0.05``; with ``fold=3`` on one series the predicate can never pass.
+    The p-value comes from SciPy's default method, which depends on the SciPy version
+    (exact for small ``n`` in recent versions, a normal approximation in some cases), so
+    it can move slightly between environments.
     """
 
     profile: Profile = "standard"
-    median_gain_threshold: float = 0.01
+    # 5% since the D5 calibration (ADR-0008); the architecture's §9.3 had 1%.
+    median_gain_threshold: float = 0.05
     win_rate_threshold: float = 0.60
     variability: VariabilityCriterion | None = field(default_factory=VariabilityCriterion)
     min_coverage: float = 1.0

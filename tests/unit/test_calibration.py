@@ -101,7 +101,7 @@ def test_calibration_never_reads_the_sealed_test(monkeypatch: pytest.MonkeyPatch
     table = run_calibration(control_cases(1), folds=(2,), policies={"rule": {}})
     assert len(table) == 2
     protocol = calibration_protocol(1, "calibration", (2,))
-    assert protocol["base_policy"]["median_gain_threshold"] == 0.01
+    assert protocol["base_policy"]["median_gain_threshold"] == 0.05  # ADR-0008
     assert protocol["base_policy"]["variability"]["version"] == 2
     assert protocol["metric"] == "MASE"
 

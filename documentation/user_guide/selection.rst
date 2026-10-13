@@ -12,7 +12,7 @@ Regra de aceite
 O desafiante substitui o campeão só se, nas mesmas unidades (origens):
 
 * tiver cobertura completa e métricas finitas;
-* **ganho mediano** pareado ``(E_campeão − E_desafiante) / |E_campeão|`` ≥ 1 %;
+* **ganho mediano** pareado ``(E_campeão − E_desafiante) / |E_campeão|`` ≥ 5 %;
 * **taxa de vitórias** ≥ 60 % (empates não contam);
 * **variabilidade** ``correction_std_ratio`` ≥ 0,05 quando houver corretor — um
   corretor que quase não mexe na previsão é inerte. O valor é a mediana por série
@@ -25,10 +25,45 @@ estatístico: o desafiante também precisa vencer num teste de Wilcoxon pareado 
 nas mesmas unidades, ``p < alfa`` (motivo ``not_significant``; o p-valor aparece na
 coluna ``p_value`` das decisões). Unidades com erros iguais saem do teste; com ``n``
 unidades restantes (todas as séries juntas) o menor p-valor possível é ``1/2ⁿ``: são
-precisas ao menos 5 para ``alfa = 0,05``. Com o ``fold=3`` padrão numa série, o
-critério **nunca** passa — aumente ``fold``. O teste controla cada comparação, não a
+precisas ao menos 5 para ``alfa = 0,05``. Com ``fold=3`` numa série, o critério
+**nunca** passa. O teste controla cada comparação, não a
 cadeia inteira: várias famílias desafiam um campeão que muda com as decisões
 anteriores, e origens vizinhas não são independentes.
+
+Calibração da regra
+~~~~~~~~~~~~~~~~~~~
+
+Os limiares e o número de origens vêm de uma calibração com resposta conhecida
+(``autohybts.benchmarks.calibration``; ADR-0008): 50 séries de ruído branco, onde
+qualquer estrutura composta é um falso aceite, e 50 com resíduo AR(0,8), onde a
+correção é útil. A meta, fixada antes de medir, era falso aceite ≤ 10 % e ganho útil
+aceito ≥ 50 %, por cadeia.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Regra
+     - Falso aceite
+     - Ganho útil aceito
+   * - ganho ≥ 1 %, ``fold=3`` (padrão anterior, §9.3 da arquitetura)
+     - 38 %
+     - 66 %
+   * - ganho ≥ 5 %, ``fold=3``
+     - 16 %
+     - 60 %
+   * - ganho ≥ 5 %, ``fold=5``
+     - 12 %
+     - 72 %
+   * - **ganho ≥ 5 %, ``fold=7``** (padrão)
+     - **2 %** (confirmação: 4 %)
+     - **54 %** (confirmação: 56 %)
+
+Por isso ``fold="auto"`` (padrão do experimento) usa 7 origens por camada quando o
+histórico permite. Numa série curta usa o maior número que cabe e avisa: a regra
+continua mais conservadora que a anterior, mas a taxa de falso aceite medida vale só
+para 7 unidades. Um ``fold`` inteiro é respeitado como dado; o número usado fica em
+``exp.fold_``. Num painel, as unidades de todas as séries entram juntas na comparação.
 
 Rejeição mantém o campeão. Cada decisão fica registrada, aceita ou não
 (``result.selection.decision_units_frame()`` traz, por decisão e unidade, os dois

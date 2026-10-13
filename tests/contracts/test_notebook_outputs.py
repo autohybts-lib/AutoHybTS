@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-NOTEBOOKS = sorted((Path(__file__).resolve().parents[2] / "notebooks").glob("*.ipynb"))
+DIR = Path(__file__).resolve().parents[2] / "notebooks"
+NOTEBOOKS = sorted(DIR.glob("*.ipynb")) + sorted(DIR.glob("en/*.ipynb"))
 # Windows drive paths, user homes and temp folders of the machine that ran the notebook.
 LOCAL_PATH = re.compile(
     r"[A-Za-z]:[\\/]{1,2}(?:Users|Artigos|Documents)|/home/[^/\s]+/|/Users/[^/\s]+/|AppData|"
@@ -24,7 +25,9 @@ def _output_text(output: dict[str, object]) -> str:
     return json.dumps(parts)
 
 
-@pytest.mark.parametrize("notebook", NOTEBOOKS, ids=[path.name for path in NOTEBOOKS])
+@pytest.mark.parametrize(
+    "notebook", NOTEBOOKS, ids=[path.relative_to(DIR).as_posix() for path in NOTEBOOKS]
+)
 def test_outputs_have_no_local_paths(notebook: Path) -> None:
     cells = json.loads(notebook.read_text(encoding="utf-8"))["cells"]
     leaks = [

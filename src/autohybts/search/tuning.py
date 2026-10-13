@@ -27,7 +27,15 @@ from autohybts.domain.specs import CandidateSpec, ModelSpec
 from autohybts.evaluation.temporal import TemporalEvaluator
 from autohybts.exceptions import ConfigurationError, UnsupportedCapabilityError
 
-__all__ = ["TUNING_SPACES", "Distribution", "Tuner", "TuningResult", "default_space"]
+__all__ = [
+    "LAG_SPACES",
+    "PLAIN_SPACES",
+    "TUNING_SPACES",
+    "Distribution",
+    "Tuner",
+    "TuningResult",
+    "default_space",
+]
 
 Sampler: TypeAlias = Literal["auto", "optuna", "random"]
 Kind: TypeAlias = Literal["int", "float", "log_float", "categorical"]
@@ -74,8 +82,20 @@ def _lags(seasonal_period: int) -> Distribution:
     return Distribution("int", 2, min(60, max(14, 4 * seasonal_period)))
 
 
-# Built-in spaces per base model; ``lags`` is filled in from the seasonal period.
-TUNING_SPACES: Final[dict[str, dict[str, Distribution]]] = {
+def _log(low: float, high: float) -> Distribution:
+    return Distribution("log_float", low, high)
+
+
+def _int(low: int, high: int) -> Distribution:
+    return Distribution("int", low, high)
+
+
+def _choice(*choices: Any) -> Distribution:
+    return Distribution("categorical", choices=choices)
+
+
+# Built-in spaces of models on lags; ``lags`` is added from the seasonal period.
+LAG_SPACES: Final[dict[str, dict[str, Distribution]]] = {
     "linear": {"differencing": Distribution("categorical", choices=(0, 1))},
     "knn": {"estimator_params.n_neighbors": Distribution("int", 1, 20)},
     "svm": {
@@ -96,7 +116,68 @@ TUNING_SPACES: Final[dict[str, dict[str, Distribution]]] = {
             "categorical", choices=("16", "32", "64", "32,16")
         ),
     },
+    # Opt-in additions of the ensemble plan (F1).
+    "ridge_regression": {"estimator_params.alpha": _log(1e-3, 1e2)},
+    "lasso_regression": {"estimator_params.alpha": _log(1e-4, 1.0)},
+    "elastic_net_regression": {
+        "estimator_params.alpha": _log(1e-4, 1.0),
+        "estimator_params.l1_ratio": Distribution("float", 0.1, 0.9),
+    },
+    "extra_trees_regressor": {
+        "estimator_params.n_estimators": _int(20, 200),
+        "estimator_params.max_depth": _int(2, 12),
+        "estimator_params.min_samples_leaf": _int(1, 20),
+    },
+    "hist_gradient_boosting": {
+        "estimator_params.learning_rate": _log(0.01, 0.3),
+        "estimator_params.max_iter": _int(50, 300),
+        "estimator_params.max_leaf_nodes": _int(7, 63),
+        "estimator_params.min_samples_leaf": _int(5, 50),
+    },
+    "adaboost_r2": {
+        "estimator_params.n_estimators": _int(20, 200),
+        "estimator_params.learning_rate": _log(0.01, 1.0),
+        "estimator_params.loss": _choice("linear", "square", "exponential"),
+    },
+    "lightgbm_regressor": {
+        "estimator_params.n_estimators": _int(50, 400),
+        "estimator_params.learning_rate": _log(0.01, 0.3),
+        "estimator_params.num_leaves": _int(7, 63),
+        "estimator_params.min_child_samples": _int(5, 40),
+    },
+    "xgboost_regressor": {
+        "estimator_params.n_estimators": _int(50, 400),
+        "estimator_params.learning_rate": _log(0.01, 0.3),
+        "estimator_params.max_depth": _int(2, 8),
+        "estimator_params.subsample": Distribution("float", 0.6, 1.0),
+    },
+    "catboost_regressor": {
+        "estimator_params.iterations": _int(50, 400),
+        "estimator_params.learning_rate": _log(0.01, 0.3),
+        "estimator_params.depth": _int(2, 8),
+    },
 }
+# Built-in spaces of models without lags (statistical, intermittent demand).
+PLAIN_SPACES: Final[dict[str, dict[str, Distribution]]] = {
+    "window_average": {"window": _int(3, 60)},
+    "seasonal_window_average": {"window": _int(1, 8)},
+    "exponential_smoothing": {"trend": _choice(True, False)},
+    "harmonic_regression": {
+        "ar_lags": _int(0, 7),
+        "trend": _choice(True, False),
+        "ridge": _log(1e-8, 1e-1),
+    },
+    "croston_sba": {"alpha": Distribution("float", 0.05, 0.5)},
+    "tsb": {
+        "alpha_d": Distribution("float", 0.05, 0.5),
+        "alpha_p": Distribution("float", 0.05, 0.5),
+    },
+    "adida": {"alpha": Distribution("float", 0.05, 0.5)},
+    "imapa": {"alpha": Distribution("float", 0.05, 0.5)},
+}
+# Every built-in space. Models missing here choose their own settings (``arima``, the
+# ``sf_*`` models) or have nothing to tune (``naive``, ``historic_average`` ...).
+TUNING_SPACES: Final[dict[str, dict[str, Distribution]]] = {**LAG_SPACES, **PLAIN_SPACES}
 
 
 def default_space(name: str, seasonal_period: int) -> dict[str, Distribution]:
@@ -107,7 +188,9 @@ def default_space(name: str, seasonal_period: int) -> dict[str, Distribution]:
             f"{name} não tem espaço de ajuste embutido; passe search_space={{...}} ou escolha "
             f"um de {sorted(TUNING_SPACES)}."
         )
-    return {"lags": _lags(seasonal_period), **TUNING_SPACES[name]}
+    if name in LAG_SPACES:
+        return {"lags": _lags(seasonal_period), **LAG_SPACES[name]}
+    return dict(PLAIN_SPACES[name])
 
 
 @dataclass(frozen=True)

@@ -297,13 +297,13 @@ def test_invalid_policies(kwargs: dict[str, object]) -> None:
 
 def test_chain_compares_with_the_current_champion() -> None:
     linear = result(LINEAR, [0.8] * 5)
-    hybrid = result(HYBRID, [0.79] * 5, ratio=0.2)  # 20 % better than the base, 1.25 % than linear
+    hybrid = result(HYBRID, [0.75] * 5, ratio=0.2)  # 25 % better than the base, 6.25 % than linear
     champion, decisions = run_chain(
         CHAMPION, {"linear": linear, "residual": hybrid}, STANDARD, "MASE"
     )
     assert champion is hybrid
     assert [d.champion_before for d in decisions] == [BASE.candidate_id, LINEAR.candidate_id]
-    assert decisions[1].median_gain == pytest.approx(0.0125)
+    assert decisions[1].median_gain == pytest.approx(0.0625)
 
 
 def test_family_order_is_followed_and_matters() -> None:

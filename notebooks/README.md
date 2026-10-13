@@ -1,6 +1,6 @@
 # Tutoriais da AutoHybTS
 
-Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por notebook, usando a API orientada a objetos (`AutoHybridExperiment`).
+Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por notebook, usando a API orientada a objetos (`AutoHybridExperiment`). As cópias em inglês, célula a célula, estão em [`en/`](en/README.md); uma mudança num tutorial entra nos dois idiomas.
 
 | Notebook | Conteúdo | Requer |
 |---|---|---|
