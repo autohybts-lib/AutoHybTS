@@ -1,6 +1,6 @@
 """AutoHybTS: automated search and guarded selection of standalone and hybrid forecasters."""
 
-__version__ = "0.0.1"
+__version__ = "1.0.0rc1"
 
 from autohybts.api import AutoHybridForecaster
 from autohybts.data.panel import PanelFrame

@@ -15,17 +15,20 @@
 
 A interface é inspirada no [PyCaret](https://pycaret.org) — um experimento, métodos curtos, resultados prontos para tabela e gráfico —, mas o foco é outro: reunir num só fluxo, com validação sem vazamento, os modelos híbridos residuais para previsão de séries temporais e as estratégias de montá-los (correção aditiva, vários estágios, decomposição, combinação).
 
-> **Status: pré-alfa (0.0.1).** A API abaixo funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Pode mudar entre versões 0.x sem aviso de depreciação.
+> **Status: candidata à v1 (`1.0.0rc1`).** A API funciona para uma série ou um painel de séries, nas variantes A (multipasso) e B (rolling de um passo com parâmetros congelados). Esta é uma pré-versão para validação; a `1.0.0` estável depende da conferência final e do estudo em séries reais. Veja as [notas e a política de compatibilidade](documentation/releasing.rst).
 
 ## Instalação
 
 Requer Python 3.11 ou mais novo.
 
-Ainda não está no PyPI; instale direto do repositório:
+Para testar o código antes da publicação da candidata, instale direto do repositório:
 
 ```bash
 pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
 ```
+
+A publicação de `v1.0.0rc1` será feita primeiro no TestPyPI. As instruções para instalar
+a candidata pelo índice de testes estão nas [notas de release](documentation/releasing.rst).
 
 Para usar modelos próprios em PyTorch ou TensorFlow, acrescente os extras `torch` e/ou `tensorflow` (ex.: `autohybts[stats,plot,torch]`).
 

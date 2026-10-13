@@ -38,7 +38,8 @@ estratégias de montar sistemas híbridos:
 
 .. note::
 
-   Status **pré-alfa** (|release|). A API pode mudar entre versões menores.
+   **Candidata à v1** (|release|): pré-versão para validação. Consulte
+   :doc:`releasing` para o escopo, a compatibilidade e os critérios da versão estável.
 
 .. toctree::
    :maxdepth: 1
@@ -86,4 +87,5 @@ estratégias de montar sistemas híbridos:
    :caption: Projeto
 
    contributing
+   releasing
    about

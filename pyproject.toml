@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "João Ataíde" }]
 keywords = ["time series", "forecasting", "hybrid models", "residual correction", "automl"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -77,7 +77,7 @@ core-metadata-version = "2.4"
 
 [tool.hatch.build.targets.sdist]
 core-metadata-version = "2.4"
-include = ["src/autohybts", "tests", "README.md", "LICENSE", "pyproject.toml"]
+include = ["src/autohybts", "tests", "tools", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 100
