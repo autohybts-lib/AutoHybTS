@@ -359,10 +359,15 @@ class PanelForecaster:
                 f"Série {series_id!r} não está no modelo; disponíveis: {list(self.models)}."
             ) from None
 
-    def predict(self, fh: int) -> pd.DataFrame:
-        """``fh`` steps after each series' last observation, stacked by series."""
+    def predict(self, fh: int, X_future: Mapping[str, pd.DataFrame] | None = None) -> pd.DataFrame:
+        """``fh`` steps after each series' last observation, stacked by series.
 
-        return pd.concat([model.predict(fh) for model in self.models.values()])
+        ``X_future`` maps each series to the covariates of its horizon, for members with
+        exogenous ``future`` columns.
+        """
+
+        rows = X_future or {}
+        return pd.concat([model.predict(fh, rows.get(sid)) for sid, model in self.models.items()])
 
     def __repr__(self) -> str:
         return f"PanelForecaster({self.spec.label!r}, {len(self.models)} séries)"

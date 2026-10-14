@@ -42,4 +42,6 @@ dobra e série.
 
 .. seealso::
 
+   Exógenas em painel: veja :doc:`exogenous`.
+
    Tutorial: :doc:`../tutorials/notebooks/07_panel`.

@@ -231,10 +231,29 @@ Rdatasets na primeira vez:
        de semana, 2012–2014
      - ``feriado``, ``fim_de_semana``
 
+Painéis de séries
+-----------------
+
+Num painel, ``X`` é um dicionário ``série -> DataFrame`` ou um ``DataFrame`` longo com as
+mesmas ``series_col`` e ``date_col`` de ``y``. Todas as séries precisam das mesmas colunas;
+cada uma usa só as suas covariáveis.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=7, exog_future=["feriado"], exog_selection="auto")
+   exp.fit({"loja_a": y_a, "loja_b": y_b}, {"loja_a": X_a, "loja_b": X_b})
+   # ou: exp.fit(y_longo, X_longo, series_col="loja", date_col="data", target="vendas")
+   final = exp.finalize_model(exp.compare_models().best)     # PanelForecaster
+   exp.predict_model(final, X_future={"loja_a": Xf_a, "loja_b": Xf_b})
+
+O conjunto de features é o mesmo para todas as séries; a configuração vencedora pode variar
+por série, como no painel sem exógenas. Na seleção automática, cada método roda em cada
+série e fica com as features que a maioria das séries escolheu; ``exog_report()`` traz a
+coluna ``series_id``.
+
 Limites
 -------
 
-* Uma série por experimento: painéis com exógenas ficam para depois.
 * Decomposição, combinação, ensemble e seleção dinâmica não recebem exógenas.
 * Nos híbridos, com exógenas só a fonte residual ``historical_oof_1step`` é usada (a
   multipasso leria colunas ``past`` além da defasagem).

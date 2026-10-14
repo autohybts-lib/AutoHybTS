@@ -232,10 +232,29 @@ from Rdatasets the first time:
        weekend, 2012–2014
      - ``feriado``, ``fim_de_semana``
 
+Panels of series
+----------------
+
+In a panel, ``X`` is a mapping ``series -> DataFrame`` or a long ``DataFrame`` with the same
+``series_col`` and ``date_col`` as ``y``. Every series needs the same columns; each one uses
+only its own covariates.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=7, exog_future=["holiday"], exog_selection="auto")
+   exp.fit({"store_a": y_a, "store_b": y_b}, {"store_a": X_a, "store_b": X_b})
+   # or: exp.fit(y_long, X_long, series_col="store", date_col="date", target="sales")
+   final = exp.finalize_model(exp.compare_models().best)     # PanelForecaster
+   exp.predict_model(final, X_future={"store_a": Xf_a, "store_b": Xf_b})
+
+The feature set is the same for every series; the winning configuration may vary by series,
+as in the panel without covariates. In automatic selection, each method runs on every
+series and keeps the features most series chose; ``exog_report()`` has a ``series_id``
+column.
+
 Limits
 ------
 
-* One series per experiment: panels with covariates come later.
 * Decomposition, combination, ensemble and dynamic selection do not take covariates.
 * In hybrids, with covariates only the ``historical_oof_1step`` residual source is used (the
   multi-step one would read ``past`` columns beyond their lag).
