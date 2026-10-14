@@ -59,7 +59,9 @@ Combine extras inside brackets and keep the version. For example:
    * - ``plot``
      - Plots with matplotlib
    * - ``notebook``
-     - Kernel and execution of Jupyter tutorials
+     - Kernel and execution of Jupyter tutorials (includes tqdm)
+   * - ``progress``
+     - Progress bars of the steps (``progress=True``, tqdm)
    * - ``torch`` / ``tensorflow``
      - Custom models using these frameworks
    * - ``boosting``

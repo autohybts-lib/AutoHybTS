@@ -91,3 +91,30 @@ A starting point per goal:
 
    # series with an uncertain cycle and a trend
    AutoHybridExperiment(fh=14, seasonal_period="auto", differencing="auto")
+
+Following progress
+------------------
+
+``progress=True`` shows one bar (tqdm) per step: each search stage (S0 bases, S2 residuals,
+S3 refinement, SX covariates, S4 advanced), the finalists evaluated on ``V_select``, the choice
+of covariates, the folds of cross-validation and nested CV and the external test of
+``compare_external``. In notebooks the bar is a widget; in a terminal, text. It needs the
+``progress`` extra (``notebook`` already brings it). Bars only report: nothing evaluated
+changes.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=14, progress=True).fit(y)
+   exp.compare_models()
+
+With or without bars, each experiment event (fit, end of search, end of selection,
+finalization, external evaluation) goes to the ``logging`` logger ``"autohybts"``, with its
+duration. To write it to a file:
+
+.. code-block:: python
+
+   import logging
+
+   logging.basicConfig(filename="experiment.log", level=logging.INFO)
+   # or only the library:
+   logging.getLogger("autohybts").setLevel(logging.INFO)

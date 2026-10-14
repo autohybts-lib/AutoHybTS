@@ -33,6 +33,7 @@ from autohybts.domain.identity import stable_hash
 from autohybts.domain.results import EvaluationResult, Layer
 from autohybts.evaluation.temporal import TemporalEvaluator
 from autohybts.exceptions import ConfigurationError, CoverageError
+from autohybts.progress import NullProgress, Progress
 from autohybts.search.budgets import SearchGuardConfig
 from autohybts.search.cache import MemoryTrialCache, evaluation_key
 from autohybts.search.ledger import LedgerEntry, LedgerStatus, SearchResult
@@ -69,6 +70,7 @@ class SearchEngine:
         cache: MemoryTrialCache | None = None,
         max_workers: int = 1,
         clock: Callable[[], float] = time.perf_counter,
+        progress: Progress | None = None,
     ) -> None:
         if isinstance(max_workers, bool) or not isinstance(max_workers, int) or max_workers < 1:
             raise ConfigurationError("max_workers deve ser inteiro >= 1.")
@@ -76,6 +78,7 @@ class SearchEngine:
         self.space = space
         self.guard = guard
         self.cache = cache
+        self.progress: Progress = progress or NullProgress()
         self.max_workers = max_workers
         self.clock = clock
 
@@ -324,10 +327,28 @@ class SearchEngine:
                 self.cache.put(key, result)
             return result, False, self.clock() - started
 
-        if self.max_workers == 1:
-            return [one(proposal) for proposal in proposals]
-        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            return list(pool.map(one, proposals))  # map keeps submission order
+        if not proposals:
+            return []
+        stage = proposals[0].stage
+        names = {
+            "S0": "S0 bases",
+            "S2": "S2 resíduos",
+            "S3": "S3 refino",
+            "SX": "SX exógenas",
+            "S4": "S4 avançadas",
+        }
+        outcomes: list[tuple[EvaluationResult, bool, float] | None] = []
+        with self.progress.bar(len(proposals), f"busca {names.get(stage, stage)}") as bar:
+            if self.max_workers == 1:
+                for proposal in proposals:
+                    outcomes.append(one(proposal))
+                    bar.update()
+            else:
+                with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+                    for outcome in pool.map(one, proposals):  # map keeps submission order
+                        outcomes.append(outcome)
+                        bar.update()
+        return outcomes
 
     def _past_deadline(self, state: _State) -> bool:
         return state.deadline is not None and self.clock() >= state.deadline

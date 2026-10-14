@@ -90,3 +90,30 @@ Um ponto de partida por objetivo:
 
    # série com ciclo incerto e tendência
    AutoHybridExperiment(fh=14, seasonal_period="auto", differencing="auto")
+
+Acompanhar o progresso
+----------------------
+
+``progress=True`` mostra uma barra (tqdm) por etapa: cada estágio da busca (S0 bases, S2
+resíduos, S3 refino, SX exógenas, S4 avançadas), os finalistas avaliados em ``V_select``, a
+escolha de exógenas, as dobras da validação cruzada e da CV aninhada e o teste externo de
+``compare_external``. Em notebooks a barra é um widget; no terminal, texto. Precisa do
+extra ``progress`` (o ``notebook`` já o traz). As barras só informam: nada do que é avaliado
+muda.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=14, progress=True).fit(y)
+   exp.compare_models()
+
+Com ou sem barras, cada evento do experimento (ajuste, fim da busca, fim da seleção,
+finalização, avaliação externa) vai para o logger ``"autohybts"`` do ``logging``, com a
+duração. Para gravar num arquivo:
+
+.. code-block:: python
+
+   import logging
+
+   logging.basicConfig(filename="experimento.log", level=logging.INFO)
+   # ou só a biblioteca:
+   logging.getLogger("autohybts").setLevel(logging.INFO)
