@@ -29,6 +29,9 @@ __all__ = [
     "ExogDesign",
     "ExogFeature",
     "ExogFrame",
+    "ExogState",
+    "as_rows",
+    "design_from",
     "features_from",
     "minimum_lag",
 ]
@@ -190,11 +193,16 @@ class ExogFrame:
         if not features:
             raise ConfigurationError("Informe ao menos uma feature exógena.")
         self.check(features, step)
-        frame = pd.DataFrame(self.values, index=self.timestamps, columns=self.columns)
-        aligned = frame.reindex(pd.DatetimeIndex(timeline))
-        columns = [aligned[f.column].shift(f.lag).to_numpy(dtype=np.float64) for f in features]
-        lags = [f.lag for f in features if self.kind(f.column) == "past"]
-        return ExogDesign(np.column_stack(columns), features, min(lags) if lags else None)
+        return design_from(
+            self.to_frame(), dict(zip(self.columns, self.kinds, strict=True)), features, timeline
+        )
+
+    def to_frame(self) -> pd.DataFrame:
+        """The covariates as a ``DataFrame`` indexed by date (a copy)."""
+
+        return pd.DataFrame(
+            np.array(self.values), index=self.timestamps, columns=list(self.columns)
+        )
 
     def describe(self) -> dict[str, object]:
         return {
@@ -202,6 +210,113 @@ class ExogFrame:
             "kinds": dict(zip(self.columns, self.kinds, strict=True)),
             "fingerprint": self.fingerprint,
         }
+
+
+def design_from(
+    covariates: pd.DataFrame,
+    kinds: Mapping[str, str],
+    features: Sequence[ExogFeature],
+    timeline: pd.DatetimeIndex,
+) -> ExogDesign:
+    """Feature matrix on ``timeline`` from raw covariates that may have gaps.
+
+    A gap only matters if a row that uses it is requested (``ExogDesign.rows`` refuses it).
+    """
+
+    missing = {f.column for f in features} - set(covariates.columns)
+    if missing:
+        raise ConfigurationError(f"Colunas exógenas ausentes: {sorted(missing)}.")
+    aligned = covariates.reindex(pd.DatetimeIndex(timeline))
+    columns = [aligned[f.column].shift(f.lag).to_numpy(dtype=np.float64) for f in features]
+    lags = [f.lag for f in features if kinds.get(f.column, "past") == "past"]
+    return ExogDesign(np.column_stack(columns), tuple(features), min(lags) if lags else None)
+
+
+@dataclass(frozen=True, eq=False)
+class ExogState:
+    """Covariates of a finalized model: raw values up to its last observation.
+
+    ``start`` is the first position of the model's training vector (earlier rows lack a
+    lagged feature); forecasting contexts start there too. Values for later dates come
+    with each forecast (``future`` columns) or with new observations.
+    """
+
+    covariates: pd.DataFrame
+    kinds: Mapping[str, str]
+    features: tuple[ExogFeature, ...]
+    start: int
+
+    @classmethod
+    def build(
+        cls,
+        covariates: pd.DataFrame,
+        kinds: Mapping[str, str],
+        features: Sequence[ExogFeature],
+        timeline: pd.DatetimeIndex,
+    ) -> ExogState:
+        """State for a model trained on ``timeline``; covariates after it are dropped."""
+
+        kept = covariates.loc[covariates.index <= timeline[-1]].copy()
+        design = design_from(kept, kinds, features, timeline)
+        return cls(kept, dict(kinds), tuple(features), design.first_complete())
+
+    @property
+    def max_ahead(self) -> int | None:
+        lags = [f.lag for f in self.features if self.kinds.get(f.column, "past") == "past"]
+        return min(lags) if lags else None
+
+    @property
+    def future_columns(self) -> tuple[str, ...]:
+        return tuple(
+            sorted({f.column for f in self.features if self.kinds.get(f.column) == "future"})
+        )
+
+    def extended(
+        self,
+        rows: pd.DataFrame | pd.Series | Mapping[str, float] | None,
+        at: pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        """Covariates plus ``rows`` (new dates appended, repeated dates replaced)."""
+
+        if rows is None:
+            return self.covariates
+        frame = as_rows(rows, at)
+        unknown = set(frame.columns) - set(self.covariates.columns)
+        if unknown:
+            raise ConfigurationError(f"Colunas exógenas desconhecidas: {sorted(unknown)}.")
+        combined = frame.combine_first(self.covariates)
+        return combined[list(self.covariates.columns)].sort_index()
+
+    def design(self, timeline: pd.DatetimeIndex, rows: pd.DataFrame | None = None) -> ExogDesign:
+        return design_from(self.extended(rows), self.kinds, self.features, timeline)
+
+    def describe(self) -> dict[str, object]:
+        return {
+            "features": [f.describe() for f in self.features],
+            "kinds": {c: self.kinds[c] for c in sorted({f.column for f in self.features})},
+        }
+
+
+def as_rows(
+    rows: pd.DataFrame | pd.Series | Mapping[str, float], at: pd.Timestamp | None = None
+) -> pd.DataFrame:
+    """Covariate rows as a numeric ``DataFrame`` indexed by date.
+
+    A ``Series`` or a mapping is one row of values by column, dated ``at``.
+    """
+
+    if isinstance(rows, pd.DataFrame):
+        frame = rows
+    else:
+        if at is None:
+            raise ConfigurationError("Informe a data da linha de exógenas.")
+        frame = pd.DataFrame([dict(rows)], index=pd.DatetimeIndex([at]))
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        raise DataValidationError("As exógenas devem ser indexadas por data.")
+    try:
+        return frame.astype(np.float64)
+    except (TypeError, ValueError) as error:
+        raise DataValidationError("As exógenas devem ser numéricas (ou booleanas).") from error
 
 
 def features_from(

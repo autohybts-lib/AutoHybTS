@@ -135,6 +135,14 @@ class SearchEngine:
             advanced_reserve += 1
         if self.space.ensemble_methods:
             advanced_reserve += 1
+        # SX (covariates) runs after S3 with slots kept from the total budget: its bases and,
+        # with correctors, as many residual structures as S2 keeps.
+        exog = self.space.exog_proposals(registry)
+        exog_admissible = [p for p in exog if p.skip_reason is None]
+        exog_reserve = min(len(exog_admissible), self.guard.top_k_per_family * 2)
+        if exog_reserve and self.space.correctors:
+            exog_reserve += self.guard.top_k_residual_structures
+        later_reserve = advanced_reserve + exog_reserve
         structures: list[EvaluationResult] = []
         if self.space.correctors and self.space.residual_windows and self.space.alphas:
             # Keep room for S3: refinement is the point of the staged search (§8.2).
@@ -143,7 +151,7 @@ class SearchEngine:
                 self.space.residual_proposals(retained_specs, registry),
                 plan,
                 state,
-                reserve=reserve + advanced_reserve,
+                reserve=reserve + later_reserve,
                 family_reserve=reserve,
             )
             structures = top_structures(
@@ -159,9 +167,11 @@ class SearchEngine:
                     ),
                     plan,
                     state,
-                    reserve=advanced_reserve,
+                    reserve=later_reserve,
                     family_reserve=0,
                 )
+        if exog:
+            self._exog_stage(exog, plan, state, advanced_reserve)
         best_structures = [r.candidate for r in structures]
         dynamic = self.space.dynamic_proposals(best_structures, registry)
         dynamic += self.space.corrector_combination_proposals(best_structures, registry)
@@ -189,6 +199,41 @@ class SearchEngine:
             protocol=self.protocol(plan),
             elapsed_s=self.clock() - state.started,
         )
+
+    def _exog_stage(
+        self,
+        proposals: Sequence[Proposal],
+        plan: TemporalPlan | PanelPlan,
+        state: _State,
+        advanced_reserve: int,
+    ) -> None:
+        """SX: bases with covariates, then correctors on the best of them."""
+
+        registry = self.evaluator.registry
+        hybrid_reserve = self.guard.top_k_residual_structures if self.space.correctors else 0
+        bases = self._stage(
+            proposals,
+            plan,
+            state,
+            reserve=advanced_reserve + hybrid_reserve,
+            family_reserve=hybrid_reserve,
+        )
+        if not self.space.correctors:
+            return
+        best = top_structures(
+            bases,
+            self.metric,
+            k=self.guard.top_k_residual_structures,
+            full_pairing=self.guard.require_full_pairing,
+        )
+        if best:
+            self._stage(
+                self.space.exog_residual_proposals([r.candidate for r in best], registry),
+                plan,
+                state,
+                reserve=advanced_reserve,
+                family_reserve=0,
+            )
 
     def _stage(
         self,
