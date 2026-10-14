@@ -1,8 +1,8 @@
 Versão 1 e publicação
 =====================
 
-Próxima candidata: 1.0.0rc3 (em preparação)
---------------------------------------------
+1.0.0rc3 — diagnóstico da série e pré-processamento, 14 de outubro de 2026
+--------------------------------------------------------------------------
 
 Adições compatíveis: nada muda nos IDs das candidatas, no hash do protocolo padrão nem no
 esquema de persistência, e todo recurso novo só atua quando pedido.
@@ -17,9 +17,22 @@ esquema de persistência, e todo recurso novo só atua quando pedido.
 * **Caracterização:** ``exp.characterize()`` com as duas regras do projeto de replicação
   e os gráficos ``stationarity``, ``acf_pacf``, ``decomposition`` e
   ``plot_characterization``.
-* **Documentação:** página :doc:`user_guide/diagnostics`, notebook 16 e correções de fatos
-  e referências; o texto do aviso de ``fold="auto"`` deixou de citar documentos
-  internos.
+* **Relatórios:** ``exp.stationarity_report()`` (ADF, KPSS e consenso),
+  ``exp.decompose()``, ``exp.residual_diagnostics()`` (Ljung-Box nos resíduos de uma
+  base), ``exp.outlier_report()`` (candidatos AO/LS/TC, só exploratório), métricas
+  ``MAPE`` e ``MdAPE`` e ``cmp.kruskal()`` (Kruskal-Wallis e Dunn).
+* **Pré-processamento opcional:** ``transform="boxcox"``/``"log"`` e
+  ``outliers="winsorize"``/``"interpolate"`` nos modelos sobre defasagens, ajustados no
+  treino de cada origem; ``missing="ffill"`` preenche lacunas pelo último valor observado.
+  Tudo desligado por padrão.
+* **Documentação:** variantes A e B, conceitos, leitura de resultados, escolha da
+  configuração, solução de problemas, manutenção, referência da API completa, figuras em
+  todos os tutoriais e os notebooks 16 (diagnóstico) e 17 (17 séries clássicas em três
+  classes, com cinco modelos nos protocolos A e B, 3, 6 e 12 lags e horizontes até 12).
+
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc3"
 
 1.0.0rc2 — documentação do PyPI, 13 de outubro de 2026
 ------------------------------------------------------------

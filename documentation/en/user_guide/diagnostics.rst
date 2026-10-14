@@ -9,6 +9,44 @@ without leakage.
 The notebook :doc:`../tutorials/notebooks/16_series_diagnostics` goes through all of
 it with figures.
 
+Intervention outliers: the user's choice
+----------------------------------------
+
+Detection is optional: omit ``outlier_report`` to leave it unused. It never changes
+observations or enables treatment in model search.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=14).fit(y)
+   events = exp.outlier_report()  # optional: AO, LS and TC
+   events = exp.outlier_report(types=("AO", "TC"), threshold=4.0, decay=0.7)
+
+``AO`` is an isolated pulse; ``LS`` is a persistent level shift; ``TC`` is a
+geometrically decaying change. The report includes series, zero-based position,
+timestamp, candidate type, estimated effect and exploratory score.
+``recommendation`` suggests reviewing the event before treatment. Without candidates,
+it returns an empty table with the same columns. For panels, use ``series_id`` to
+inspect one series; otherwise, the report includes all series.
+
+Screening fits linear trend and cycle-position controls, then greedily adds the
+intervention with the highest score, stopping at ``max_events=10`` or when no score
+exceeds ``threshold``. Scores use robust residual scale: they are neither p-values
+nor ARIMA-adjusted or multiple-comparison-adjusted tests. Autocorrelation, nonlinear
+trends and real events can be mistaken for outliers. Screening requires 20 observations
+and three cycles; LS requires five observations on either side. Events near the end
+can be difficult to distinguish by type. Effects and scores are recorded at selection
+time for each candidate. Intervention shapes follow the
+`tsoutliers documentation <https://jalobe.com/assets/pkgs/tsoutliers.pdf>`_;
+this screening does not implement that package's full ARIMA procedure.
+
+Recommendation: use the report when measurement errors, isolated shocks or regime
+changes are suspected. Confirm events using domain knowledge: a level shift may
+need to be modeled while preserving its future effect. The user chooses to keep
+observations or evaluate treatment. Compare alternatives using temporal validation,
+fitting detection and any treatment only on each origin's training data. This report
+uses the complete development history, excluding the sealed test, for exploration;
+do not use its events directly to treat all validation folds.
+
 Seasonality
 -----------
 

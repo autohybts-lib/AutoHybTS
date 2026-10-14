@@ -8,6 +8,46 @@ página mostra o diagnóstico exploratório e como a busca pode usá-lo sem vaza
 O notebook :doc:`../tutorials/notebooks/16_series_diagnostics` percorre tudo com
 figuras.
 
+Outliers por intervenção: opção do usuário
+------------------------------------------
+
+A detecção é opcional: deixe de chamar ``outlier_report`` se não quiser usá-la.
+Ela não altera a série nem ativa tratamento na busca.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(fh=14).fit(y)
+   eventos = exp.outlier_report()  # opcional: AO, LS e TC
+   eventos = exp.outlier_report(types=("AO", "TC"), threshold=4.0, decay=0.7)
+
+``AO`` é um pulso isolado; ``LS``, uma mudança persistente de nível;
+``TC``, uma mudança que decai geometricamente. O relatório informa série, posição
+(a partir de zero), data, tipo candidato, efeito estimado e escore exploratório.
+``recommendation`` sugere revisar o evento antes de tratar. Sem candidatos,
+retorna uma tabela vazia com as mesmas colunas. Em painéis, use ``series_id``
+para inspecionar uma série; sem esse argumento, o relatório reúne todas.
+
+A triagem ajusta controles de tendência linear e posição no ciclo e acrescenta
+iterativamente a intervenção com maior escore, até ``max_events=10`` ou até não
+haver escore acima de ``threshold``. O escore usa a escala robusta dos resíduos;
+não é um p-valor nem um teste ajustado por ARIMA ou por múltiplas comparações.
+O método pode confundir autocorrelação, tendências não lineares e eventos reais
+com outliers. Requer 20 observações e três ciclos; LS exige cinco observações
+em cada lado. Eventos perto do fim podem ser difíceis de distinguir entre tipos.
+Os coeficientes e escores registram o momento da seleção de cada candidato.
+As formas das intervenções seguem a
+`documentação do tsoutliers <https://jalobe.com/assets/pkgs/tsoutliers.pdf>`_;
+esta triagem não implementa o procedimento ARIMA completo desse pacote.
+
+Recomendação: use o relatório quando houver suspeita de erros de medição,
+choques pontuais ou mudanças de regime. Confirme os eventos pelo conhecimento
+do domínio: uma mudança de nível pode precisar ser modelada, preservando seu
+efeito futuro. O usuário escolhe manter os dados ou avaliar um tratamento.
+Compare as alternativas por validação temporal, detectando e ajustando qualquer
+tratamento apenas no treino de cada origem. Este relatório usa o histórico de
+desenvolvimento completo, excluindo o teste selado, e serve para exploração;
+não use seus eventos diretamente para tratar todas as dobras da validação.
+
 Sazonalidade
 ------------
 

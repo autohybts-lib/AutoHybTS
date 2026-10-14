@@ -486,7 +486,9 @@ class RdatasetsProvider:
         safe_name(package, "pacote")
         safe_name(name, "dataset")
         index = self.index(cache)
-        rows = index[(index["Package"] == package) & (index["Item"] == name)]
+        # Items of a group are listed as "fdeaths (UKLungDeaths)": the name is the first word.
+        items = index["Item"].astype(str).str.split(" (", n=1, regex=False).str[0]
+        rows = index[(index["Package"] == package) & (items == name)]
         if rows.empty:
             raise ConfigurationError(f"{package}/{name} não está no índice do Rdatasets.")
         url = str(rows["CSV"].iloc[0])

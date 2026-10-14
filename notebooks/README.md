@@ -18,6 +18,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [13_ensembles](13_ensembles.ipynb) | Ensembles de candidatas completas (média, mediana, média aparada, inverso do MSE, NNLS com encolhimento), ensemble de híbridos, ensemble corrigido e ensembles na busca com a regra de aceite | — |
 | [14_intermittent_demand](14_intermittent_demand.ipynb) | Demanda intermitente: Croston-SBA, TSB, ADIDA e IMAPA contra médias simples, por que a RMSSE em vez da MASE, mudança de taxa, demanda que para e a família `intermittent` na busca | — |
 | [15_statsforecast](15_statsforecast.ipynb) | AutoARIMA, AutoETS, AutoTheta e AutoCES do StatsForecast contra statsmodels e baselines, parâmetros congelados (`forward`), os híbridos estatístico-ANN da replicação e a busca com esses modelos | extra `nixtla-stats` (traz pandas 2.x) |
+| [17_benchmark_study](17_benchmark_study.ipynb) | 17 séries clássicas em três classes: cinco modelos (com o híbrido ARIMA–ANN) nos protocolos A e B, com 3, 6 e 12 lags e horizontes até 12 | extras `stats` e `plot`; rede na primeira execução |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar
@@ -25,7 +26,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 Para usar os tutoriais com a candidata publicada no PyPI:
 
 ```bash
-python -m pip install "autohybts[stats,notebook]==1.0.0rc2"
+python -m pip install "autohybts[stats,notebook]==1.0.0rc3"
 ```
 
 Os notebooks 05, 10, 12 e 15 requerem os extras indicados na tabela. Consulte o

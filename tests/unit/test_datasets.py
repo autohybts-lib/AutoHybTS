@@ -234,6 +234,28 @@ def test_rdatasets_refuses_path_like_names_before_the_network(tmp_path: Path) ->
     assert opener.calls == []
 
 
+def test_rdatasets_finds_items_listed_inside_a_group(tmp_path: Path) -> None:
+    # The index lists grouped items as "fdeaths (UKLungDeaths)".
+    index = (FIXTURES / "rdatasets" / "datasets.csv").read_bytes() + (
+        b'"datasets","fdeaths (UKLungDeaths)","Female deaths (fixture)",2,3,0,0,0,0,3,'
+        b'"'
+        + RD.encode()
+        + b'csv/datasets/fdeaths.csv","'
+        + RD.encode()
+        + b'doc/datasets/fdeaths.html"\n'
+    )
+    manager, opener = cache(tmp_path)
+    opener.routes[RD + "datasets.csv"] = index
+    opener.routes[RD + "csv/datasets/fdeaths.csv"] = (
+        b"rownames,time,value\n1,1974,901\n2,1974.08,689\n"
+    )
+    raw, url = RdatasetsProvider().raw(manager, "datasets", "fdeaths")
+    assert raw["value"].tolist() == [901, 689]
+    assert url.endswith("csv/datasets/fdeaths.csv")
+    with pytest.raises(ConfigurationError, match="UKLungDeaths"):
+        RdatasetsProvider().raw(manager, "datasets", "UKLungDeaths")
+
+
 def test_import_never_downloads() -> None:
     # D10: importing the package and the catalogue opens no URL.
     code = (
