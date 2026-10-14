@@ -5,6 +5,11 @@ Semantics of ``predict(horizon, context)``: forecast the ``horizon`` steps after
 ``context.observed``. A model fitted once can therefore forecast from later origins
 without being refitted; that is how variant B and out-of-fold residuals get new
 observations into a frozen model (it covers the ``update_state`` of §13.3).
+
+Exogenous features (ADR-0011) are optional: ``fit(y, X)`` takes one row per training value
+and ``predict`` reads ``context.exog`` (rows of the observed values and of the horizon).
+Only models with ``accepts_exog = True`` take them; they implement ``_fit_exog`` and
+``_predict_exog``.
 """
 
 from __future__ import annotations
@@ -30,7 +35,14 @@ from autohybts.exceptions import (
     UnsupportedCapabilityError,
 )
 
-__all__ = ["BaseForecaster", "FloatArray", "ForecasterBase", "Parametrized", "candidate_errors"]
+__all__ = [
+    "BaseForecaster",
+    "FloatArray",
+    "ForecasterBase",
+    "Parametrized",
+    "candidate_errors",
+    "exog_matrix",
+]
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -39,7 +51,7 @@ FloatArray = npt.NDArray[np.float64]
 class BaseForecaster(Protocol):
     """Anything that can be fitted on a training vector and forecast from a context."""
 
-    def fit(self, y: npt.ArrayLike, X: None = None) -> Self: ...
+    def fit(self, y: npt.ArrayLike, X: npt.ArrayLike | None = None) -> Self: ...
 
     def predict(self, horizon: int, context: TemporalContext) -> FloatArray: ...
 
@@ -81,6 +93,7 @@ class ForecasterBase(Parametrized, ABC):
     """
 
     composite: ClassVar[bool] = False
+    accepts_exog: ClassVar[bool] = False
 
     def __init__(self) -> None:
         self._is_fitted = False
@@ -106,10 +119,11 @@ class ForecasterBase(Parametrized, ABC):
 
         return {}
 
-    def fit(self, y: npt.ArrayLike, X: None = None) -> Self:
-        if X is not None:
-            raise UnsupportedCapabilityError("Covariáveis exógenas ainda não são suportadas.")
+    def fit(self, y: npt.ArrayLike, X: npt.ArrayLike | None = None) -> Self:
         values = _training_vector(y)
+        exog = None if X is None else exog_matrix(X, values.size)
+        if exog is not None and not self.accepts_exog:
+            raise UnsupportedCapabilityError(f"{type(self).__name__} não aceita exógenas.")
         if values.size < self.min_train_size:
             raise InsufficientHistoryError(
                 f"{type(self).__name__} exige ao menos {self.min_train_size} observações de "
@@ -117,7 +131,11 @@ class ForecasterBase(Parametrized, ABC):
             )
         self._is_fitted = False
         with candidate_errors(self, "ajuste"):
-            self._fit(values)
+            if exog is None:
+                self._fit(values)
+            else:
+                self._fit_exog(values, exog)
+        self.n_exog_ = 0 if exog is None else int(exog.shape[1])
         self._is_fitted = True
         if not self.composite:
             record_fit()
@@ -135,8 +153,21 @@ class ForecasterBase(Parametrized, ABC):
                 f"{type(self).__name__} exige ao menos {self.min_history} observações no "
                 f"contexto; recebidas {context.observed.size}."
             )
-        with candidate_errors(self, "previsão"):
-            raw = self._predict(int(horizon), context.observed)
+        n_exog = int(getattr(self, "n_exog_", 0))
+        if n_exog:
+            if context.exog is None or context.exog.shape[1] != n_exog:
+                raise ConfigurationError(
+                    f"{type(self).__name__} foi ajustado com {n_exog} exógena(s); o contexto "
+                    "precisa das mesmas colunas."
+                )
+            future = context.exog_future(int(horizon))
+            with candidate_errors(self, "previsão"):
+                raw = self._predict_exog(
+                    int(horizon), context.observed, context.exog_history, future
+                )
+        else:
+            with candidate_errors(self, "previsão"):
+                raw = self._predict(int(horizon), context.observed)
         forecast = np.asarray(raw, dtype=np.float64)
         if forecast.shape != (horizon,) or not np.isfinite(forecast).all():
             raise CandidateFitError(
@@ -152,6 +183,36 @@ class ForecasterBase(Parametrized, ABC):
     @abstractmethod
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         """Forecast ``horizon`` steps after the last value of ``history``."""
+
+    def _fit_exog(self, y: FloatArray, X: FloatArray) -> None:
+        """Learn from ``y`` and the exogenous rows ``X`` (one per value of ``y``)."""
+
+        raise UnsupportedCapabilityError(f"{type(self).__name__} não aceita exógenas.")
+
+    def _predict_exog(
+        self, horizon: int, history: FloatArray, exog_history: FloatArray, exog_future: FloatArray
+    ) -> FloatArray:
+        """Forecast with the exogenous rows of ``history`` and of the next ``horizon`` dates."""
+
+        raise UnsupportedCapabilityError(f"{type(self).__name__} não aceita exógenas.")
+
+
+def exog_matrix(X: npt.ArrayLike, rows: int) -> FloatArray:
+    """Validated exogenous matrix with ``rows`` rows (a 1-D input is one column)."""
+
+    try:
+        values = np.array(X, dtype=np.float64)
+    except (TypeError, ValueError) as error:
+        raise DataValidationError("As exógenas devem ser numéricas.") from error
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
+    if values.ndim != 2 or values.shape[0] != rows or values.shape[1] == 0:
+        raise DataValidationError(
+            f"As exógenas devem ter {rows} linhas e ao menos uma coluna; recebido {values.shape}."
+        )
+    if not np.isfinite(values).all():
+        raise DataValidationError("As exógenas contêm valores ausentes ou não finitos.")
+    return values
 
 
 def _training_vector(y: npt.ArrayLike) -> FloatArray:

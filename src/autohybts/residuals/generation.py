@@ -96,13 +96,24 @@ def build_residuals(
     y: FloatArray,
     source: str,
     settings: ResidualSettings,
+    X: FloatArray | None = None,
 ) -> ResidualSeries:
-    """Residuals of ``y`` for ``source``; ``fitted`` is ``template`` already fitted on ``y``."""
+    """Residuals of ``y`` for ``source``; ``fitted`` is ``template`` already fitted on ``y``.
+
+    ``X`` holds the exogenous rows of ``y`` (ADR-0011). With exogenous features only
+    one-step sources apply: a multi-step forecast inside the training vector would read
+    ``past`` features further ahead than their lag allows.
+    """
 
     if source not in RESIDUAL_SOURCES:
         raise ConfigurationError(f"Fonte residual desconhecida {source!r}.")
     if source == "in_sample":
         return _in_sample(fitted, y, settings)
+    if X is not None and source != "historical_oof_1step":
+        raise UnsupportedCapabilityError(
+            f"A fonte {source} faz previsões de vários passos dentro do treino; com exógenas "
+            "use historical_oof_1step."
+        )
     tail = settings.tail_length(y.size)
     start = y.size - tail
     if tail < 1 or start < _min_train(template):
@@ -111,8 +122,8 @@ def build_residuals(
             f"prefixo com o mínimo de treino da base ({_min_train(template)})."
         )
     if source == "historical_oof_1step":
-        prefix_model = template.clone().fit(y[:start])
-        return ResidualSeries(one_step_residuals(prefix_model, y, start, source))
+        prefix_model = template.clone().fit(y[:start], None if X is None else X[:start])
+        return ResidualSeries(one_step_residuals(prefix_model, y, start, source, X))
     block = settings.block_size or max(1, -(-tail // 2))
     records: list[ResidualRecord] = []
     for block_start in range(start, y.size, block):
@@ -128,15 +139,20 @@ def build_residuals(
 
 
 def one_step_residuals(
-    model: BaseForecaster, y: FloatArray, start: int, source: str
+    model: BaseForecaster,
+    y: FloatArray,
+    start: int,
+    source: str,
+    X: FloatArray | None = None,
 ) -> tuple[ResidualRecord, ...]:
     """One-step errors of a fitted, frozen ``model`` for targets ``start..len(y)-1``.
 
     Models may offer ``one_step_path(y, start)`` computing the same forecasts in one pass;
-    the contract tests require it to match the step-by-step loop below.
+    the contract tests require it to match the step-by-step loop below. ``X`` holds the
+    exogenous rows of ``y``; the forecast of target ``t`` sees rows up to ``t``.
     """
 
-    fast = getattr(model, "one_step_path", None)
+    fast = None if X is not None else getattr(model, "one_step_path", None)
     if callable(fast):
         path = np.asarray(fast(y, start), dtype=np.float64)
         if path.shape != (y.size - start,) or not np.isfinite(path).all():
@@ -147,13 +163,19 @@ def one_step_residuals(
         )
     records = []
     for target in range(start, y.size):
-        forecast = float(model.predict(1, local_context(y, target))[0])
+        forecast = float(model.predict(1, local_context(y, target, X, ahead=1))[0])
         records.append(_record(target - 1, target, y, forecast, source))
     return tuple(records)
 
 
-def local_context(y: FloatArray, end: int) -> TemporalContext:
-    """Context whose observations are ``y[:end]`` (origin ``end - 1``)."""
+def local_context(
+    y: FloatArray, end: int, X: FloatArray | None = None, ahead: int = 0
+) -> TemporalContext:
+    """Context whose observations are ``y[:end]`` (origin ``end - 1``).
+
+    With ``X``, the context carries its rows up to ``end + ahead`` (``ahead`` dates after
+    the origin, already checked against the features' lags by whoever built ``X``).
+    """
 
     return TemporalContext(
         series_id="__residuals__",
@@ -161,6 +183,8 @@ def local_context(y: FloatArray, end: int) -> TemporalContext:
         origin_index=end - 1,
         origin_time=None,
         observed=y[:end],
+        exog=None if X is None else X[: end + ahead],
+        exog_ahead=ahead if X is not None else 0,
     )
 
 

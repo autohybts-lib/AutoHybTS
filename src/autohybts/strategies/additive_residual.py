@@ -45,6 +45,7 @@ __all__ = ["ResidualHybridForecaster"]
 
 class ResidualHybridForecaster(ForecasterBase):
     composite = True
+    accepts_exog = True  # the base takes the exogenous rows; the corrector sees residuals
 
     def __init__(
         self,
@@ -88,12 +89,16 @@ class ResidualHybridForecaster(ForecasterBase):
         return self.settings or ResidualSettings()
 
     def _fit(self, y: FloatArray) -> None:
-        self.base_ = self.base.clone().fit(y)
+        self._fit_exog(y, None)
+
+    def _fit_exog(self, y: FloatArray, X: FloatArray | None) -> None:
+        self.base_ = self.base.clone().fit(y, X)
         self.train_ = y.copy()
+        self.train_exog_ = None if X is None else X.copy()
         self.fallback_reason_: str | None = None
         try:
             self.residuals_ = build_residuals(
-                self.base, self.base_, y, self.residual_source, self.residual_settings
+                self.base, self.base_, y, self.residual_source, self.residual_settings, X
             )
             if self.is_sequence:
                 self._fit_sequence(y.size - 1)
@@ -144,35 +149,58 @@ class ResidualHybridForecaster(ForecasterBase):
         base_path, correction = self.predict_components(horizon, history)
         return base_path + self.alpha * correction
 
-    def predict_components(
-        self, horizon: int, history: FloatArray
-    ) -> tuple[FloatArray, FloatArray]:
-        """Base path ``b`` and correction ``r̂`` (zeros under fallback); ``ŷ = b + α · r̂``."""
+    def _predict_exog(
+        self, horizon: int, history: FloatArray, exog_history: FloatArray, exog_future: FloatArray
+    ) -> FloatArray:
+        exog = np.vstack([exog_history, exog_future])
+        base_path, correction = self.predict_components(horizon, history, exog)
+        return base_path + self.alpha * correction
 
-        base_path = self.base_.predict(horizon, local_context(history, history.size))
+    def predict_components(
+        self, horizon: int, history: FloatArray, exog: FloatArray | None = None
+    ) -> tuple[FloatArray, FloatArray]:
+        """Base path ``b`` and correction ``r̂`` (zeros under fallback); ``ŷ = b + α · r̂``.
+
+        ``exog`` holds the exogenous rows of ``history`` and of the next ``horizon`` dates
+        when the base was fitted with exogenous features.
+        """
+
+        base_path = self.base_.predict(
+            horizon, local_context(history, history.size, exog, ahead=horizon)
+        )
         if self.corrector_ is None:
             return base_path, np.zeros(horizon)
         if self.is_sequence:
-            start, values = _contiguous_tail(self._residuals_at(history), history.size - 1)
+            start, values = _contiguous_tail(self._residuals_at(history, exog), history.size - 1)
             if start != self.sequence_start_:
                 raise UnsupportedCapabilityError(
                     "O histórico residual não estende o trecho em que o corretor foi ajustado."
                 )
             correction = self.corrector_.forecast(horizon, values)  # type: ignore[attr-defined]
             return base_path, np.asarray(correction, dtype=np.float64)
-        window = latest_window(self._residuals_at(history), self.window_size, history.size - 1)
+        window = latest_window(
+            self._residuals_at(history, exog), self.window_size, history.size - 1
+        )
         return base_path, recursive_correction(self.corrector_, window, horizon)
 
-    def _residuals_at(self, history: FloatArray) -> ResidualSeries:
+    def _residuals_at(self, history: FloatArray, exog: FloatArray | None = None) -> ResidualSeries:
         n = self.train_.size
         if history.size < n or not np.array_equal(history[:n], self.train_):
             raise UnsupportedCapabilityError(
                 "O híbrido só prevê de contextos que estendem o seu treino."
             )
+        train_exog = getattr(self, "train_exog_", None)
+        if train_exog is not None and (exog is None or not np.array_equal(exog[:n], train_exog)):
+            raise UnsupportedCapabilityError(
+                "As exógenas do contexto não estendem as do treino do híbrido."
+            )
         if history.size == n:
             return self.residuals_
         # New observations after the fit: frozen base, one-step errors, no refit.
-        return self.residuals_.extend(one_step_residuals(self.base_, history, n, ONLINE_SOURCE))
+        rows = None if exog is None else exog[: history.size]
+        return self.residuals_.extend(
+            one_step_residuals(self.base_, history, n, ONLINE_SOURCE, rows)
+        )
 
 
 def _correction_std_ratio(

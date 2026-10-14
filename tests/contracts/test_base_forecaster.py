@@ -11,6 +11,7 @@ import pytest
 from autohybts.adapters.base import BaseForecaster
 from autohybts.data.schema import SeriesFrame
 from autohybts.data.splitter import TemporalPlan, TemporalSplitter
+from autohybts.domain.context import TemporalContext
 from autohybts.exceptions import (
     ConfigurationError,
     InsufficientHistoryError,
@@ -162,9 +163,33 @@ def test_too_short_training_is_reported(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", BASES)
-def test_exogenous_inputs_are_not_supported_yet(name: str, plan: TemporalPlan) -> None:
-    with pytest.raises(UnsupportedCapabilityError):
-        make(name).fit(plan.train_values(plan.select_origins[0]), X=np.ones(3))
+def test_exogenous_inputs_follow_the_declared_capability(name: str, plan: TemporalPlan) -> None:
+    """ADR-0011: models declaring ``accepts_exog`` fit and forecast with covariates."""
+
+    origin = plan.select_origins[0]
+    train = plan.train_values(origin)
+    model = make(name)
+    declared = REGISTRY.entry(name).capabilities.accepts_exog
+    assert getattr(model, "accepts_exog", False) == declared
+    if not declared:
+        with pytest.raises(UnsupportedCapabilityError):
+            model.fit(train, X=np.ones((train.size, 1)))
+        return
+    rows = np.random.default_rng(0).normal(size=(train.size + HORIZON, 1))
+    model.fit(train, X=rows[: train.size])
+    context = TemporalContext(
+        series_id=origin.series_id,
+        frequency="D",
+        origin_index=origin.origin_index,
+        origin_time=origin.origin_time,
+        observed=train,
+        observed_start=origin.train_start,
+        exog=rows,
+        exog_ahead=HORIZON,
+    )
+    forecast = model.predict(HORIZON, context)
+    assert forecast.shape == (HORIZON,)
+    assert np.isfinite(forecast).all()
 
 
 @pytest.mark.parametrize("horizon", [0, -1, 1.5, True])

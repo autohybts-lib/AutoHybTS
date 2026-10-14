@@ -48,6 +48,8 @@ class Capabilities:
             (several targets forecast jointly) or ``"exogenous"`` (needs covariates, past or
             known in advance). The search is univariate: the other two are skipped until
             they get their own contract.
+        accepts_exog: takes exogenous features when the experiment has them (ADR-0011);
+            it still forecasts without them.
     """
 
     multi_step: bool = True
@@ -60,6 +62,7 @@ class Capabilities:
     horizon_strategy: str = "recursive"
     max_horizon: int | None = None
     target_mode: str = "univariate"
+    accepts_exog: bool = False
 
     def __post_init__(self) -> None:
         for name, allowed in (

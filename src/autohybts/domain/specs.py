@@ -16,11 +16,13 @@ __all__ = [
     "COMPOSITE_BASE",
     "DECOMPOSITION_METHODS",
     "ENSEMBLE_METHODS",
+    "EXOG_STRATEGIES",
     "MAX_COMPONENTS",
     "MAX_DEPTH",
     "MAX_STAGES",
     "STRATEGIES",
     "CandidateSpec",
+    "ExogFeature",
     "ModelSpec",
     "trial_key",
 ]
@@ -40,6 +42,8 @@ STRATEGIES: Final = (
 _RESIDUAL_FIELDS: Final = ("corrector", "window_size", "alpha", "residual_source")
 # Corrections of corrections are capped (§16): each stage adds a model fitted on fewer rows.
 MAX_STAGES: Final = 3
+# Strategies whose base can receive exogenous features (ADR-0011).
+EXOG_STRATEGIES: Final = ("standalone", "residual_additive", "residual_multistage")
 DECOMPOSITION_METHODS: Final = ("ma", "stl")
 COMBINATION_WEIGHTS: Final = ("equal", "inverse_mse")
 # Compositions of candidates (ADR-0007): ensembles of any candidates and residual
@@ -97,6 +101,30 @@ class ModelSpec:
         return f"{self.name}({inner})"
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class ExogFeature:
+    """Exogenous column ``column`` shifted by ``lag`` rows: its value at ``t`` is ``x[t - lag]``.
+
+    See :mod:`autohybts.data.exog` for the availability rule (ADR-0011).
+    """
+
+    column: str
+    lag: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.column, str) or not self.column:
+            raise ConfigurationError("A coluna exógena deve ter um nome não vazio.")
+        if isinstance(self.lag, bool) or not isinstance(self.lag, int) or self.lag < 0:
+            raise ConfigurationError(f"lag deve ser inteiro >= 0; recebido {self.lag!r}.")
+
+    @property
+    def name(self) -> str:
+        return self.column if self.lag == 0 else f"{self.column}_lag{self.lag}"
+
+    def describe(self) -> list[object]:
+        return [self.column, self.lag]
+
+
 # Placeholder ``base`` of compositions whose real bases are their ``components``.
 COMPOSITE_BASE: Final = ModelSpec("composite")
 
@@ -136,6 +164,10 @@ class CandidateSpec:
     ``members``, ``options`` and ``components`` enter ``candidate_id`` only when
     non-empty, so identities of the other strategies do not change. Compositions nest up
     to ``MAX_DEPTH`` levels.
+
+    ``exog`` (ADR-0011) lists the exogenous features the base receives; it applies to
+    ``standalone``, ``residual_additive`` and ``residual_multistage`` and, like the fields
+    above, enters ``candidate_id`` only when non-empty.
     """
 
     family: str
@@ -149,6 +181,7 @@ class CandidateSpec:
     members: tuple[ModelSpec, ...] = ()
     options_json: str = "{}"
     components: tuple[CandidateSpec, ...] = ()
+    exog: tuple[ExogFeature, ...] = ()
     candidate_id: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -176,9 +209,20 @@ class CandidateSpec:
         object.__setattr__(self, "options_json", canonical_json(options))
         self._validate_components()
         self._validate_fields(options)
+        self._validate_exog()
         object.__setattr__(
             self, "candidate_id", stable_hash({"schema": "candidate/1", **self.describe()})
         )
+
+    def _validate_exog(self) -> None:
+        exog = tuple(sorted(set(self.exog)))
+        if not all(isinstance(f, ExogFeature) for f in exog):
+            raise ConfigurationError("exog deve conter apenas ExogFeature.")
+        if exog and self.strategy not in EXOG_STRATEGIES:
+            raise ConfigurationError(
+                f"A estratégia {self.strategy} não recebe exógenas; opções: {EXOG_STRATEGIES}."
+            )
+        object.__setattr__(self, "exog", exog)
 
     def _validate_components(self) -> None:
         components = tuple(self.components)
@@ -429,6 +473,8 @@ class CandidateSpec:
             described["options"] = self.options
         if self.components:
             described["components"] = [component.describe() for component in self.components]
+        if self.exog:
+            described["exog"] = [feature.describe() for feature in self.exog]
         return described
 
     @property
@@ -437,6 +483,10 @@ class CandidateSpec:
 
         ``label`` keeps the full configuration; several configurations share a name.
         """
+
+        return self._structure_name() + ("+exog" if self.exog else "")
+
+    def _structure_name(self) -> str:
 
         if self.strategy == "fixed_combination":
             return "comb(" + ",".join(s.name for s in (self.base, *self.members)) + ")"
@@ -460,6 +510,12 @@ class CandidateSpec:
 
     @property
     def label(self) -> str:
+        if not self.exog:
+            return self._structure_label()
+        features = ", ".join(feature.name for feature in self.exog)
+        return f"{self._structure_label()} | exog: {features}"
+
+    def _structure_label(self) -> str:
         if self.strategy == "ensemble":
             options = self.options
             extra = "".join(f", {k}={options[k]}" for k in ("trim", "shrinkage") if k in options)

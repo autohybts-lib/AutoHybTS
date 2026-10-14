@@ -123,7 +123,13 @@ class LagRegressionForecaster(ForecasterBase):
     ``StandardScaler`` on X and y, as in the replication project) and ``"minmax"`` maps
     each of them to [0, 1] (``MinMaxScaler``). Per-column scaling changes distance-,
     kernel- and gradient-based estimators (KNN, SVR, MLP) but not linear models or trees.
+
+    With exogenous features (ADR-0011) each row also holds the features of its target date,
+    scaled per column on the training rows; a recursive step uses the features of the date
+    it forecasts. Features enter as given: differencing applies to the series only.
     """
+
+    accepts_exog = True
 
     def __init__(
         self,
@@ -173,6 +179,12 @@ class LagRegressionForecaster(ForecasterBase):
         return self.min_history + 1
 
     def _fit(self, y: FloatArray) -> None:
+        self._fit_lags(y, None)
+
+    def _fit_exog(self, y: FloatArray, X: FloatArray) -> None:
+        self._fit_lags(y, X)
+
+    def _fit_lags(self, y: FloatArray, X: FloatArray | None) -> None:
         y = self._prepare(y)
         self.differencer_ = differencer_for(
             y,
@@ -183,8 +195,13 @@ class LagRegressionForecaster(ForecasterBase):
         )
         level = self._differenced(y)
         self.model_ = build_estimator(self.estimator, self.estimator_params, self.random_state)
+        # Exogenous rows of the targets: level position i is y position i + lost.
+        first = self.differencer_.lost + max(self._lags)
+        exog = None if X is None else X[first:]
         if self.scale in PER_COLUMN:
             features, targets = lag_matrix(level, self._lags)
+            if exog is not None:
+                features = np.hstack([features, exog])
             self.x_center_, self.x_spread_ = column_scale(features, self.scale)
             self.center_, self.spread_ = scalar_scale(targets, self.scale)
             with single_threaded(self.estimator):
@@ -196,10 +213,29 @@ class LagRegressionForecaster(ForecasterBase):
             return
         self.center_, self.spread_ = scalar_scale(level, self.scale)
         features, targets = lag_matrix(self._standardized(level), self._lags)
+        if exog is not None:
+            if self.scale:
+                self.exog_center_, self.exog_spread_ = column_scale(exog, "columns")
+            else:
+                self.exog_center_, self.exog_spread_ = (
+                    np.zeros(exog.shape[1]),
+                    np.ones(exog.shape[1]),
+                )
+            features = np.hstack([features, (exog - self.exog_center_) / self.exog_spread_])
         with single_threaded(self.estimator):
             self.fit_warnings_ = fit_estimator(self.model_, features, targets)
 
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
+        return self._predict_lags(horizon, history, None)
+
+    def _predict_exog(
+        self, horizon: int, history: FloatArray, exog_history: FloatArray, exog_future: FloatArray
+    ) -> FloatArray:
+        return self._predict_lags(horizon, history, exog_future)
+
+    def _predict_lags(
+        self, horizon: int, history: FloatArray, exog_future: FloatArray | None
+    ) -> FloatArray:
         anchors = None
         target = getattr(self, "target_", None)
         history = history if target is None else target.apply(history)
@@ -211,8 +247,13 @@ class LagRegressionForecaster(ForecasterBase):
         window = list(level if columns else self._standardized(level))
         steps = []
         with single_threaded(self.estimator):
-            for _ in range(horizon):
+            for step_index in range(horizon):
                 row = latest_lags(np.asarray(window), self._lags)
+                if exog_future is not None:
+                    extra = exog_future[step_index]
+                    if not columns:
+                        extra = (extra - self.exog_center_) / self.exog_spread_
+                    row = np.concatenate([row, extra])
                 if columns:
                     row = scale_values(row, self.x_center_, self.x_spread_, self.scale)
                 step = float(self.model_.predict(row.reshape(1, -1))[0])
