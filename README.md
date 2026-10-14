@@ -199,6 +199,8 @@ e **Build configuration file: `documentation/.readthedocs.yaml`**. O YAML da rai
 
 Inspirada na ergonomia do [PyCaret](https://pycaret.org); o PyCaret não é dependência.
 
+Desenvolvida por João Ataíde em coautoria com assistentes de IA: **Claude** (Anthropic, pelo Claude Code) e **Codex** (OpenAI). As decisões de arquitetura e de método, a revisão final e a responsabilidade pelo código são do autor; toda mudança passa pelos mesmos testes de contrato, causalidade e vazamento. Veja [Sobre](https://autohybts.readthedocs.io/pt-br/latest/about.html).
+
 ## Licença
 
 [MIT](https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE) © João Ataíde.

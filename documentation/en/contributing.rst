@@ -162,6 +162,20 @@ The guide page of a new strategy has:
 * a runnable example with a real result, never an invented one;
 * links to the notebook, the causality test and the benchmarks section.
 
+AI-assisted contributions
+-------------------------
+
+The project is developed in co-authorship with Claude and Codex (see :doc:`about`), and
+contributions made with AI assistants are welcome on the same terms as any other:
+
+* whoever sends it reviews and understands every line, and answers for it in the pull
+  request;
+* the change goes through the same checks (``ruff``, ``mypy``, contract, causality and
+  leakage tests) and no invariant is loosened to fit generated code: untouched sealed test,
+  causal residuals, stable identities;
+* the pull request description says what was done with assistance and how it was checked;
+* private data, credentials and keys never go to an AI service.
+
 Delivery
 --------
 
