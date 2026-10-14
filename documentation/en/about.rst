@@ -32,7 +32,7 @@ Cite the version you used (``autohybts.__version__``):
      author  = {Ataíde, João},
      title   = {{AutoHybTS}: Automated Hybrid Time Series Forecasting},
      year    = {2026},
-     version = {1.0.0rc2},
+     version = {1.0.0rc3},
      url     = {https://github.com/jvataidee/AutoHybTS}
    }
 

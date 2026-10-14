@@ -941,6 +941,45 @@ class AutoHybridExperiment(Parametrized):
             axis=1,
         )
 
+    def outlier_report(
+        self,
+        series_id: str | None = None,
+        *,
+        types: tuple[str, ...] = ("AO", "LS", "TC"),
+        threshold: float = 4.0,
+        decay: float = 0.7,
+        max_events: int = 10,
+    ) -> pd.DataFrame:
+        """Optional exploratory AO/LS/TC screening, excluding the sealed test.
+
+        Returns candidate events and recommendations for review. Calling this method
+        never modifies data or enables treatment in model search. Scores use OLS
+        trend/seasonal controls, not ARIMA-adjusted significance tests. For model
+        selection, detection and any chosen treatment must be fitted per training fold.
+        """
+        from autohybts.data.interventions import intervention_report
+
+        self._require("VALIDATED")
+        frames = (
+            [self._series(series_id)]
+            if series_id is not None or not self.is_panel
+            else list(self.panel_)
+        )
+        return pd.concat(
+            [
+                intervention_report(
+                    frame,
+                    types=types,
+                    threshold=threshold,
+                    decay=decay,
+                    period=self.seasonal_period_,
+                    max_events=max_events,
+                )
+                for frame in frames
+            ],
+            ignore_index=True,
+        )
+
     def seasonality_report(
         self, series_id: str | None = None, periods: Sequence[int] | None = None
     ) -> pd.DataFrame:

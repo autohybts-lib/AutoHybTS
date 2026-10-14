@@ -6,19 +6,19 @@ AutoHybTS requires **Python 3.11** or newer.
 From PyPI
 ---------
 
-The `1.0.0rc2 candidate is published on PyPI
-<https://pypi.org/project/autohybts/1.0.0rc2/>`_. Install with the extras used in the
+The `1.0.0rc3 candidate is published on PyPI
+<https://pypi.org/project/autohybts/1.0.0rc3/>`_. Install with the extras used in the
 statistical-model and plotting examples:
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[stats,plot]==1.0.0rc2"
+   python -m pip install "autohybts[stats,plot]==1.0.0rc3"
 
 To install only the core (NumPy, pandas and scikit-learn):
 
 .. code-block:: bash
 
-   python -m pip install "autohybts==1.0.0rc2"
+   python -m pip install "autohybts==1.0.0rc3"
 
 These commands pin the candidate; ``--pre`` is not needed for an explicitly
 requested prerelease version. To get the latest version including candidates,
@@ -38,7 +38,7 @@ In a Jupyter cell, ``%pip`` installs into the current kernel's environment:
 
 .. code-block:: ipython
 
-   %pip install "autohybts[stats,plot,notebook]==1.0.0rc2"
+   %pip install "autohybts[stats,plot,notebook]==1.0.0rc3"
 
 Extras
 ------
@@ -47,7 +47,7 @@ Combine extras inside brackets and keep the version. For example:
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[stats,plot,torch]==1.0.0rc2"
+   python -m pip install "autohybts[stats,plot,torch]==1.0.0rc3"
 
 .. list-table::
    :header-rows: 1

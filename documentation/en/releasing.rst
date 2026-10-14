@@ -1,8 +1,8 @@
 Version 1 and publishing
 ========================================
 
-Next candidate: 1.0.0rc3 (in preparation)
-------------------------------------------
+1.0.0rc3 — series diagnostics and preprocessing, October 14, 2026
+-----------------------------------------------------------------
 
 Compatible additions: candidate IDs, the default protocol hash and the persistence schema
 do not change, and every new feature acts only when requested.
@@ -17,9 +17,22 @@ do not change, and every new feature acts only when requested.
 * **Characterization:** ``exp.characterize()`` with the two rules of the replication
   project and the ``stationarity``, ``acf_pacf``, ``decomposition`` and
   ``plot_characterization`` plots.
-* **Documentation:** the :doc:`user_guide/diagnostics` page, notebook 16 and fixes of facts
-  and references; the text of the ``fold="auto"`` warning no longer cites internal
-  documents.
+* **Reports:** ``exp.stationarity_report()`` (ADF, KPSS and consensus),
+  ``exp.decompose()``, ``exp.residual_diagnostics()`` (Ljung-Box on a base's residuals),
+  ``exp.outlier_report()`` (AO/LS/TC candidates, exploratory only), the ``MAPE`` and
+  ``MdAPE`` metrics and ``cmp.kruskal()`` (Kruskal-Wallis and Dunn).
+* **Optional preprocessing:** ``transform="boxcox"``/``"log"`` and
+  ``outliers="winsorize"``/``"interpolate"`` on lag models, fitted on each origin's
+  training data; ``missing="ffill"`` fills gaps with the last observed value. All off by
+  default.
+* **Documentation:** variants A and B, concepts, reading the results, choosing the
+  configuration, troubleshooting, maintenance, the complete API reference, figures in
+  every tutorial and notebooks 16 (diagnostics) and 17 (17 classical series in three
+  classes, with five models in protocols A and B, 3, 6 and 12 lags and horizons up to 12).
+
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc3"
 
 1.0.0rc2 — PyPI documentation, October 13, 2026
 ------------------------------------------------------------

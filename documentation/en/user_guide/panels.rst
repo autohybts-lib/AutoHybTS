@@ -40,4 +40,4 @@ experiment runs on the truncated panel and the table has one row per fold and se
 
 .. seealso::
 
-   Tutorials: :doc:`../tutorials/notebooks/07_panel`.
+   Tutorial: :doc:`../tutorials/notebooks/07_panel`.

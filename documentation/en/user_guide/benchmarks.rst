@@ -108,4 +108,5 @@ of the rates per number of origins.
 
 .. seealso::
 
-   Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`.
+   Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`,
+   :doc:`../tutorials/notebooks/17_benchmark_study`.

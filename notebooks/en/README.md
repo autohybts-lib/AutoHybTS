@@ -19,13 +19,14 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 | [13_ensembles](13_ensembles.ipynb) | Ensembles of complete candidates (mean, median, trimmed mean, inverse MSE, NNLS with shrinkage), ensemble of hybrids, corrected ensemble and ensembles in the search with the acceptance rule | — |
 | [14_intermittent_demand](14_intermittent_demand.ipynb) | Intermittent demand: Croston-SBA, TSB, ADIDA and IMAPA against simple means, why RMSSE instead of MASE, rate changes, demand that stops and the `intermittent` family in the search | — |
 | [15_statsforecast](15_statsforecast.ipynb) | StatsForecast's AutoARIMA, AutoETS, AutoTheta and AutoCES against statsmodels and baselines, frozen parameters (`forward`), the statistical-ANN hybrids of the replication and the search with these models | `nixtla-stats` extra (brings pandas 2.x) |
+| [17_benchmark_study](17_benchmark_study.ipynb) | 17 classical series in three classes: five models (with the ARIMA–ANN hybrid) in protocols A and B, with 3, 6 and 12 lags and horizons up to 12 | `stats` and `plot` extras; network on first run |
 
 ## How to run
 
 To use the tutorials with the candidate published on PyPI:
 
 ```bash
-python -m pip install "autohybts[stats,notebook]==1.0.0rc2"
+python -m pip install "autohybts[stats,notebook]==1.0.0rc3"
 ```
 
 Notebooks 05, 10, 12 and 15 require the extras listed in the table. See the

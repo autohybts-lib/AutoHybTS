@@ -42,4 +42,4 @@ dobra e série.
 
 .. seealso::
 
-   Tutoriais: :doc:`../tutorials/notebooks/07_panel`.
+   Tutorial: :doc:`../tutorials/notebooks/07_panel`.
