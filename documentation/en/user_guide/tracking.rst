@@ -122,4 +122,5 @@ Limits
 
 .. seealso::
 
-   Tutorial: :doc:`../tutorials/notebooks/18_sql_analysis`.
+   Tutorials: :doc:`../tutorials/notebooks/18_sql_analysis`,
+   :doc:`../tutorials/notebooks/19_mlops_flow`. Models in production: :doc:`mlops`.

@@ -34,6 +34,11 @@ Copie o nome e passe para ``get_data``; o resultado é uma ``pd.Series`` com
      - diária
      - 730
      - gerada pela AutoHybTS
+   * - ``commodity_price_daily``
+     - sintética: preço diário de uma commodity (safra anual, choques persistentes e choque de oferta)
+     - diária
+     - 1095
+     - gerada pela AutoHybTS
    * - ``air_passengers``
      - passageiros aéreos, 1949–1960
      - mensal

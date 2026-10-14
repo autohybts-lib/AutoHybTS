@@ -1,4 +1,4 @@
-"""SQLite store of experiments, evaluations and finalized models (ADR-0010).
+"""SQLite store of experiments, evaluations, registered models and forecasts (ADR-0010).
 
 ``ExperimentStore`` writes what an experiment has already computed; it never evaluates a
 candidate, never reads the sealed test and is never read by the search or the selection.
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from autohybts.experiment import AutoHybridExperiment
     from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster
+    from autohybts.results import ExternalResult
 
 __all__ = ["STORE_SCHEMA", "ExperimentStore"]
 
@@ -108,6 +109,27 @@ _SCHEMA: Final = {
 TABLES: Final[dict[str, tuple[tuple[str, ...], tuple[str, ...]]]] = {
     table: (tuple(columns.split()), tuple(key.split())) for table, (columns, key) in _SCHEMA.items()
 }
+
+# Operations: registered models, their stage history, forecasts made in production and the
+# observations that arrived later. They outlive runs, so ``log`` and ``delete_run`` keep them.
+_OPERATIONS: Final = {
+    "registry": (
+        "model_id name run_id candidate_id label variant series_id path sha256 stage "
+        "reference_mae registered_utc",
+        "model_id",
+    ),
+    "stage_history": ("model_id at stage reason", "model_id at stage"),
+    "forecasts": (
+        "model_id series_id origin timestamp horizon y_pred logged_utc",
+        "model_id series_id timestamp horizon",
+    ),
+    "actuals": ("series_id timestamp y_true logged_utc", "series_id timestamp"),
+}
+OPERATION_TABLES: Final[dict[str, tuple[tuple[str, ...], tuple[str, ...]]]] = {
+    table: (tuple(columns.split()), tuple(key.split()))
+    for table, (columns, key) in _OPERATIONS.items()
+}
+STAGES: Final = ("candidate", "production", "archived")
 
 
 class ExperimentStore:
@@ -203,7 +225,233 @@ class ExperimentStore:
     def tables(self) -> list[str]:
         """Names of the tables of the store's schema."""
 
-        return list(TABLES)
+        return [*TABLES, *OPERATION_TABLES]
+
+    # ------------------------------------------------------------------ operations
+    def register_model(
+        self,
+        model: FinalizedForecaster,
+        path: str | Path,
+        *,
+        name: str,
+        run_id: str | None = None,
+        reference_mae: float | None = None,
+    ) -> str:
+        """Register a model saved with ``save_model`` under ``name``, as a ``candidate``.
+
+        The registry keeps the artifact's path and the payload SHA-256 read from its
+        manifest, never the model itself. ``reference_mae`` is the error the model is
+        expected to keep in production (for instance the MAE of ``evaluate_external``);
+        ``monitor`` compares the live error with it. Registering again keeps the stage.
+        """
+
+        from autohybts.forecasting.finalized import FinalizedForecaster
+        from autohybts.persistence.model_store import read_manifest
+
+        if not isinstance(model, FinalizedForecaster):
+            raise ConfigurationError("register_model espera um FinalizedForecaster.")
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigurationError("name deve ser um texto não vazio.")
+        manifest = read_manifest(path)
+        if manifest.get("model_id") != model.model_id:
+            raise ArtifactCompatibilityError(
+                f"O artefato em {path} não é deste modelo (model_id diferente)."
+            )
+        now = datetime.now(UTC).isoformat()
+        with closing(self._connect()) as con, con:
+            found = con.execute(
+                "SELECT stage, registered_utc FROM registry WHERE model_id = ?", (model.model_id,)
+            ).fetchone()
+            row = {
+                "model_id": model.model_id,
+                "name": name,
+                "run_id": run_id,
+                "candidate_id": model.spec.candidate_id,
+                "label": model.spec.label,
+                "variant": model.spec.variant,
+                "series_id": model.history.series_id,
+                "path": str(Path(path)),
+                "sha256": manifest["payload"]["sha256"],
+                "stage": "candidate" if found is None else found[0],
+                "reference_mae": reference_mae,
+                "registered_utc": now if found is None else found[1],
+            }
+            _insert(con, "registry", [row], replace=True)
+            if found is None:
+                _insert(
+                    con,
+                    "stage_history",
+                    [{"model_id": model.model_id, "at": now, "stage": "candidate"}],
+                )
+        return model.model_id
+
+    def promote(self, model_id: str, stage: str = "production", reason: str = "") -> None:
+        """Move a registered model to ``stage``; a new production model archives the old one.
+
+        Every change is kept in ``stage_history`` with its ``reason``.
+        """
+
+        if stage not in STAGES:
+            raise ConfigurationError(f"stage deve ser um de {STAGES}; recebido {stage!r}.")
+        now = datetime.now(UTC).isoformat()
+        with closing(self._connect()) as con, con:
+            found = con.execute(
+                "SELECT name, stage FROM registry WHERE model_id = ?", (model_id,)
+            ).fetchone()
+            if found is None:
+                raise ConfigurationError(f"Modelo {model_id[:12]} não está registrado.")
+            name, current = found
+            if current == stage:
+                return
+            changes = [(model_id, stage, reason)]
+            if stage == "production":
+                changes += [
+                    (old, "archived", f"substituído por {model_id[:12]}")
+                    for (old,) in con.execute(
+                        "SELECT model_id FROM registry WHERE name = ? AND stage = 'production'",
+                        (name,),
+                    ).fetchall()
+                ]
+            for changed, new_stage, why in changes:
+                con.execute(
+                    "UPDATE registry SET stage = ? WHERE model_id = ?", (new_stage, changed)
+                )
+                _insert(
+                    con,
+                    "stage_history",
+                    [{"model_id": changed, "at": now, "stage": new_stage, "reason": why}],
+                )
+
+    def registry(self, name: str | None = None) -> pd.DataFrame:
+        """Registered models (all, or those of ``name``), newest first."""
+
+        sql = "SELECT * FROM registry"
+        params: tuple[str, ...] = ()
+        if name is not None:
+            sql, params = sql + " WHERE name = ?", (name,)
+        return self.query(sql + " ORDER BY registered_utc DESC, model_id", params)
+
+    def load(
+        self,
+        name: str,
+        stage: str = "production",
+        *,
+        trusted: bool = False,
+        signing_key: bytes | None = None,
+    ) -> FinalizedForecaster:
+        """Load the model of ``name`` in ``stage`` with ``load_model``.
+
+        The payload must match the SHA-256 recorded at registration. Like that hash, the
+        database sits next to the artifacts, so it catches corruption, not tampering:
+        pass ``signing_key`` for artifacts saved with one.
+        """
+
+        from autohybts.forecasting.finalized import FinalizedForecaster
+        from autohybts.persistence.model_store import load_model
+
+        found = self.query(
+            "SELECT path, sha256 FROM registry WHERE name = ? AND stage = ? "
+            "ORDER BY registered_utc DESC LIMIT 1",
+            (name, stage),
+        )
+        if found.empty:
+            raise ConfigurationError(f"Nenhum modelo {name!r} no estágio {stage!r}.")
+        model = load_model(
+            found.path[0], trusted=trusted, sha256=found.sha256[0], signing_key=signing_key
+        )
+        if not isinstance(model, FinalizedForecaster):
+            raise ArtifactCompatibilityError("O registro só carrega modelos de uma série.")
+        return model
+
+    def log_forecasts(self, model_id: str, forecasts: pd.DataFrame) -> int:
+        """Record forecasts of a registered model made in production; returns the row count.
+
+        ``forecasts`` has ``y_pred`` and a ``timestamp`` column or index; ``origin``,
+        ``horizon`` (default 1) and ``series_id`` (default: the model's series) are optional,
+        as in the tables of ``predict_model`` and ``ForecastStream.log()``.
+        """
+
+        series_id = self._registered_series(model_id)
+        table = forecasts
+        if "timestamp" not in table and isinstance(table.index, pd.DatetimeIndex):
+            table = table.rename_axis("timestamp").reset_index()
+        if "y_pred" not in table or "timestamp" not in table:
+            raise ConfigurationError("forecasts precisa das colunas timestamp e y_pred.")
+        now = datetime.now(UTC).isoformat()
+        rows = [
+            {
+                "model_id": model_id,
+                "series_id": row.get("series_id", series_id),
+                "origin": row.get("origin"),
+                "timestamp": pd.Timestamp(row["timestamp"]),
+                "horizon": row.get("horizon", 1),
+                "y_pred": row["y_pred"],
+                "logged_utc": now,
+            }
+            for row in _records(table)
+        ]
+        with closing(self._connect()) as con, con:
+            _insert(con, "forecasts", rows, replace=True)
+        return len(rows)
+
+    def log_actuals(self, series_id: str, actuals: pd.Series) -> int:
+        """Record observed values of ``series_id`` (indexed by timestamp); returns the count.
+
+        A value logged again for the same timestamp replaces the previous one.
+        """
+
+        if not isinstance(actuals, pd.Series) or not isinstance(actuals.index, pd.DatetimeIndex):
+            raise ConfigurationError("actuals deve ser uma pd.Series com DatetimeIndex.")
+        now = datetime.now(UTC).isoformat()
+        rows = [
+            {"series_id": series_id, "timestamp": timestamp, "y_true": value, "logged_utc": now}
+            for timestamp, value in actuals.items()
+        ]
+        with closing(self._connect()) as con, con:
+            _insert(con, "actuals", rows, replace=True)
+        return len(rows)
+
+    def monitor(
+        self, model_id: str, *, window: int = 30, threshold: float = 1.5, horizon: int = 1
+    ) -> pd.DataFrame:
+        """Live error of a registered model: rolling MAE against its ``reference_mae``.
+
+        One row per forecast (of ``horizon``) whose observation has arrived, with the
+        absolute error, the MAE over the last ``window`` such forecasts, the ratio to the
+        reference and ``alert``: a full window whose MAE exceeds ``threshold`` times the
+        reference. Without a reference, ``ratio`` is empty and ``alert`` is false.
+        """
+
+        if isinstance(window, bool) or not isinstance(window, int) or window < 1:
+            raise ConfigurationError("window deve ser um inteiro positivo.")
+        if not np.isfinite(threshold) or threshold <= 0:
+            raise ConfigurationError("threshold deve ser finito e positivo.")
+        self._registered_series(model_id)
+        frame = self.query(
+            f"""
+            SELECT f.timestamp, f.y_pred, a.y_true,
+                   ABS(a.y_true - f.y_pred) AS abs_error,
+                   AVG(ABS(a.y_true - f.y_pred)) OVER w AS rolling_mae,
+                   COUNT(*) OVER w AS n_window,
+                   r.reference_mae
+            FROM forecasts f
+            JOIN actuals a ON a.series_id = f.series_id AND a.timestamp = f.timestamp
+            JOIN registry r ON r.model_id = f.model_id
+            WHERE f.model_id = ? AND f.horizon = ?
+            WINDOW w AS (ORDER BY f.timestamp ROWS BETWEEN {window - 1} PRECEDING AND CURRENT ROW)
+            ORDER BY f.timestamp
+            """,
+            (model_id, horizon),
+        )
+        frame["ratio"] = frame.rolling_mae / frame.reference_mae
+        frame["alert"] = (frame.n_window == window) & (frame.ratio > threshold)
+        return frame.drop(columns="n_window")
+
+    def _registered_series(self, model_id: str) -> str:
+        found = self.query("SELECT series_id FROM registry WHERE model_id = ?", (model_id,))
+        if found.empty:
+            raise ConfigurationError(f"Modelo {model_id[:12]} não está registrado.")
+        return str(found.series_id[0])
 
     # ------------------------------------------------------------------ internals
     def _connect(self, *, read_only: bool = False) -> sqlite3.Connection:
@@ -223,7 +471,7 @@ class ExperimentStore:
                 found = con.execute("SELECT value FROM meta WHERE key = 'schema'").fetchone()
                 if found is None:
                     con.execute("INSERT INTO meta VALUES ('schema', ?)", (STORE_SCHEMA,))
-                for table, (columns, key) in TABLES.items():
+                for table, (columns, key) in {**TABLES, **OPERATION_TABLES}.items():
                     con.execute(
                         f"CREATE TABLE IF NOT EXISTS {table} "
                         f"({', '.join(columns)}, PRIMARY KEY ({', '.join(key)}))"
@@ -249,9 +497,17 @@ def _check_schema(con: sqlite3.Connection) -> None:
         )
 
 
-def _insert(con: sqlite3.Connection, table: str, rows: Iterable[Mapping[str, Any]]) -> None:
-    columns = TABLES[table][0]
-    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})"
+def _insert(
+    con: sqlite3.Connection,
+    table: str,
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    replace: bool = False,
+) -> None:
+    columns = {**TABLES, **OPERATION_TABLES}[table][0]
+    verb = "INSERT OR REPLACE" if replace else "INSERT"
+    marks = ", ".join("?" * len(columns))
+    sql = f"{verb} INTO {table} ({', '.join(columns)}) VALUES ({marks})"
     con.executemany(sql, [tuple(_value(row.get(c)) for c in columns) for row in rows])
 
 
@@ -493,22 +749,7 @@ def _model_rows(
         )
     external_rows, prediction_rows = [], []
     for model_id, external in exp._external.items():
-        table = external.metrics.reset_index()
-        names = [c for c in table.columns if c not in ("model", "series_id")]
-        for row in _records(table):
-            # A panel adds a mean row over its series: it is stored with series_id NULL.
-            series_id = row.get("series_id", external.predictions["series_id"].iloc[0])
-            external_rows += [
-                {
-                    "run_id": run_id,
-                    "model_id": model_id,
-                    "label": row["model"],
-                    "series_id": series_id if series_id in exp.panel_.series_ids else None,
-                    "metric": metric,
-                    "value": row[metric],
-                }
-                for metric in names
-            ]
+        external_rows += _external_metric_rows(exp, run_id, model_id, external)
         if values:
             table = external.predictions.reset_index()
             prediction_rows += [
@@ -520,3 +761,26 @@ def _model_rows(
                 for row in _records(table)
             ]
     return model_rows, external_rows, prediction_rows
+
+
+def _external_metric_rows(
+    exp: AutoHybridExperiment, run_id: str, model_id: str, external: ExternalResult
+) -> list[dict[str, Any]]:
+    table = external.metrics.reset_index()
+    names = [c for c in table.columns if c not in ("model", "series_id")]
+    rows = []
+    for row in _records(table):
+        # A panel adds a mean row over its series: it is stored with series_id NULL.
+        series_id = row.get("series_id", external.predictions["series_id"].iloc[0])
+        rows += [
+            {
+                "run_id": run_id,
+                "model_id": model_id,
+                "label": row["model"],
+                "series_id": series_id if series_id in exp.panel_.series_ids else None,
+                "metric": metric,
+                "value": row[metric],
+            }
+            for metric in names
+        ]
+    return rows

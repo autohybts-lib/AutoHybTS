@@ -48,10 +48,38 @@ def _intermittent_daily(
     return pd.Series(np.where(occurs, sizes, 0).astype(float), index=index, name="value")
 
 
+def _commodity_price_daily(
+    n: int = 1095, seed: int = 42, shock_at: float | None = 0.75, shock: float = 0.2
+) -> pd.Series:
+    """Daily price of a commodity, e.g. a bag of coffee, with a supply shock.
+
+    The log price follows a slow trend and an annual harvest cycle; deviations from them are
+    persistent shocks that revert slowly (AR(1), phi = 0.97). From ``shock_at`` (a fraction
+    of the series) on, the level rises by ``shock`` in log scale and the shocks get twice as
+    volatile: the kind of change a model in production should be monitored for.
+    """
+
+    if shock_at is not None and not 0 < shock_at < 1:
+        raise ConfigurationError("shock_at deve estar entre 0 e 1 (ou ser None).")
+    rng = np.random.default_rng(seed)
+    t = np.arange(n)
+    start = n if shock_at is None else int(n * shock_at)
+    scale = np.where(t >= start, 0.024, 0.012)
+    shocks = rng.normal(0.0, 1.0, n) * scale
+    deviation = np.zeros(n)
+    for i in range(1, n):
+        deviation[i] = 0.97 * deviation[i - 1] + shocks[i]
+    level = np.log(100.0) + 0.0002 * t + 0.08 * np.sin(2 * np.pi * t / 365.25)
+    level = level + np.where(t >= start, shock, 0.0)
+    index = pd.date_range("2024-01-01", periods=n, freq="D")
+    return pd.Series(np.round(np.exp(level + deviation), 2), index=index, name="value")
+
+
 SYNTHETIC: Final[dict[str, Callable[..., pd.Series]]] = {
     "synthetic_daily": _synthetic_daily,
     "white_noise_daily": _white_noise_daily,
     "intermittent_daily": _intermittent_daily,
+    "commodity_price_daily": _commodity_price_daily,
 }
 
 
@@ -59,7 +87,8 @@ def get_data(name: str, **kwargs: Any) -> pd.Series:
     """A named series as ``pd.Series`` with a regular ``DatetimeIndex``.
 
     * Offline examples: ``"synthetic_daily"``, ``"white_noise_daily"``,
-      ``"intermittent_daily"``; keyword arguments go to the generator (``n``, ``seed`` ...).
+      ``"intermittent_daily"``, ``"commodity_price_daily"``; keyword arguments go to the
+      generator (``n``, ``seed`` ...).
     * Benchmark series: ``"m4:D1"`` or ``"m3:N1402"`` — downloaded once to the cache
       (keywords ``offline``, ``cache_dir``). The official test is at the end; seal it
       with ``test_size`` equal to the benchmark horizon.
