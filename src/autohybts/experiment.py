@@ -24,7 +24,7 @@ import autohybts
 from autohybts.adapters.base import Parametrized
 from autohybts.data.characterization import characterize as characterize_series
 from autohybts.data.characterization import decompose_series, ljung_box, stationarity_table
-from autohybts.data.exog import ExogFrame, ExogState
+from autohybts.data.exog import ExogFrame, ExogPanel, ExogState
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
 from autohybts.data.schema import SeriesFrame
@@ -47,7 +47,6 @@ from autohybts.exceptions import (
     DataValidationError,
     InsufficientHistoryError,
     SealedTestAccessError,
-    UnsupportedCapabilityError,
 )
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster, refit
 from autohybts.forecasting.rolling_one_step_b import rolling_one_step
@@ -340,9 +339,12 @@ class AutoHybridExperiment(Parametrized):
         ``date_col`` and ``target`` named explicitly. In a panel every series keeps its
         own sealed test, origins and MASE scale; candidates are compared on all of them.
 
-        ``X`` (optional, one series) holds exogenous covariates indexed by date: every date
-        of ``y`` (sealed test included) and, for ``future`` columns, later dates to forecast
-        beyond the data. Their kinds and lags follow ``exog_future`` and ``exog_lags``.
+        ``X`` (optional) holds exogenous covariates indexed by date: every date of ``y``
+        (sealed test included) and, for ``future`` columns, later dates to forecast beyond
+        the data. In a panel, ``X`` is a mapping ``series_id -> DataFrame`` or a long
+        ``DataFrame`` with the same ``series_col`` and ``date_col`` as ``y``; every series
+        needs the same columns. Their kinds and lags follow ``exog_future`` and
+        ``exog_lags``.
         """
 
         started = time.perf_counter()
@@ -401,7 +403,7 @@ class AutoHybridExperiment(Parametrized):
             )
             self.search_period_ = period if keep else 1
         self.registry_: ModelRegistry = (self.registry or default_registry()).copy()
-        self._fit_exog(X, panel, test_size)
+        self._fit_exog(X, panel, test_size, series_col=series_col, date_col=date_col)
         self.evaluator_ = TemporalEvaluator(
             self.registry_,
             metrics=tuple(self.metrics),
@@ -435,10 +437,18 @@ class AutoHybridExperiment(Parametrized):
         )
         return self
 
-    def _fit_exog(self, X: pd.DataFrame | None, panel: PanelFrame, test_size: int) -> None:
+    def _fit_exog(
+        self,
+        X: pd.DataFrame | Mapping[str, pd.DataFrame] | None,
+        panel: PanelFrame,
+        test_size: int,
+        *,
+        series_col: str | None = None,
+        date_col: str | None = None,
+    ) -> None:
         """Validate the covariates and fix the feature set of the exogenous family."""
 
-        self.exog_: ExogFrame | None = None
+        self.exog_: ExogFrame | ExogPanel | None = None
         self.exog_features_: tuple[ExogFeature, ...] = ()
         self.exog_sets_: tuple[tuple[ExogFeature, ...], ...] = ()
         self.exog_selection_: pd.DataFrame | None = None
@@ -448,18 +458,28 @@ class AutoHybridExperiment(Parametrized):
                     "exog_future, exog_lags e exog_selection exigem X em fit(y, X)."
                 )
             return
-        if not panel.is_single:
-            raise UnsupportedCapabilityError(
-                "Exógenas em painel ainda não são suportadas: use uma série por experimento."
+        exog: ExogFrame | ExogPanel
+        if panel.is_single:
+            if not isinstance(X, pd.DataFrame | pd.Series):
+                raise DataValidationError("X de uma série deve ser um DataFrame indexado por data.")
+            exog = ExogFrame.from_frame(X, future=self.exog_future)
+        else:
+            exog = ExogPanel.from_input(
+                X,
+                panel.series_ids,
+                future=self.exog_future,
+                series_col=series_col,
+                date_col=date_col,
             )
-        exog = ExogFrame.from_frame(X, future=self.exog_future)
-        dates = next(iter(panel)).timestamps
-        missing = dates.difference(exog.timestamps)
-        if len(missing):
-            raise DataValidationError(
-                f"X não cobre {len(missing)} data(s) da série (a primeira: {missing[0]}); "
-                "as exógenas precisam de todas as datas, inclusive as do teste selado."
-            )
+        for frame in panel:
+            covered = exog.frame(frame.series_id) if isinstance(exog, ExogPanel) else exog
+            missing = frame.timestamps.difference(covered.timestamps)
+            if len(missing):
+                raise DataValidationError(
+                    f"X não cobre {len(missing)} data(s) da série {frame.series_id!r} (a "
+                    f"primeira: {missing[0]}); as exógenas precisam de todas as datas, "
+                    "inclusive as do teste selado."
+                )
         step = 1 if self.variant == "B" else max(self.fh, test_size)
         features = list(exog.default_features(step))
         for column, lags in (self.exog_lags or {}).items():
@@ -473,9 +493,13 @@ class AutoHybridExperiment(Parametrized):
         self.exog_features_ = self.exog_sets_[0] if self.exog_sets_ else ()
 
     def _select_exog(
-        self, exog: ExogFrame, default: tuple[ExogFeature, ...], step: int
+        self, exog: ExogFrame | ExogPanel, default: tuple[ExogFeature, ...], step: int
     ) -> tuple[tuple[ExogFeature, ...], ...]:
-        """Candidate feature sets; methods see only data up to the first ``V_select`` origin."""
+        """Candidate feature sets; methods see only data up to the first ``V_select`` origin.
+
+        In a panel each method runs on every series and keeps the features most series chose
+        (a vote across series), so every series gets the same candidate feature sets.
+        """
 
         from autohybts.data.exog_selection import (
             BASE_METHODS,
@@ -508,30 +532,57 @@ class AutoHybridExperiment(Parametrized):
                 f"exog_selection aceita None, 'auto' ou métodos de {SELECTION_METHODS}; "
                 f"recebido {choice!r}."
             )
-        first = min(origin.origin_index for origin in self.plan_.select_origins)
-        dates = self.history_.timestamps[: first + 1]
-        covariates = exog.to_frame().reindex(dates)
         kinds = dict(zip(exog.columns, exog.kinds, strict=True))
         lags = [lag for values in (self.exog_lags or {}).values() for lag in values]
         top = max([step + 6, *lags])
-        values = self.history_.values[: first + 1]
-        results: dict[str, ExogSelection] = {}
-        # The vote reuses the other methods when they ran too.
-        for method in sorted(methods, key=lambda m: m == "vote"):
-            if method == "vote" and set(BASE_METHODS) <= set(results):
-                results[method] = vote_selection([results[m] for m in BASE_METHODS])
-                continue
-            try:
-                results[method] = select_exog(
-                    values, covariates, kinds, step, method, max_lag=top, seed=self.session_id
+
+        def run(series: SeriesFrame, frame: ExogFrame, first: int) -> dict[str, ExogSelection]:
+            covariates = frame.to_frame().reindex(series.timestamps[: first + 1])
+            values = series.values[: first + 1]
+            results: dict[str, ExogSelection] = {}
+            # The vote reuses the other methods when they ran too.
+            for method in sorted(methods, key=lambda m: m == "vote"):
+                if method == "vote" and set(BASE_METHODS) <= set(results):
+                    results[method] = vote_selection([results[m] for m in BASE_METHODS])
+                    continue
+                try:
+                    results[method] = select_exog(
+                        values, covariates, kinds, step, method, max_lag=top, seed=self.session_id
+                    )
+                except InsufficientHistoryError as error:
+                    warnings.warn(
+                        f"exog_selection: {method} pulado em {series.series_id} ({error})",
+                        UserWarning,
+                        stacklevel=4,
+                    )
+                    results[method] = ExogSelection(method, (), pd.DataFrame({"method": [method]}))
+            return results
+
+        if isinstance(exog, ExogPanel):
+            per_series = {
+                sid: run(
+                    self.panel_[sid],
+                    exog.frame(sid),
+                    min(o.origin_index for o in self.work_plan_[sid].origins("select")),  # type: ignore[index]
                 )
-            except InsufficientHistoryError as error:
-                warnings.warn(
-                    f"exog_selection: {method} pulado ({error})", UserWarning, stacklevel=3
-                )
-                results[method] = ExogSelection(method, (), pd.DataFrame({"method": [method]}))
-        self.exog_selection_ = pd.concat([r.table for r in results.values()], ignore_index=True)
-        sets = [results[m].features for m in methods]
+                for sid in self.panel_.series_ids
+            }
+            self.exog_selection_ = pd.concat(
+                [
+                    r.table.assign(series_id=sid)
+                    for sid, res in per_series.items()
+                    for r in res.values()
+                ],
+                ignore_index=True,
+            )
+            sets = [
+                vote_selection([per_series[sid][m] for sid in per_series]).features for m in methods
+            ]
+        else:
+            first = min(o.origin_index for o in self.plan_.select_origins)
+            results = run(self.history_, exog, first)
+            self.exog_selection_ = pd.concat([r.table for r in results.values()], ignore_index=True)
+            sets = [results[m].features for m in methods]
         if choice == "auto":
             sets.append(default)
         unique = tuple(dict.fromkeys(group for group in sets if group))
@@ -968,11 +1019,10 @@ class AutoHybridExperiment(Parametrized):
         started = time.perf_counter()
         state = None
         if spec.exog:
-            if self.exog_ is None:
-                raise ConfigurationError("A candidata usa exógenas, mas fit não recebeu X.")
+            frame = self._exog_frame(history.series_id)
             state = ExogState.build(
-                self.exog_.to_frame(),
-                dict(zip(self.exog_.columns, self.exog_.kinds, strict=True)),
+                frame.to_frame(),
+                dict(zip(frame.columns, frame.kinds, strict=True)),
                 spec.exog,
                 history.timestamps,
             )
@@ -986,8 +1036,8 @@ class AutoHybridExperiment(Parametrized):
         )
         identity: dict[str, Any] = {"spec": spec.candidate_id, "data": history.fingerprint}
         identity["seed"] = seed
-        if state is not None and self.exog_ is not None:
-            identity["exog"] = self.exog_.fingerprint
+        if state is not None:
+            identity["exog"] = self._exog_frame(history.series_id).fingerprint
         manifest = {
             "model_id": stable_hash(identity),
             "spec": {
@@ -1011,8 +1061,9 @@ class AutoHybridExperiment(Parametrized):
         external = self._external_requirements(spec)
         if external:
             manifest["frameworks"] = framework_versions(external)
-        if state is not None and self.exog_ is not None:
-            manifest["exog"] = {**state.describe(), "fingerprint": self.exog_.fingerprint}
+        if state is not None:
+            fingerprint = self._exog_frame(history.series_id).fingerprint
+            manifest["exog"] = {**state.describe(), "fingerprint": fingerprint}
         final = FinalizedForecaster(spec, model, history, seed, manifest, len(history), state)
         self._event("model.finalized", f"{spec.label} reajustado até {history.end}", started)
         return final
@@ -1041,6 +1092,13 @@ class AutoHybridExperiment(Parametrized):
             )
         if isinstance(model, FinalizedForecaster) and model.exog is not None:
             rows = X_future if X_future is not None else self._exog_rows()
+            predictions = model.predict(steps, rows)  # type: ignore[arg-type]
+        elif isinstance(model, PanelForecaster) and any(
+            member.exog is not None for member in model.models.values()
+        ):
+            rows = X_future if X_future is not None else self._exog_rows()
+            if not isinstance(rows, Mapping):
+                raise ConfigurationError("Num painel, X_future é um dicionário série -> DataFrame.")
             predictions = model.predict(steps, rows)
         elif X_future is not None:
             raise ConfigurationError("Este modelo não usa exógenas; X_future não se aplica.")
@@ -1090,7 +1148,7 @@ class AutoHybridExperiment(Parametrized):
             )
         self._externally_evaluated.add(model.model_id)
         started = time.perf_counter()
-        rows = self._exog_rows() if model.exog is not None else None
+        rows = self._exog_rows_for(model.history.series_id) if model.exog is not None else None
         if model.variant == "B":
             predictions = _rolling_table(model, test, rows)
         else:
@@ -1569,7 +1627,6 @@ class AutoHybridExperiment(Parametrized):
         outer = TemporalCrossValidation(horizon=self.fh, n_folds=outer_folds, step=self.fh)
         outer_plan = plan_panel(outer, self.panel_)
         params = {**self._public_params(), "test_size": 0, "registry": self.registry}
-        exog_rows = None if self.exog_ is None else self._exog_rows()
         if budget is not None:
             params["budget"] = budget
         metrics = resolve_metrics(self.evaluator_.metrics)
@@ -1596,7 +1653,7 @@ class AutoHybridExperiment(Parametrized):
                 inner_exp = (
                     AutoHybridExperiment(**params).fit(inner_input)
                     if self.exog_ is None
-                    else AutoHybridExperiment(**params).fit(inner_input, self._exog_rows())
+                    else AutoHybridExperiment(**params).fit(inner_input, self._exog_rows())  # type: ignore[arg-type]
                 )
                 inner_compare = inner_exp.compare_models(include=families)
                 compared = time.perf_counter()
@@ -1640,7 +1697,7 @@ class AutoHybridExperiment(Parametrized):
                 history = inner[sid]
                 actual = outer_plan[sid].target_values(origins[sid])
                 member = final[sid] if isinstance(final, PanelForecaster) else final
-                forecast = member.predict(self.fh, exog_rows)["y_pred"].to_numpy()
+                forecast = member.predict(self.fh, self._exog_rows_for(sid))["y_pred"].to_numpy()
                 scores = compute_metrics(
                     metrics, actual, forecast, history.values, self.seasonal_period_
                 )
@@ -1648,7 +1705,7 @@ class AutoHybridExperiment(Parametrized):
                 reference_scores = compute_metrics(
                     metrics,
                     actual,
-                    standalone.predict(self.fh, exog_rows)["y_pred"].to_numpy(),
+                    standalone.predict(self.fh, self._exog_rows_for(sid))["y_pred"].to_numpy(),
                     history.values,
                     self.seasonal_period_,
                 )
@@ -1876,9 +1933,9 @@ class AutoHybridExperiment(Parametrized):
         for sid, member in model.models.items():
             test = self._sealed_map[sid]._unseal()
             if member.variant == "B":
-                table = _rolling_table(member, test)
+                table = _rolling_table(member, test, self._exog_rows_for(sid))
             else:
-                table = member.predict(len(test))
+                table = member.predict(len(test), self._exog_rows_for(sid))
             table["y_true"] = test.values
             values = compute_metrics(
                 metrics,
@@ -2097,12 +2154,27 @@ class AutoHybridExperiment(Parametrized):
             max_lag=max(0, math.ceil(self.fh / self._splitter.effective_step) - 1),
         )
 
-    def _exog_rows(self) -> pd.DataFrame:
-        """Covariates given to ``fit`` (a model reads only the rows its features allow)."""
+    def _exog_frame(self, series_id: str) -> ExogFrame:
+        """Covariates of one series (the experiment's own, or its panel member)."""
+
+        if self.exog_ is None:
+            raise ConfigurationError("A candidata usa exógenas, mas fit não recebeu X.")
+        if isinstance(self.exog_, ExogPanel):
+            return self.exog_.frame(series_id)
+        return self.exog_
+
+    def _exog_rows(self) -> pd.DataFrame | dict[str, pd.DataFrame]:
+        """Covariates given to ``fit`` (a model reads only the rows its features allow);
+        in a panel, one ``DataFrame`` per series."""
 
         if self.exog_ is None:
             raise ConfigurationError("O experimento não tem exógenas.")
+        if isinstance(self.exog_, ExogPanel):
+            return self.exog_.to_frames()
         return self.exog_.to_frame()
+
+    def _exog_rows_for(self, series_id: str) -> pd.DataFrame | None:
+        return None if self.exog_ is None else self._exog_frame(series_id).to_frame()
 
     def _require(self, state: str) -> None:
         if _STATES.index(self.state_) < _STATES.index(state):

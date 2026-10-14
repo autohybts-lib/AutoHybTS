@@ -15,7 +15,7 @@ from typing import Any, Final
 
 import autohybts
 from autohybts.adapters.base import BaseForecaster, FloatArray
-from autohybts.data.exog import ExogFrame, minimum_lag
+from autohybts.data.exog import ExogFrame, ExogPanel, minimum_lag
 from autohybts.data.panel import PanelPlan
 from autohybts.data.splitter import (
     CrossValidationPlan,
@@ -64,8 +64,8 @@ class TemporalEvaluator:
         seasonal_period: ``m`` of the MASE scale.
         session_seed: root of the per-(candidate, fold) seeds given to stochastic models.
         residual_settings: residual generation shared by every hybrid candidate.
-        exog: covariates of the series (ADR-0011), used by candidates with ``exog``
-            features; ``None`` when the experiment has none.
+        exog: covariates of the series, or of every series of a panel (ADR-0011), used by
+            candidates with ``exog`` features; ``None`` when the experiment has none.
     """
 
     registry: ModelRegistry
@@ -73,7 +73,7 @@ class TemporalEvaluator:
     seasonal_period: int = 1
     session_seed: int = 42
     residual_settings: ResidualSettings = field(default_factory=ResidualSettings)
-    exog: ExogFrame | None = None
+    exog: ExogFrame | ExogPanel | None = None
 
     def __post_init__(self) -> None:
         resolve_metrics(self.metrics)
@@ -260,7 +260,8 @@ class TemporalEvaluator:
         if self.exog is None:
             raise ConfigurationError("A candidata usa exógenas, mas o experimento não tem X.")
         step = minimum_lag(candidate.variant, origin.horizon)
-        design = self.exog.design(candidate.exog, plan.history.timestamps, step)
+        frame = self.exog.frame(origin.series_id) if isinstance(self.exog, ExogPanel) else self.exog
+        design = frame.design(candidate.exog, plan.history.timestamps, step)
         first = design.first_complete(origin.train_start)
         end = origin.origin_index + 1
         if first >= end:

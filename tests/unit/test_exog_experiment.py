@@ -13,7 +13,6 @@ from autohybts.domain.specs import ExogFeature
 from autohybts.exceptions import (
     ConfigurationError,
     DataValidationError,
-    UnsupportedCapabilityError,
 )
 
 N, FH, EXTRA = 200, 5, 20
@@ -89,7 +88,7 @@ def test_fit_validates_the_covariates() -> None:
         AutoHybridExperiment(fh=FH, **SETTINGS).fit(y, X.iloc[10:])  # type: ignore[arg-type]
     with pytest.raises(ConfigurationError, match="exigem X"):
         AutoHybridExperiment(fh=FH, exog_future=["feriado"], **SETTINGS).fit(y)  # type: ignore[arg-type]
-    with pytest.raises(UnsupportedCapabilityError, match="painel"):
+    with pytest.raises(ConfigurationError, match="series_col"):
         AutoHybridExperiment(fh=FH, **SETTINGS).fit({"a": y, "b": y + 1}, X)  # type: ignore[arg-type]
 
 

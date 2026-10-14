@@ -20,7 +20,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from autohybts.data.validation import epoch_ns
-from autohybts.domain.identity import canonical_json
+from autohybts.domain.identity import canonical_json, stable_hash
 from autohybts.domain.specs import ExogFeature
 from autohybts.exceptions import ConfigurationError, DataValidationError
 
@@ -29,6 +29,7 @@ __all__ = [
     "ExogDesign",
     "ExogFeature",
     "ExogFrame",
+    "ExogPanel",
     "ExogState",
     "as_rows",
     "design_from",
@@ -208,6 +209,114 @@ class ExogFrame:
         return {
             "columns": list(self.columns),
             "kinds": dict(zip(self.columns, self.kinds, strict=True)),
+            "fingerprint": self.fingerprint,
+        }
+
+
+@dataclass(frozen=True, eq=False)
+class ExogPanel:
+    """Covariates of every series of a panel, with the same columns and kinds in all of them.
+
+    Build it with ``ExogPanel.from_input(X, series_ids, future=[...])`` where ``X`` is a mapping
+    ``series_id -> DataFrame`` or a long ``DataFrame`` with ``series_col`` and ``date_col``.
+    """
+
+    frames: Mapping[str, ExogFrame]
+    fingerprint: str = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        frames = dict(self.frames)
+        if not frames:
+            raise DataValidationError("O painel de exógenas está vazio.")
+        first = next(iter(frames.values()))
+        for sid, frame in frames.items():
+            if frame.columns != first.columns or frame.kinds != first.kinds:
+                raise DataValidationError(
+                    f"A série {sid!r} tem colunas exógenas {list(frame.columns)}; todas as séries "
+                    f"precisam das mesmas ({list(first.columns)})."
+                )
+        object.__setattr__(self, "frames", frames)
+        object.__setattr__(
+            self,
+            "fingerprint",
+            stable_hash(
+                {"schema": "exog-panel/1", "series": {k: v.fingerprint for k, v in frames.items()}}
+            ),
+        )
+
+    @classmethod
+    def from_input(
+        cls,
+        X: Mapping[str, pd.DataFrame] | pd.DataFrame,
+        series_ids: Sequence[str],
+        future: Iterable[str] = (),
+        *,
+        series_col: str | None = None,
+        date_col: str | None = None,
+    ) -> ExogPanel:
+        """Covariates for ``series_ids`` from a mapping or a long ``DataFrame``."""
+
+        future = tuple(future)
+        if isinstance(X, pd.DataFrame):
+            if series_col is None or date_col is None:
+                raise ConfigurationError(
+                    "Para X longo num painel informe series_col e date_col (os mesmos de y), "
+                    "ou passe um dicionário série -> DataFrame."
+                )
+            groups = {
+                str(sid): group.drop(columns=[series_col]).set_index(date_col).sort_index()
+                for sid, group in X.groupby(series_col, sort=False)
+            }
+            for frame in groups.values():
+                frame.index = pd.DatetimeIndex(pd.to_datetime(frame.index))
+        elif isinstance(X, Mapping):
+            groups = {str(k): v for k, v in X.items()}
+        else:
+            raise DataValidationError(
+                "X de um painel: dicionário série -> DataFrame ou DataFrame longo."
+            )
+        missing = [sid for sid in series_ids if sid not in groups]
+        if missing:
+            raise DataValidationError(f"X não tem exógenas para as séries {missing}.")
+        return cls({sid: ExogFrame.from_frame(groups[sid], future=future) for sid in series_ids})
+
+    def frame(self, series_id: str) -> ExogFrame:
+        try:
+            return self.frames[series_id]
+        except KeyError:
+            raise ConfigurationError(f"Sem exógenas para a série {series_id!r}.") from None
+
+    @property
+    def _first(self) -> ExogFrame:
+        return next(iter(self.frames.values()))
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return self._first.columns
+
+    @property
+    def kinds(self) -> tuple[str, ...]:
+        return self._first.kinds
+
+    def kind(self, column: str) -> str:
+        return self._first.kind(column)
+
+    def default_features(
+        self, step: int, columns: Sequence[str] | None = None
+    ) -> tuple[ExogFeature, ...]:
+        return self._first.default_features(step, columns)
+
+    def check(self, features: Sequence[ExogFeature], step: int) -> None:
+        self._first.check(features, step)
+
+    def to_frames(self) -> dict[str, pd.DataFrame]:
+        return {sid: frame.to_frame() for sid, frame in self.frames.items()}
+
+    def describe(self) -> dict[str, object]:
+        return {
+            "columns": list(self.columns),
+            "kinds": dict(zip(self.columns, self.kinds, strict=True)),
+            "series": len(self.frames),
             "fingerprint": self.fingerprint,
         }
 
