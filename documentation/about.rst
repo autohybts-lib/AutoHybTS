@@ -46,7 +46,7 @@ Cite a versão que você usou (``autohybts.__version__``):
      author  = {Ataíde, João},
      title   = {{AutoHybTS}: Automated Hybrid Time Series Forecasting},
      year    = {2026},
-     version = {1.0.0rc3},
+     version = {1.0.0rc4},
      url     = {https://github.com/jvataidee/AutoHybTS},
      note    = {Desenvolvido em coautoria com Claude (Anthropic) e Codex (OpenAI)}
    }

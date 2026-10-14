@@ -1,6 +1,36 @@
 Versão 1 e publicação
 =====================
 
+1.0.0rc4 — experimentos em SQLite, MLOps e variáveis exógenas, 14 de outubro de 2026
+------------------------------------------------------------------------------------
+
+Adições compatíveis: sem ``X`` e sem banco, nada muda nos IDs das candidatas, no hash do
+protocolo padrão nem no esquema de persistência dos modelos.
+
+* **Registro em SQLite:** ``ExperimentStore`` grava experimentos (candidatas, métricas por
+  camada e por origem, decisões, campeão, avaliação externa) e responde a consultas SQL
+  somente leitura; valores da série só com ``values=True``.
+* **MLOps no mesmo banco:** registro de modelos com SHA-256 do artefato, promoção com
+  histórico de estágios, ``load`` com ``trusted=True``, previsões, observações e
+  covariáveis registradas, ``monitor`` (MAE móvel contra a referência, com alerta);
+  série sintética ``commodity_price_daily``.
+* **Variáveis exógenas:** ``fit(y, X)`` com colunas ``past`` (defasadas pelo horizonte) e
+  ``future`` (declaradas), ARIMAX, SARIMAX, modelos sobre lags e híbridos com covariáveis,
+  família ``exogenous`` decidida pela regra de aceite, previsão com ``X_future``,
+  streaming, persistência e painéis de séries.
+* **Seleção automática de exógenas:** ``exog_selection`` (``ccf``, ``granger``, ``lasso``,
+  ``stepwise_bic``, ``mutual_info``, ``vote``, ``auto``), ``exp.exog_report()`` e
+  ``exp.compare_exog()`` (Wilcoxon e Diebold–Mariano).
+* **Conjuntos com exógenas:** ``list_exog_datasets()`` e ``load_exog_dataset()``
+  (seatbelts, bjsales, uschange, insurance, elecdaily, vic_elec_daily).
+* **Documentação:** guias de registro em SQLite, MLOps e exógenas; notebooks 18 (análise
+  com SQL), 19 (fluxo de MLOps), 20 (exógenas em benchmarks) e 21 (MLOps com exógenas na
+  demanda elétrica real); coautoria com IA (Claude e Codex) na página *Sobre*.
+
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc4"
+
 1.0.0rc3 — diagnóstico da série e pré-processamento, 14 de outubro de 2026
 --------------------------------------------------------------------------
 
