@@ -24,6 +24,7 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
 * :doc:`notebooks/18_sql_analysis`: experimentos gravados em SQLite e analisados com consultas SQL.
 * :doc:`notebooks/19_mlops_flow`: fluxo de MLOps com o preço de uma commodity: registro, promoção, previsões diárias, monitoramento e retreino com portão.
 * :doc:`notebooks/20_exogenous`: séries com variáveis exógenas: past × future, oráculo, seleção automática e com × sem exógenas em benchmarks (baixa dados na primeira execução).
+* :doc:`notebooks/21_mlops_exogenous`: MLOps com exógenas em dados reais: demanda elétrica diária de Victoria com previsão do tempo, feriado e fim de semana (baixa dados na primeira execução).
 
 .. toctree::
    :hidden:
@@ -48,3 +49,4 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
    notebooks/18_sql_analysis
    notebooks/19_mlops_flow
    notebooks/20_exogenous
+   notebooks/21_mlops_exogenous

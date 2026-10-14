@@ -89,6 +89,28 @@ As duas medidas são fora da amostra e nas mesmas datas. A regra "não pior" tro
 empate, o modelo por um treinado com dados mais recentes, o que também atualiza a
 referência do monitoramento depois de uma mudança de regime.
 
+Exógenas em produção
+--------------------
+
+Um modelo com exógenas precisa, a cada previsão, das covariáveis da data prevista (colunas
+``future``) e, a cada observação, das covariáveis observadas (colunas ``past``). A tabela
+``covariates`` guarda as duas, por série, data e coluna:
+
+.. code-block:: python
+
+   store.log_covariates("serie", previsao_do_tempo)        # na véspera
+   ticket = stream.predict_next(previsao_do_tempo)
+   store.log_covariates("serie", temperatura_observada)    # com a observação
+   stream.observe(valor, temperatura_observada)
+
+   # o serviço reconstrói o que o modelo precisa a partir do banco
+   X_new = store.covariates("serie", inicio, fim)
+   model = store.load("demanda", trusted=True).update_state(y_novo, X_new=X_new)
+
+Um valor registrado de novo para a mesma data e coluna substitui o anterior. A tabela também
+serve para auditar as entradas, por exemplo o erro da previsão do tempo contra a temperatura
+observada, com SQL.
+
 Tabelas de operação
 -------------------
 
@@ -107,6 +129,8 @@ Tabelas de operação
      - Previsões feitas em produção: modelo, série, origem, data prevista, horizonte e valor.
    * - ``actuals``
      - Observações de cada série por data.
+   * - ``covariates``
+     - Covariáveis de cada série por data e coluna (previstas ou observadas).
 
 Essas tabelas não pertencem a uma execução: ``log`` e ``delete_run`` não as alteram.
 
@@ -121,4 +145,5 @@ Limites
 
 .. seealso::
 
-   Tutorial: :doc:`../tutorials/notebooks/19_mlops_flow`.
+   Tutoriais: :doc:`../tutorials/notebooks/19_mlops_flow`,
+   :doc:`../tutorials/notebooks/21_mlops_exogenous`.

@@ -90,6 +90,28 @@ Both measures are out of sample and on the same dates. The "not worse" rule repl
 tie, the model with one trained on more recent data, which also refreshes the monitoring
 reference after a regime change.
 
+Covariates in production
+------------------------
+
+A model with covariates needs, for each forecast, the covariates of the forecast date
+(``future`` columns) and, for each observation, the observed covariates (``past`` columns).
+The ``covariates`` table keeps both, by series, date and column:
+
+.. code-block:: python
+
+   store.log_covariates("series", weather_forecast)        # the day before
+   ticket = stream.predict_next(weather_forecast)
+   store.log_covariates("series", observed_temperature)    # with the observation
+   stream.observe(value, observed_temperature)
+
+   # the service rebuilds what the model needs from the database
+   X_new = store.covariates("series", start, end)
+   model = store.load("demand", trusted=True).update_state(y_new, X_new=X_new)
+
+A value logged again for the same date and column replaces the previous one. The table also
+serves to audit the inputs, e.g. the weather forecast error against the observed
+temperature, with SQL.
+
 Operation tables
 ----------------
 
@@ -108,6 +130,8 @@ Operation tables
      - Forecasts made in production: model, series, origin, forecast date, horizon and value.
    * - ``actuals``
      - Observations of each series by date.
+   * - ``covariates``
+     - Covariates of each series by date and column (forecast or observed).
 
 These tables do not belong to a run: ``log`` and ``delete_run`` leave them alone.
 
@@ -122,4 +146,5 @@ Limits
 
 .. seealso::
 
-   Tutorial: :doc:`../tutorials/notebooks/19_mlops_flow`.
+   Tutorials: :doc:`../tutorials/notebooks/19_mlops_flow`,
+   :doc:`../tutorials/notebooks/21_mlops_exogenous`.

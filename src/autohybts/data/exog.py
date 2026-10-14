@@ -284,8 +284,14 @@ class ExogState:
         unknown = set(frame.columns) - set(self.covariates.columns)
         if unknown:
             raise ConfigurationError(f"Colunas exógenas desconhecidas: {sorted(unknown)}.")
-        combined = frame.combine_first(self.covariates)
-        return combined[list(self.covariates.columns)].sort_index()
+        frame = frame.reindex(columns=self.covariates.columns)
+        current = self.covariates
+        if current.empty or frame.index.min() > current.index.max():
+            # The common case when streaming: later dates only, appended (cheap).
+            return pd.concat([current, frame])
+        combined = current.reindex(current.index.union(frame.index))
+        combined.update(frame)  # values of ``rows`` win; their gaps keep what was known
+        return combined
 
     def design(self, timeline: pd.DatetimeIndex, rows: pd.DataFrame | None = None) -> ExogDesign:
         return design_from(self.extended(rows), self.kinds, self.features, timeline)

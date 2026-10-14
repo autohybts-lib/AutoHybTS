@@ -243,4 +243,5 @@ Limits
 
 .. seealso::
 
-   Tutorial: :doc:`../tutorials/notebooks/20_exogenous`.
+   Tutorials: :doc:`../tutorials/notebooks/20_exogenous`,
+   :doc:`../tutorials/notebooks/21_mlops_exogenous`.

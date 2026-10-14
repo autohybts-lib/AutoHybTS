@@ -124,6 +124,10 @@ _OPERATIONS: Final = {
         "model_id series_id timestamp horizon",
     ),
     "actuals": ("series_id timestamp y_true logged_utc", "series_id timestamp"),
+    "covariates": (
+        "series_id timestamp column value logged_utc",
+        "series_id timestamp column",
+    ),
 }
 OPERATION_TABLES: Final[dict[str, tuple[tuple[str, ...], tuple[str, ...]]]] = {
     table: (tuple(columns.split()), tuple(key.split()))
@@ -410,6 +414,63 @@ class ExperimentStore:
         with closing(self._connect()) as con, con:
             _insert(con, "actuals", rows, replace=True)
         return len(rows)
+
+    def log_covariates(self, series_id: str, covariates: pd.DataFrame) -> int:
+        """Record exogenous values of ``series_id`` by date and column; returns the count.
+
+        ``covariates`` is indexed by date with one column per covariate (missing cells are
+        skipped). A value logged again for the same date and column replaces the previous
+        one, e.g. a weather forecast later replaced by the observed value.
+        """
+
+        if not isinstance(covariates, pd.DataFrame) or not isinstance(
+            covariates.index, pd.DatetimeIndex
+        ):
+            raise ConfigurationError("covariates deve ser um DataFrame com DatetimeIndex.")
+        now = datetime.now(UTC).isoformat()
+        rows = [
+            {
+                "series_id": series_id,
+                "timestamp": timestamp,
+                "column": str(column),
+                "value": value,
+                "logged_utc": now,
+            }
+            for timestamp, values in covariates.iterrows()
+            for column, value in values.items()
+            if pd.notna(value)
+        ]
+        with closing(self._connect()) as con, con:
+            _insert(con, "covariates", rows, replace=True)
+        return len(rows)
+
+    def covariates(
+        self,
+        series_id: str,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
+    ) -> pd.DataFrame:
+        """Recorded covariates of ``series_id`` as a ``DataFrame`` (dates × columns).
+
+        ``start`` and ``end`` bound the dates (inclusive); the result is ready for
+        ``update_state(..., X_new=...)`` or ``predict(..., X_future=...)``.
+        """
+
+        sql = "SELECT timestamp, column, value FROM covariates WHERE series_id = ?"
+        params: list[object] = [series_id]
+        if start is not None:
+            sql += " AND timestamp >= ?"
+            params.append(pd.Timestamp(start).isoformat())
+        if end is not None:
+            sql += " AND timestamp <= ?"
+            params.append(pd.Timestamp(end).isoformat())
+        frame = self.query(sql, params)
+        if frame.empty:
+            return pd.DataFrame(index=pd.DatetimeIndex([], name="timestamp"))
+        table = frame.pivot(index="timestamp", columns="column", values="value")
+        table.index = pd.DatetimeIndex(pd.to_datetime(table.index), name="timestamp")
+        table.columns.name = None
+        return table.sort_index()
 
     def monitor(
         self, model_id: str, *, window: int = 30, threshold: float = 1.5, horizon: int = 1

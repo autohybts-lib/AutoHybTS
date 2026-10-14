@@ -24,6 +24,7 @@ Short notebooks, one topic each, in the style of the PyCaret tutorials. They liv
 * :doc:`notebooks/18_sql_analysis`: experiments stored in SQLite and analysed with SQL queries.
 * :doc:`notebooks/19_mlops_flow`: MLOps flow with a commodity price: registration, promotion, daily forecasts, monitoring and gated retraining.
 * :doc:`notebooks/20_exogenous`: series with exogenous variables: past × future, oracle, automatic selection and with × without covariates on benchmarks (downloads data on the first run).
+* :doc:`notebooks/21_mlops_exogenous`: MLOps with covariates on real data: daily electricity demand in Victoria with weather forecast, holiday and weekend (downloads data on the first run).
 
 .. toctree::
    :hidden:
@@ -48,3 +49,4 @@ Short notebooks, one topic each, in the style of the PyCaret tutorials. They liv
    notebooks/18_sql_analysis
    notebooks/19_mlops_flow
    notebooks/20_exogenous
+   notebooks/21_mlops_exogenous

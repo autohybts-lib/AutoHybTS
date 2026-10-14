@@ -309,3 +309,21 @@ def test_residual_hybrids_pass_the_covariates_to_their_base(variant: str) -> Non
         exog=(ExogFeature("x", lag),),
     )
     assert {t.status for t in evaluator.evaluate(multistep, plan).trials} == {"SKIPPED"}
+
+
+def test_state_extension_appends_new_dates_and_replaces_known_ones() -> None:
+    from autohybts.data.exog import ExogState
+
+    index = pd.date_range("2024-01-01", periods=3, freq="D")
+    covariates = pd.DataFrame({"x": [1.0, 2.0, 3.0], "feriado": [0.0, 1.0, 0.0]}, index=index)
+    state = ExogState(covariates, {"x": "past", "feriado": "future"}, (ExogFeature("x", 1),), 1)
+    later = pd.Timestamp("2024-01-04")
+    appended = state.extended({"feriado": 1.0}, later)
+    assert appended.index[-1] == later
+    assert np.isnan(appended.loc[later, "x"])
+    assert appended.loc[later, "feriado"] == 1.0
+    replaced = state.extended(pd.DataFrame({"x": [9.0]}, index=index[1:2]))
+    assert replaced.loc[index[1], "x"] == 9.0
+    assert replaced.loc[index[1], "feriado"] == 1.0  # a gap in the new row keeps what was known
+    with pytest.raises(ConfigurationError, match="desconhecidas"):
+        state.extended({"chuva": 1.0}, later)
