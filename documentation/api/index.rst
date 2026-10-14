@@ -15,7 +15,8 @@ Experimento
              create_combination, tune_model, compare_models, finalize_model, predict_model,
              evaluate_external, cross_validate, compare_external, nested_cross_validate,
              data_profile, seasonality_report, characterize, stationarity_report,
-             decompose, residual_diagnostics, plot_data, plot_model, plot_characterization, get_metrics, export_evidence
+             decompose, residual_diagnostics, plot_data, plot_model, plot_characterization, get_metrics, export_evidence,
+             exog_report, compare_exog
 
 .. autoclass:: autohybts.AutoHybridForecaster
    :members:
@@ -32,6 +33,11 @@ Dados
 .. autofunction:: autohybts.datasets.load_dataset
 .. autofunction:: autohybts.datasets.raw_dataset
 .. autofunction:: autohybts.datasets.describe_dataset
+.. autofunction:: autohybts.datasets.list_exog_datasets
+.. autofunction:: autohybts.datasets.load_exog_dataset
+.. autoclass:: autohybts.data.exog.ExogFrame
+   :members: from_frame, kind, default_features, check
+.. autofunction:: autohybts.data.exog_selection.select_exog
 
 .. autoclass:: autohybts.datasets.BenchmarkSeries
    :members: full

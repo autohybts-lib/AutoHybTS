@@ -229,11 +229,13 @@ class SearchSpace:
         """SX: every base that accepts covariates, with each exogenous feature set."""
 
         proposals = []
-        for features in self.exog_sets:
-            for proposal in self.base_proposals(registry):
-                base = proposal.candidate
-                if not registry.entry(base.base.name).capabilities.accepts_exog:
-                    continue
+        # Base-major: under a tight budget every feature set is tried with the first base
+        # before the next base, so the sets are compared on equal terms.
+        for proposal in self.base_proposals(registry):
+            base = proposal.candidate
+            if not registry.entry(base.base.name).capabilities.accepts_exog:
+                continue
+            for features in self.exog_sets:
                 candidate = replace(base, family="exogenous", exog=tuple(features))
                 proposals.append(Proposal(candidate, "SX", skip_reason=proposal.skip_reason))
         return proposals

@@ -21,6 +21,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [17_benchmark_study](17_benchmark_study.ipynb) | 17 séries clássicas em três classes: cinco modelos (com o híbrido ARIMA–ANN) nos protocolos A e B, com 3, 6 e 12 lags e horizontes até 12 | extras `stats` e `plot`; rede na primeira execução |
 | [18_sql_analysis](18_sql_analysis.ipynb) | Experimentos gravados em SQLite com `ExperimentStore` e analisados com consultas SQL | extras `stats` e `plot` |
 | [19_mlops_flow](19_mlops_flow.ipynb) | Fluxo de MLOps com o preço de uma commodity: registro, promoção, previsões diárias, monitoramento e retreino com portão | extras `stats` e `plot` |
+| [20_exogenous](20_exogenous.ipynb) | Séries com variáveis exógenas: past × future, oráculo, seleção automática e com × sem exógenas em benchmarks | extras `stats` e `plot`; rede na primeira execução |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar

@@ -22,6 +22,7 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 | [17_benchmark_study](17_benchmark_study.ipynb) | 17 classical series in three classes: five models (with the ARIMA–ANN hybrid) in protocols A and B, with 3, 6 and 12 lags and horizons up to 12 | `stats` and `plot` extras; network on first run |
 | [18_sql_analysis](18_sql_analysis.ipynb) | Experiments stored in SQLite with `ExperimentStore` and analysed with SQL queries | `stats` and `plot` extras |
 | [19_mlops_flow](19_mlops_flow.ipynb) | MLOps flow with a commodity price: registration, promotion, daily forecasts, monitoring and gated retraining | `stats` and `plot` extras |
+| [20_exogenous](20_exogenous.ipynb) | Series with exogenous variables: past × future, oracle, automatic selection and with × without covariates on benchmarks | `stats` and `plot` extras; network on first run |
 
 ## How to run
 

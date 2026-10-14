@@ -229,6 +229,15 @@ class AutoHybridExperiment(Parametrized):
             the day's temperature, as ``future`` makes the evaluation an oracle.
         exog_lags: extra lags per exogenous column, e.g. ``{"temperature": [7, 14]}``
             (``past`` columns need lags >= the minimum above).
+        exog_selection: how the exogenous features are chosen. ``None`` (default): every
+            column at its smallest causal lag. A method of
+            :mod:`autohybts.data.exog_selection` (``"ccf"``, ``"granger"``, ``"lasso"``,
+            ``"stepwise_bic"``, ``"mutual_info"``, ``"vote"``) or a list of them: each
+            chosen set is a candidate feature set. ``"auto"``: every method and the set
+            with all columns; the search tries them and the selection decides, under the
+            acceptance rule, whether any covariate enters. Methods run on the data before
+            the first ``V_select`` origin, as tuning does on ``V_search``; ``V_select``
+            and the sealed test never reach them (``exog_report()``).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -269,6 +278,7 @@ class AutoHybridExperiment(Parametrized):
         missing: str = "reject",
         exog_future: Sequence[str] = (),
         exog_lags: Mapping[str, Sequence[int]] | None = None,
+        exog_selection: str | Sequence[str] | None = None,
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -306,6 +316,7 @@ class AutoHybridExperiment(Parametrized):
         self.missing = missing
         self.exog_future = exog_future
         self.exog_lags = exog_lags
+        self.exog_selection = exog_selection
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -429,9 +440,13 @@ class AutoHybridExperiment(Parametrized):
 
         self.exog_: ExogFrame | None = None
         self.exog_features_: tuple[ExogFeature, ...] = ()
+        self.exog_sets_: tuple[tuple[ExogFeature, ...], ...] = ()
+        self.exog_selection_: pd.DataFrame | None = None
         if X is None:
-            if self.exog_future or self.exog_lags:
-                raise ConfigurationError("exog_future e exog_lags exigem X em fit(y, X).")
+            if self.exog_future or self.exog_lags or self.exog_selection is not None:
+                raise ConfigurationError(
+                    "exog_future, exog_lags e exog_selection exigem X em fit(y, X)."
+                )
             return
         if not panel.is_single:
             raise UnsupportedCapabilityError(
@@ -452,8 +467,81 @@ class AutoHybridExperiment(Parametrized):
                 features.append(ExogFeature(str(column), int(lag)))
         exog.check(features, step)
         self.exog_ = exog
-        self.exog_features_ = tuple(sorted(set(features)))
         self._exog_step = step
+        default = tuple(sorted(set(features)))
+        self.exog_sets_ = self._select_exog(exog, default, step)
+        self.exog_features_ = self.exog_sets_[0] if self.exog_sets_ else ()
+
+    def _select_exog(
+        self, exog: ExogFrame, default: tuple[ExogFeature, ...], step: int
+    ) -> tuple[tuple[ExogFeature, ...], ...]:
+        """Candidate feature sets; methods see only data up to the first ``V_select`` origin."""
+
+        from autohybts.data.exog_selection import (
+            BASE_METHODS,
+            SELECTION_METHODS,
+            ExogSelection,
+            select_exog,
+            vote_selection,
+        )
+
+        choice = self.exog_selection
+        if choice is None:
+            self.exog_selection_ = pd.DataFrame(
+                {
+                    "method": "all",
+                    "column": [f.column for f in default],
+                    "lag": [f.lag for f in default],
+                    "feature": [f.name for f in default],
+                    "selected": True,
+                }
+            )
+            return (default,)
+        methods = (
+            ("vote", "stepwise_bic", "lasso", "granger", "ccf", "mutual_info")
+            if choice == "auto"
+            else ((choice,) if isinstance(choice, str) else tuple(choice))
+        )
+        unknown = set(methods) - set(SELECTION_METHODS)
+        if unknown or not methods:
+            raise ConfigurationError(
+                f"exog_selection aceita None, 'auto' ou métodos de {SELECTION_METHODS}; "
+                f"recebido {choice!r}."
+            )
+        first = min(origin.origin_index for origin in self.plan_.select_origins)
+        dates = self.history_.timestamps[: first + 1]
+        covariates = exog.to_frame().reindex(dates)
+        kinds = dict(zip(exog.columns, exog.kinds, strict=True))
+        lags = [lag for values in (self.exog_lags or {}).values() for lag in values]
+        top = max([step + 6, *lags])
+        values = self.history_.values[: first + 1]
+        results: dict[str, ExogSelection] = {}
+        # The vote reuses the other methods when they ran too.
+        for method in sorted(methods, key=lambda m: m == "vote"):
+            if method == "vote" and set(BASE_METHODS) <= set(results):
+                results[method] = vote_selection([results[m] for m in BASE_METHODS])
+                continue
+            try:
+                results[method] = select_exog(
+                    values, covariates, kinds, step, method, max_lag=top, seed=self.session_id
+                )
+            except InsufficientHistoryError as error:
+                warnings.warn(
+                    f"exog_selection: {method} pulado ({error})", UserWarning, stacklevel=3
+                )
+                results[method] = ExogSelection(method, (), pd.DataFrame({"method": [method]}))
+        self.exog_selection_ = pd.concat([r.table for r in results.values()], ignore_index=True)
+        sets = [results[m].features for m in methods]
+        if choice == "auto":
+            sets.append(default)
+        unique = tuple(dict.fromkeys(group for group in sets if group))
+        if not unique:
+            warnings.warn(
+                "Nenhum método escolheu exógenas: a família exogenous fica de fora.",
+                UserWarning,
+                stacklevel=3,
+            )
+        return unique
 
     @property
     def is_panel(self) -> bool:
@@ -793,7 +881,7 @@ class AutoHybridExperiment(Parametrized):
 
         self._require("VALIDATED")
         if include is None:
-            include = (*_DEFAULT_INCLUDE, "exogenous") if self.exog_ else _DEFAULT_INCLUDE
+            include = (*_DEFAULT_INCLUDE, "exogenous") if self.exog_sets_ else _DEFAULT_INCLUDE
         include = self._check_include(include)
         started = time.perf_counter()
         space = self._space(with_residuals="residual" in include, include=include)
@@ -1882,7 +1970,7 @@ class AutoHybridExperiment(Parametrized):
             combination_weights=tuple(self.combination_weights) if "combination" in include else (),
             ensemble_methods=tuple(self.ensemble_methods) if "ensemble" in include else (),
             dynamic_methods=("dref", "local") if "dynamic" in include else (),
-            exog_sets=(self.exog_features_,) if "exogenous" in include else (),
+            exog_sets=self.exog_sets_ if "exogenous" in include else (),
         )
 
     def _snapshot(
@@ -1928,8 +2016,10 @@ class AutoHybridExperiment(Parametrized):
             raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")
         if "multistage" in include and "residual" not in include:
             raise ConfigurationError("'multistage' refina estruturas residuais: inclua 'residual'.")
-        if "exogenous" in include and getattr(self, "exog_", None) is None:
-            raise ConfigurationError("'exogenous' exige X em fit(y, X).")
+        if "exogenous" in include and not getattr(self, "exog_sets_", ()):
+            raise ConfigurationError(
+                "'exogenous' exige X em fit(y, X) e ao menos um conjunto de exógenas."
+            )
         return include
 
     def _guard(self) -> SearchGuardConfig:
@@ -1960,6 +2050,52 @@ class AutoHybridExperiment(Parametrized):
                 str(k): [int(v) for v in lags] for k, lags in params["exog_lags"].items()
             }
         return params
+
+    def exog_report(self) -> pd.DataFrame:
+        """How the exogenous features were chosen: one row per method and candidate feature.
+
+        Columns: ``method``, ``column``, ``lag``, ``feature``, ``score``, ``p_value`` (when
+        the method has one) and ``selected``. Computed in ``fit`` on the training vector
+        before the first ``V_select`` origin.
+        """
+
+        self._require("VALIDATED")
+        if self.exog_selection_ is None:
+            raise ConfigurationError("O experimento não tem exógenas: use fit(y, X).")
+        return self.exog_selection_.copy()
+
+    def compare_exog(self) -> ComparisonResult:
+        """Best finalist with covariates against the best without, on the same ``V_select`` units.
+
+        Reporting only (Wilcoxon and Diebold-Mariano in ``.tests()``, Holm-adjusted); the
+        decision is the acceptance rule's, in ``compare_models().decisions``. For the
+        sealed test, finalize both and use ``compare_external``.
+        """
+
+        self._require("SELECTED")
+        compare = self.compare_
+        if compare is None:
+            raise ConfigurationError("Chame compare_models antes de compare_exog.")
+        finalists = compare.selection.finalists
+        with_exog = [r for r in finalists if r.candidate.exog]
+        without = [r for r in finalists if not r.candidate.exog]
+        if not with_exog or not without:
+            raise ConfigurationError(
+                "compare_exog precisa de finalistas com e sem exógenas (inclua 'exogenous')."
+            )
+        metric = self.evaluator_.metrics[0]
+
+        def best(results: Sequence[EvaluationResult]) -> EvaluationResult:
+            return min(results, key=lambda r: (r.mean(metric), r.candidate_id))
+
+        return ComparisonResult(
+            (best(without), best(with_exog)),
+            metric,
+            self._series(None),
+            "V_select: sem × com exógenas",
+            reference=0,
+            max_lag=max(0, math.ceil(self.fh / self._splitter.effective_step) - 1),
+        )
 
     def _exog_rows(self) -> pd.DataFrame:
         """Covariates given to ``fit`` (a model reads only the rows its features allow)."""

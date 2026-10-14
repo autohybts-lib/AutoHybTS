@@ -73,6 +73,7 @@ estratégias de montar sistemas híbridos:
 
    user_guide/datasets
    user_guide/panels
+   user_guide/exogenous
 
 .. toctree::
    :maxdepth: 1

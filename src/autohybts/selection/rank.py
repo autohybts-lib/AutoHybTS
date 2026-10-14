@@ -33,7 +33,8 @@ def structure_key(candidate: CandidateSpec) -> tuple[str, ...]:
     """Same strategy and components; hyper-parameters, window, alpha and source may vary.
 
     Extra stages and combination members are components; the decomposition method and
-    the combination weighting are part of the structure too.
+    the combination weighting are part of the structure too, and so is the use of
+    exogenous covariates (not the feature set, which is a configuration).
     """
 
     corrector = candidate.corrector.name if candidate.corrector is not None else ""
@@ -47,6 +48,10 @@ def structure_key(candidate: CandidateSpec) -> tuple[str, ...]:
         # Compositions: the structure is the set of component structures.
         parts = sorted("/".join(structure_key(c)) for c in candidate.components)
         extra += (f"components=[{';'.join(parts)}]",)
+    if candidate.exog:
+        # With covariates it is another structure (the feature set is a configuration);
+        # otherwise the univariate version could absorb it and hide the family (ADR-0011).
+        extra += ("exog",)
     return key + extra
 
 
