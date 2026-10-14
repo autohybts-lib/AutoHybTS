@@ -21,6 +21,7 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
 * :doc:`notebooks/15_statsforecast`: modelos automáticos do StatsForecast (ambiente com pandas 2.x).
 * :doc:`notebooks/16_series_diagnostics`: sazonalidade, estacionariedade, diferenças e caracterização.
 * :doc:`notebooks/17_benchmark_study`: 17 séries clássicas em três classes, cinco modelos (com o híbrido ARIMA–ANN), protocolos A e B, 3, 6 e 12 lags e horizontes até 12 (baixa dados na primeira execução).
+* :doc:`notebooks/18_sql_analysis`: experimentos gravados em SQLite e analisados com consultas SQL.
 
 .. toctree::
    :hidden:
@@ -42,3 +43,4 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
    notebooks/15_statsforecast
    notebooks/16_series_diagnostics
    notebooks/17_benchmark_study
+   notebooks/18_sql_analysis

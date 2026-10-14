@@ -7,10 +7,12 @@ from autohybts.data.panel import PanelFrame
 from autohybts.experiment import AutoHybridExperiment
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster
 from autohybts.persistence.model_store import load_model, read_manifest, save_model
+from autohybts.tracking import ExperimentStore
 
 __all__ = [
     "AutoHybridExperiment",
     "AutoHybridForecaster",
+    "ExperimentStore",
     "FinalizedForecaster",
     "PanelForecaster",
     "PanelFrame",

@@ -20,6 +20,7 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 | [14_intermittent_demand](14_intermittent_demand.ipynb) | Intermittent demand: Croston-SBA, TSB, ADIDA and IMAPA against simple means, why RMSSE instead of MASE, rate changes, demand that stops and the `intermittent` family in the search | — |
 | [15_statsforecast](15_statsforecast.ipynb) | StatsForecast's AutoARIMA, AutoETS, AutoTheta and AutoCES against statsmodels and baselines, frozen parameters (`forward`), the statistical-ANN hybrids of the replication and the search with these models | `nixtla-stats` extra (brings pandas 2.x) |
 | [17_benchmark_study](17_benchmark_study.ipynb) | 17 classical series in three classes: five models (with the ARIMA–ANN hybrid) in protocols A and B, with 3, 6 and 12 lags and horizons up to 12 | `stats` and `plot` extras; network on first run |
+| [18_sql_analysis](18_sql_analysis.ipynb) | Experiments stored in SQLite with `ExperimentStore` and analysed with SQL queries | `stats` and `plot` extras |
 
 ## How to run
 

@@ -59,6 +59,9 @@ Finalized models and persistence
 .. autofunction:: autohybts.load_model
 .. autofunction:: autohybts.read_manifest
 
+.. autoclass:: autohybts.ExperimentStore
+   :members: log, query, runs, delete_run, tables
+
 Results
 -------
 

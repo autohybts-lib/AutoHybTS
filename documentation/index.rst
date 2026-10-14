@@ -99,6 +99,7 @@ estratégias de montar sistemas híbridos:
    user_guide/results
    user_guide/comparison
    user_guide/persistence
+   user_guide/tracking
 
 .. toctree::
    :maxdepth: 1
