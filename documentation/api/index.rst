@@ -67,7 +67,7 @@ Modelos finalizados e persistência
 
 .. autoclass:: autohybts.ExperimentStore
    :members: log, query, runs, delete_run, tables, register_model, promote, registry,
-      load, log_forecasts, log_actuals, monitor
+      load, log_forecasts, log_actuals, log_covariates, covariates, monitor
 
 Resultados
 ----------

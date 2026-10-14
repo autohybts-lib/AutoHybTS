@@ -158,3 +158,20 @@ def test_commodity_price_has_a_supply_shock() -> None:
     assert calm.pct_change().std() < 1.2 * before
     with pytest.raises(ConfigurationError, match="shock_at"):
         get_data("commodity_price_daily", shock_at=1.5)
+
+
+def test_covariates_round_trip_and_later_values_replace_earlier_ones(tmp_path: Path) -> None:
+    store = ExperimentStore(tmp_path / "ops.db")
+    index = pd.date_range("2030-01-01", periods=3, freq="D")
+    frame = pd.DataFrame({"temp": [20.0, np.nan, 22.0], "feriado": [0.0, 1.0, 0.0]}, index=index)
+    assert store.log_covariates("s", frame) == 5
+    table = store.covariates("s")
+    assert table.loc[index[0], "temp"] == 20.0
+    assert np.isnan(table.loc[index[1], "temp"])
+    store.log_covariates("s", pd.DataFrame({"temp": [25.0]}, index=index[:1]))
+    assert store.covariates("s").loc[index[0], "temp"] == 25.0
+    assert list(store.covariates("s", start=index[1]).index) == list(index[1:])
+    assert list(store.covariates("s", end=index[0]).index) == [index[0]]
+    assert store.covariates("other").empty
+    with pytest.raises(ConfigurationError, match="DatetimeIndex"):
+        store.log_covariates("s", pd.DataFrame({"temp": [1.0]}))
