@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from autohybts.adapters.base import BaseForecaster
+from autohybts.data.exog import ExogState, as_rows
 from autohybts.data.schema import SeriesFrame
 from autohybts.domain.context import TemporalContext
 from autohybts.domain.identity import derive_seed
@@ -35,6 +36,10 @@ class FinalizedForecaster:
 
     Holds the history it was fitted on because forecasting needs it (lags, filter state,
     residual windows). Forecasts start right after ``training_cutoff``.
+
+    With exogenous features (ADR-0011) ``exog`` keeps the covariates up to the last
+    observation; ``predict`` takes the values of ``future`` columns for the horizon
+    (``X_future``) and ``update_state`` the covariates of the new dates (``X_new``).
     """
 
     spec: CandidateSpec
@@ -44,6 +49,7 @@ class FinalizedForecaster:
     manifest: Mapping[str, Any] = field(default_factory=dict)
     # Observations used by fit; later ones arrived through update_state (no refit).
     n_trained: int | None = None
+    exog: ExogState | None = None
 
     @property
     def training_cutoff(self) -> pd.Timestamp:
@@ -63,12 +69,17 @@ class FinalizedForecaster:
         return self.spec.variant
 
     def update_state(
-        self, observations: pd.Series | SeriesFrame, *, refit: bool = False
+        self,
+        observations: pd.Series | SeriesFrame,
+        *,
+        refit: bool = False,
+        X_new: pd.DataFrame | None = None,
     ) -> FinalizedForecaster:
         """Same fitted model, longer history: new observations change the state, not the fit.
 
         Returns a new object; ``refit=True`` is refused because re-estimating parameters is
-        a separate, explicit operation (``finalize_model`` on the longer series).
+        a separate, explicit operation (``finalize_model`` on the longer series). A model
+        with exogenous features takes the covariates of the new dates in ``X_new``.
         """
 
         if refit:
@@ -91,8 +102,15 @@ class FinalizedForecaster:
         values = np.concatenate([self.history.values, new.values])
         history = SeriesFrame(timestamps, values, self.history.frequency, self.history.series_id)
         n_trained = len(self.history) if self.n_trained is None else self.n_trained
+        exog = self.exog
+        if exog is None and X_new is not None:
+            raise ConfigurationError("Este modelo não usa exógenas; X_new não se aplica.")
+        if exog is not None:
+            covariates = exog.extended(X_new)
+            covariates = covariates.loc[covariates.index <= history.end]
+            exog = ExogState(covariates, exog.kinds, exog.features, exog.start)
         return FinalizedForecaster(
-            self.spec, self.model, history, self.seed, self.manifest, n_trained
+            self.spec, self.model, history, self.seed, self.manifest, n_trained, exog
         )
 
     def stream(self) -> ForecastStream:
@@ -106,20 +124,51 @@ class FinalizedForecaster:
 
         return str(self.manifest.get("model_id", ""))
 
-    def context(self) -> TemporalContext:
+    def context(self, horizon: int = 0, X_future: pd.DataFrame | None = None) -> TemporalContext:
+        """What the model sees at its last observation; with exogenous features, their rows
+        up to ``horizon`` dates ahead (``future`` columns from ``X_future``)."""
+
+        n = len(self.history)
+        if self.exog is None:
+            return TemporalContext(
+                series_id=self.history.series_id,
+                frequency=self.history.frequency,
+                origin_index=n - 1,
+                origin_time=self.history.end,
+                observed=self.history.values,
+            )
+        limit = self.exog.max_ahead
+        if limit is not None and horizon > limit:
+            raise ConfigurationError(
+                f"Horizonte {horizon} maior que a defasagem das exógenas past ({limit}): os "
+                "valores necessários ainda não teriam sido observados."
+            )
+        timeline = pd.date_range(
+            self.history.timestamps[0], periods=n + horizon, freq=self.history.frequency
+        )
+        design = self.exog.design(timeline, X_future)
+        start = self.exog.start
         return TemporalContext(
             series_id=self.history.series_id,
             frequency=self.history.frequency,
-            origin_index=len(self.history) - 1,
+            origin_index=n - 1,
             origin_time=self.history.end,
-            observed=self.history.values,
+            observed=self.history.values[start:],
+            observed_start=start,
+            exog=design.rows(start, n + horizon),
+            exog_ahead=horizon,
+            exog_max_ahead=design.max_ahead,
         )
 
-    def predict(self, fh: int) -> pd.DataFrame:
-        """``fh`` steps after the last observation, indexed by date; no refit happens here."""
+    def predict(self, fh: int, X_future: pd.DataFrame | None = None) -> pd.DataFrame:
+        """``fh`` steps after the last observation, indexed by date; no refit happens here.
+
+        A model with exogenous ``future`` columns needs their values for the ``fh`` dates in
+        ``X_future``; ``past`` columns come from the history.
+        """
 
         frame = MultiStepEngineA().forecast(
-            self.model, self.context(), fh, candidate_id=self.spec.candidate_id
+            self.model, self.context(fh, X_future), fh, candidate_id=self.spec.candidate_id
         )
         return forecasts_table(frame.to_pandas())
 
@@ -156,6 +205,7 @@ class ForecastStream:
         self._model = model
         self._pending: ForecastTicket | None = None
         self._log: list[dict[str, Any]] = []
+        self._rows: pd.DataFrame | None = None
 
     @property
     def model(self) -> FinalizedForecaster:
@@ -163,36 +213,58 @@ class ForecastStream:
 
         return self._model
 
-    def predict_next(self) -> ForecastTicket:
-        """Forecast the next step; ``observe`` must reveal its value before the next call."""
+    def predict_next(self, exog: Any = None) -> ForecastTicket:
+        """Forecast the next step; ``observe`` must reveal its value before the next call.
+
+        ``exog`` holds the covariates of the date being forecast (a mapping or ``Series`` by
+        column, or a one-row ``DataFrame``), needed for ``future`` columns.
+        """
 
         if self._pending is not None:
             raise ConfigurationError("Observe o valor do passo anterior antes de prever o próximo.")
         model = self._model
-        history = model.history.values
-        components = getattr(model.model, "predict_components", None)
-        prediction = float(model.model.predict(1, model.context())[0])
-        if callable(components):
-            base, correction = components(1, history)
-            base_value, correction_value = float(base[0]), float(correction[0])
-        else:
-            base_value, correction_value = prediction, 0.0
         timestamp = pd.date_range(model.last_observation, periods=2, freq=model.history.frequency)[
             1
         ]
+        rows = None if exog is None else as_rows(exog, timestamp)
+        if model.exog is None and rows is not None:
+            raise ConfigurationError("Este modelo não usa exógenas.")
+        context = model.context(1, rows)
+        components = getattr(model.model, "predict_components", None)
+        prediction = float(model.model.predict(1, context)[0])
+        if callable(components):
+            if context.exog is None:
+                base, correction = components(1, context.observed)
+            else:
+                base, correction = components(1, context.observed, context.exog)
+            base_value, correction_value = float(base[0]), float(correction[0])
+        else:
+            base_value, correction_value = prediction, 0.0
+        self._rows = rows
         self._pending = ForecastTicket(
             model.last_observation, timestamp, prediction, base_value, correction_value
         )
         return self._pending
 
-    def observe(self, value: float) -> None:
-        """Reveal the value forecast by the pending ticket; the model is not refitted."""
+    def observe(self, value: float, exog: Any = None) -> None:
+        """Reveal the value forecast by the pending ticket; the model is not refitted.
+
+        ``exog`` adds covariates observed with the value (``past`` columns of that date).
+        """
 
         if self._pending is None:
             raise ConfigurationError("Nenhuma previsão pendente: chame predict_next primeiro.")
         ticket = self._pending
         observation = pd.Series([float(value)], index=pd.DatetimeIndex([ticket.timestamp]))
-        self._model = self._model.update_state(observation)
+        rows = self._rows
+        if exog is not None:
+            extra = as_rows(exog, ticket.timestamp)
+            rows = extra if rows is None else extra.combine_first(rows)
+        if self._model.exog is None:
+            self._model = self._model.update_state(observation)
+        else:
+            self._model = self._model.update_state(observation, X_new=rows)
+        self._rows = None
         self._log.append(
             {
                 "origin": ticket.origin,
@@ -228,11 +300,13 @@ def refit(
     *,
     session_seed: int,
     residual_settings: ResidualSettings,
+    exog: ExogState | None = None,
 ) -> tuple[BaseForecaster, int | None]:
     """Fresh model for the frozen spec, fitted on ``history`` only (T13).
 
     No object fitted during validation is reused; residuals are regenerated with the same
-    policy inside ``fit``.
+    policy inside ``fit``. A spec with exogenous features is fitted on ``history`` from
+    ``exog.start`` with the covariates of those dates.
     """
 
     if not isinstance(history, SeriesFrame):
@@ -243,7 +317,13 @@ def refit(
         unit_seed=derive_seed(session_seed, candidate.candidate_id, "refit"),
         residual_settings=residual_settings,
     )
-    model.fit(history.values)
+    if candidate.exog:
+        if exog is None:
+            raise ConfigurationError("A candidata usa exógenas: informe o estado das exógenas.")
+        rows = exog.design(history.timestamps).rows(exog.start, len(history))
+        model.fit(history.values[exog.start :], rows)
+    else:
+        model.fit(history.values)
     return model, seed
 
 

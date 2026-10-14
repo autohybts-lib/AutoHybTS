@@ -24,6 +24,7 @@ import autohybts
 from autohybts.adapters.base import Parametrized
 from autohybts.data.characterization import characterize as characterize_series
 from autohybts.data.characterization import decompose_series, ljung_box, stationarity_table
+from autohybts.data.exog import ExogFrame, ExogState
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
 from autohybts.data.schema import SeriesFrame
@@ -37,14 +38,16 @@ from autohybts.data.splitter import (
 )
 from autohybts.domain.identity import canonical_json, stable_hash
 from autohybts.domain.results import EvaluationResult, Layer
-from autohybts.domain.specs import CandidateSpec, ModelSpec
+from autohybts.domain.specs import CandidateSpec, ExogFeature, ModelSpec
 from autohybts.evaluation.metrics import compute_metrics, resolve_metrics
 from autohybts.evaluation.temporal import DEFAULT_METRICS, TemporalEvaluator
 from autohybts.exceptions import (
     ConfigurationError,
     CoverageError,
+    DataValidationError,
     InsufficientHistoryError,
     SealedTestAccessError,
+    UnsupportedCapabilityError,
 )
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster, refit
 from autohybts.forecasting.rolling_one_step_b import rolling_one_step
@@ -78,6 +81,7 @@ __all__ = ["AutoHybridExperiment", "infer_seasonal_period"]
 _INCLUDE: Final = (
     "standalone",
     "residual",
+    "exogenous",
     "multistage",
     "decomposition",
     "combination",
@@ -217,6 +221,14 @@ class AutoHybridExperiment(Parametrized):
         missing: ``"reject"`` (default) refuses a series with missing values;
             ``"ffill"`` fills each gap with the last observed value (causal: only the
             past is used) and drops leading gaps. Filled points are scored as observed.
+        exog_future: exogenous columns of ``X`` known in advance (calendar, holidays,
+            planned prices): used at the forecast date itself. Every other column is
+            ``past`` and enters lagged by at least the steps forecast from one origin
+            (``max(fh, test_size)`` in variant A, 1 in variant B), so no value unknown at
+            the origin reaches a forecast (ADR-0011). Declaring an observed value, such as
+            the day's temperature, as ``future`` makes the evaluation an oracle.
+        exog_lags: extra lags per exogenous column, e.g. ``{"temperature": [7, 14]}``
+            (``past`` columns need lags >= the minimum above).
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -255,6 +267,8 @@ class AutoHybridExperiment(Parametrized):
         transform: str | None = None,
         outliers: str | None = None,
         missing: str = "reject",
+        exog_future: Sequence[str] = (),
+        exog_lags: Mapping[str, Sequence[int]] | None = None,
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -290,6 +304,8 @@ class AutoHybridExperiment(Parametrized):
         self.transform = transform
         self.outliers = outliers
         self.missing = missing
+        self.exog_future = exog_future
+        self.exog_lags = exog_lags
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -300,6 +316,7 @@ class AutoHybridExperiment(Parametrized):
     def fit(
         self,
         y: pd.Series | SeriesFrame | PanelFrame | Mapping[str, pd.Series] | pd.DataFrame,
+        X: pd.DataFrame | None = None,
         *,
         series_col: str | None = None,
         date_col: str | None = None,
@@ -311,6 +328,10 @@ class AutoHybridExperiment(Parametrized):
         a mapping ``series_id -> pd.Series`` or a long ``DataFrame`` with ``series_col``,
         ``date_col`` and ``target`` named explicitly. In a panel every series keeps its
         own sealed test, origins and MASE scale; candidates are compared on all of them.
+
+        ``X`` (optional, one series) holds exogenous covariates indexed by date: every date
+        of ``y`` (sealed test included) and, for ``future`` columns, later dates to forecast
+        beyond the data. Their kinds and lags follow ``exog_future`` and ``exog_lags``.
         """
 
         started = time.perf_counter()
@@ -369,12 +390,14 @@ class AutoHybridExperiment(Parametrized):
             )
             self.search_period_ = period if keep else 1
         self.registry_: ModelRegistry = (self.registry or default_registry()).copy()
+        self._fit_exog(X, panel, test_size)
         self.evaluator_ = TemporalEvaluator(
             self.registry_,
             metrics=tuple(self.metrics),
             seasonal_period=period,
             session_seed=self.session_id,
             residual_settings=ResidualSettings(),
+            exog=self.exog_,
         )
         self.policy_ = (
             SelectionPolicy.quickstart(significance_alpha=self.significance_alpha)
@@ -400,6 +423,37 @@ class AutoHybridExperiment(Parametrized):
             started,
         )
         return self
+
+    def _fit_exog(self, X: pd.DataFrame | None, panel: PanelFrame, test_size: int) -> None:
+        """Validate the covariates and fix the feature set of the exogenous family."""
+
+        self.exog_: ExogFrame | None = None
+        self.exog_features_: tuple[ExogFeature, ...] = ()
+        if X is None:
+            if self.exog_future or self.exog_lags:
+                raise ConfigurationError("exog_future e exog_lags exigem X em fit(y, X).")
+            return
+        if not panel.is_single:
+            raise UnsupportedCapabilityError(
+                "Exógenas em painel ainda não são suportadas: use uma série por experimento."
+            )
+        exog = ExogFrame.from_frame(X, future=self.exog_future)
+        dates = next(iter(panel)).timestamps
+        missing = dates.difference(exog.timestamps)
+        if len(missing):
+            raise DataValidationError(
+                f"X não cobre {len(missing)} data(s) da série (a primeira: {missing[0]}); "
+                "as exógenas precisam de todas as datas, inclusive as do teste selado."
+            )
+        step = 1 if self.variant == "B" else max(self.fh, test_size)
+        features = list(exog.default_features(step))
+        for column, lags in (self.exog_lags or {}).items():
+            for lag in lags:
+                features.append(ExogFeature(str(column), int(lag)))
+        exog.check(features, step)
+        self.exog_ = exog
+        self.exog_features_ = tuple(sorted(set(features)))
+        self._exog_step = step
 
     @property
     def is_panel(self) -> bool:
@@ -479,14 +533,22 @@ class AutoHybridExperiment(Parametrized):
         self._event("model.registered", f"{kind} {name!r} (versão {version})", None)
         return self
 
-    def create_model(self, name: str, **params: Any) -> ModelResult:
-        """Evaluate one standalone model on every origin of both layers."""
+    def create_model(self, name: str, exog: bool = False, **params: Any) -> ModelResult:
+        """Evaluate one standalone model on every origin of both layers.
+
+        ``exog=True`` gives the model the experiment's exogenous features (needs ``X`` in
+        ``fit`` and a model that accepts covariates).
+        """
 
         self._require("VALIDATED")
         entry = self.registry_.entry(name)
         candidate = CandidateSpec.standalone(
             name, params, family=entry.family, variant=self.variant
         )
+        if exog:
+            if not self.exog_features_:
+                raise ConfigurationError("exog=True exige X em fit(y, X).")
+            candidate = replace(candidate, family="exogenous", exog=self.exog_features_)
         return self._model_result(candidate, "model.created")
 
     def create_ensemble(
@@ -714,7 +776,7 @@ class AutoHybridExperiment(Parametrized):
         return (result, tuning) if return_tuner else result
 
     def compare_models(
-        self, include: Sequence[str] = _DEFAULT_INCLUDE, sort: str | None = None
+        self, include: Sequence[str] | None = None, sort: str | None = None
     ) -> CompareResult:
         """Budgeted search on ``V_search``, then incremental selection on ``V_select``.
 
@@ -723,10 +785,15 @@ class AutoHybridExperiment(Parametrized):
         the best residual structures; needs ``"residual"``), ``"decomposition"`` and
         ``"combination"``, ``"ensemble"`` (ensembles of bases, of residual structures and
         corrected ensembles; ``ensemble_methods``) and, in variant B, ``"dynamic"``
-        (dynamic selection of the corrector, ``dref`` and ``local``).
+        (dynamic selection of the corrector, ``dref`` and ``local``). ``"exogenous"``
+        (models with the covariates of ``X``, and their residual corrections) challenges
+        the univariate champion under the same acceptance rule. ``None`` means
+        ``("standalone", "residual")``, plus ``"exogenous"`` when ``fit`` got ``X``.
         """
 
         self._require("VALIDATED")
+        if include is None:
+            include = (*_DEFAULT_INCLUDE, "exogenous") if self.exog_ else _DEFAULT_INCLUDE
         include = self._check_include(include)
         started = time.perf_counter()
         space = self._space(with_residuals="residual" in include, include=include)
@@ -811,17 +878,30 @@ class AutoHybridExperiment(Parametrized):
         self, spec: CandidateSpec, history: SeriesFrame, sealed: SealedTest | None
     ) -> FinalizedForecaster:
         started = time.perf_counter()
+        state = None
+        if spec.exog:
+            if self.exog_ is None:
+                raise ConfigurationError("A candidata usa exógenas, mas fit não recebeu X.")
+            state = ExogState.build(
+                self.exog_.to_frame(),
+                dict(zip(self.exog_.columns, self.exog_.kinds, strict=True)),
+                spec.exog,
+                history.timestamps,
+            )
         model, seed = refit(
             spec,
             history,
             self.registry_,
             session_seed=self.session_id,
             residual_settings=self.evaluator_.residual_settings,
+            exog=state,
         )
+        identity: dict[str, Any] = {"spec": spec.candidate_id, "data": history.fingerprint}
+        identity["seed"] = seed
+        if state is not None and self.exog_ is not None:
+            identity["exog"] = self.exog_.fingerprint
         manifest = {
-            "model_id": stable_hash(
-                {"spec": spec.candidate_id, "data": history.fingerprint, "seed": seed}
-            ),
+            "model_id": stable_hash(identity),
             "spec": {
                 "candidate_id": spec.candidate_id,
                 "label": spec.label,
@@ -843,14 +923,23 @@ class AutoHybridExperiment(Parametrized):
         external = self._external_requirements(spec)
         if external:
             manifest["frameworks"] = framework_versions(external)
-        final = FinalizedForecaster(spec, model, history, seed, manifest, len(history))
+        if state is not None and self.exog_ is not None:
+            manifest["exog"] = {**state.describe(), "fingerprint": self.exog_.fingerprint}
+        final = FinalizedForecaster(spec, model, history, seed, manifest, len(history), state)
         self._event("model.finalized", f"{spec.label} reajustado até {history.end}", started)
         return final
 
     def predict_model(
-        self, model: FinalizedForecaster | PanelForecaster, fh: int | None = None
+        self,
+        model: FinalizedForecaster | PanelForecaster,
+        fh: int | None = None,
+        X_future: pd.DataFrame | None = None,
     ) -> PredictResult:
-        """Forecast from the end of the model's training history; never refits."""
+        """Forecast from the end of the model's training history; never refits.
+
+        A model with exogenous ``future`` columns takes their values for the horizon from
+        ``X_future`` or, when omitted, from the ``X`` given to ``fit``.
+        """
 
         if not isinstance(model, FinalizedForecaster | PanelForecaster):
             raise ConfigurationError(
@@ -862,7 +951,13 @@ class AutoHybridExperiment(Parametrized):
                 "Um modelo da variante B prevê um passo por vez; use fh=1 ou model.stream() "
                 "para prever enquanto as observações chegam."
             )
-        predictions = model.predict(steps)
+        if isinstance(model, FinalizedForecaster) and model.exog is not None:
+            rows = X_future if X_future is not None else self._exog_rows()
+            predictions = model.predict(steps, rows)
+        elif X_future is not None:
+            raise ConfigurationError("Este modelo não usa exógenas; X_future não se aplica.")
+        else:
+            predictions = model.predict(steps)
         self._event("model.predicted", f"{len(predictions)} passos", None)
         return PredictResult(predictions, model.spec.label)
 
@@ -907,10 +1002,11 @@ class AutoHybridExperiment(Parametrized):
             )
         self._externally_evaluated.add(model.model_id)
         started = time.perf_counter()
+        rows = self._exog_rows() if model.exog is not None else None
         if model.variant == "B":
-            predictions = _rolling_table(model, test)
+            predictions = _rolling_table(model, test, rows)
         else:
-            predictions = model.predict(len(test))
+            predictions = model.predict(len(test), rows)
         predictions["y_true"] = test.values
         values = compute_metrics(
             resolve_metrics(self.evaluator_.metrics),
@@ -1385,6 +1481,7 @@ class AutoHybridExperiment(Parametrized):
         outer = TemporalCrossValidation(horizon=self.fh, n_folds=outer_folds, step=self.fh)
         outer_plan = plan_panel(outer, self.panel_)
         params = {**self._public_params(), "test_size": 0, "registry": self.registry}
+        exog_rows = None if self.exog_ is None else self._exog_rows()
         if budget is not None:
             params["budget"] = budget
         metrics = resolve_metrics(self.evaluator_.metrics)
@@ -1408,7 +1505,11 @@ class AutoHybridExperiment(Parametrized):
             fold_started = time.perf_counter()
             try:
                 inner_input = inner[series_ids[0]] if not self.is_panel else PanelFrame(inner)
-                inner_exp = AutoHybridExperiment(**params).fit(inner_input)
+                inner_exp = (
+                    AutoHybridExperiment(**params).fit(inner_input)
+                    if self.exog_ is None
+                    else AutoHybridExperiment(**params).fit(inner_input, self._exog_rows())
+                )
                 inner_compare = inner_exp.compare_models(include=families)
                 compared = time.perf_counter()
                 final = inner_exp.finalize_model(inner_compare.best)
@@ -1451,7 +1552,7 @@ class AutoHybridExperiment(Parametrized):
                 history = inner[sid]
                 actual = outer_plan[sid].target_values(origins[sid])
                 member = final[sid] if isinstance(final, PanelForecaster) else final
-                forecast = member.predict(self.fh)["y_pred"].to_numpy()
+                forecast = member.predict(self.fh, exog_rows)["y_pred"].to_numpy()
                 scores = compute_metrics(
                     metrics, actual, forecast, history.values, self.seasonal_period_
                 )
@@ -1459,7 +1560,7 @@ class AutoHybridExperiment(Parametrized):
                 reference_scores = compute_metrics(
                     metrics,
                     actual,
-                    standalone.predict(self.fh)["y_pred"].to_numpy(),
+                    standalone.predict(self.fh, exog_rows)["y_pred"].to_numpy(),
                     history.values,
                     self.seasonal_period_,
                 )
@@ -1646,6 +1747,11 @@ class AutoHybridExperiment(Parametrized):
         order = [*order[:position], *extra, *order[position:]]
         if "ensemble" in include:
             order.insert(order.index("dynamic"), "ensemble")
+        if "exogenous" in include:
+            # After the univariate residual structures: covariates must earn their place
+            # against the best model that does without them.
+            anchor = "multistage" if "multistage" in order else "residual"
+            order.insert(order.index(anchor) + 1, "exogenous")
         return tuple(order)
 
     def _registered_space(self, name: str) -> dict[str, Distribution]:
@@ -1776,6 +1882,7 @@ class AutoHybridExperiment(Parametrized):
             combination_weights=tuple(self.combination_weights) if "combination" in include else (),
             ensemble_methods=tuple(self.ensemble_methods) if "ensemble" in include else (),
             dynamic_methods=("dref", "local") if "dynamic" in include else (),
+            exog_sets=(self.exog_features_,) if "exogenous" in include else (),
         )
 
     def _snapshot(
@@ -1821,6 +1928,8 @@ class AutoHybridExperiment(Parametrized):
             raise ConfigurationError("'dynamic' parte das estruturas residuais: inclua 'residual'.")
         if "multistage" in include and "residual" not in include:
             raise ConfigurationError("'multistage' refina estruturas residuais: inclua 'residual'.")
+        if "exogenous" in include and getattr(self, "exog_", None) is None:
+            raise ConfigurationError("'exogenous' exige X em fit(y, X).")
         return include
 
     def _guard(self) -> SearchGuardConfig:
@@ -1846,7 +1955,18 @@ class AutoHybridExperiment(Parametrized):
         for key in ("base_params", "corrector_params"):
             if params.get(key) is not None:
                 params[key] = {k: [dict(p) for p in v] for k, v in _grids(params[key]).items()}
+        if params.get("exog_lags") is not None:
+            params["exog_lags"] = {
+                str(k): [int(v) for v in lags] for k, lags in params["exog_lags"].items()
+            }
         return params
+
+    def _exog_rows(self) -> pd.DataFrame:
+        """Covariates given to ``fit`` (a model reads only the rows its features allow)."""
+
+        if self.exog_ is None:
+            raise ConfigurationError("O experimento não tem exógenas.")
+        return self.exog_.to_frame()
 
     def _require(self, state: str) -> None:
         if _STATES.index(self.state_) < _STATES.index(state):
@@ -1877,16 +1997,31 @@ def _as_frame(y: object) -> SeriesFrame:
     return SeriesFrame.from_series(y)
 
 
-def _rolling_table(model: FinalizedForecaster, test: SeriesFrame) -> pd.DataFrame:
-    """Variant B on a test segment: one-step forecasts, each value revealed after its forecast."""
+def _rolling_table(
+    model: FinalizedForecaster, test: SeriesFrame, rows: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Variant B on a test segment: one-step forecasts, each value revealed after its forecast.
 
-    forecasts = rolling_one_step(
-        model.model,
-        model.history.values,
-        test.values,
-        series_id=model.history.series_id,
-        frequency=model.history.frequency,
-    )
+    With exogenous features the model streams through the test, receiving the covariates of
+    each date with its forecast; nothing is refitted.
+    """
+
+    if model.exog is not None:
+        if rows is None:
+            raise ConfigurationError("O modelo usa exógenas: informe as do período de teste.")
+        stream = model.stream()
+        for timestamp, value in zip(test.timestamps, test.values, strict=True):
+            stream.predict_next(rows.loc[[timestamp]] if timestamp in rows.index else None)
+            stream.observe(float(value))
+        forecasts = stream.log()["y_pred"].to_numpy()
+    else:
+        forecasts = rolling_one_step(
+            model.model,
+            model.history.values,
+            test.values,
+            series_id=model.history.series_id,
+            frequency=model.history.frequency,
+        )
     origins = [model.last_observation, *test.timestamps[:-1]]
     return pd.DataFrame(
         {

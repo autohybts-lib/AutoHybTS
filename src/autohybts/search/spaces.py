@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from autohybts.data.stationarity import DIFFERENCING_TESTS
@@ -20,6 +20,7 @@ from autohybts.domain.specs import (
     ENSEMBLE_METHODS,
     MAX_STAGES,
     CandidateSpec,
+    ExogFeature,
     ModelSpec,
 )
 from autohybts.exceptions import AutoHybTSError, ConfigurationError
@@ -84,6 +85,10 @@ class SearchSpace:
     Advanced families are off by default: ``max_stages > 1`` adds correction stages in
     S3; ``decomposition_methods``, ``combination_weights`` and ``ensemble_methods`` open
     stage S4.
+
+    ``exog_sets`` (ADR-0011) are sets of exogenous features; each one is tried in stage SX
+    with every base that accepts covariates and then with residual correctors on the best
+    of them, all in the ``exogenous`` family.
     """
 
     base_models: tuple[str, ...] = DEFAULT_BASES
@@ -106,6 +111,7 @@ class SearchSpace:
     differencing_test: str = "kpss"
     transform: str | None = None
     outliers: str | None = None
+    exog_sets: tuple[tuple[ExogFeature, ...], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.base_models:
@@ -183,6 +189,8 @@ class SearchSpace:
             described["transform"] = self.transform
         if self.outliers is not None:
             described["outliers"] = self.outliers
+        if self.exog_sets:
+            described["exog_sets"] = [[f.describe() for f in group] for group in self.exog_sets]
         return described
 
     def _describe_core(self) -> dict[str, Any]:
@@ -215,6 +223,48 @@ class SearchSpace:
                 elif name == "sarima" and self.seasonal_period == 1:
                     reason = "sem sazonalidade declarada: equivale ao arima"
                 proposals.append(Proposal(candidate, "S0", skip_reason=reason))
+        return proposals
+
+    def exog_proposals(self, registry: ModelRegistry) -> list[Proposal]:
+        """SX: every base that accepts covariates, with each exogenous feature set."""
+
+        proposals = []
+        for features in self.exog_sets:
+            for proposal in self.base_proposals(registry):
+                base = proposal.candidate
+                if not registry.entry(base.base.name).capabilities.accepts_exog:
+                    continue
+                candidate = replace(base, family="exogenous", exog=tuple(features))
+                proposals.append(Proposal(candidate, "SX", skip_reason=proposal.skip_reason))
+        return proposals
+
+    def exog_residual_proposals(
+        self, bases: Sequence[CandidateSpec], registry: ModelRegistry
+    ) -> list[Proposal]:
+        """SX: residual correctors on the best bases with covariates (one-step residuals).
+
+        Multi-step residual sources would read ``past`` features further ahead than their lag
+        inside the training vector, so only ``historical_oof_1step`` is proposed.
+        """
+
+        proposals = []
+        for corrector in self.correctors:
+            for window in self._windows(corrector, registry):
+                for alpha in self.alphas:
+                    for base in bases:
+                        proposal = self._residual(
+                            base.base,
+                            corrector,
+                            {},
+                            window,
+                            alpha,
+                            "historical_oof_1step",
+                            "SX",
+                            base.candidate_id,
+                            registry,
+                        )
+                        candidate = replace(proposal.candidate, family="exogenous", exog=base.exog)
+                        proposals.append(replace(proposal, candidate=candidate))
         return proposals
 
     def residual_proposals(
