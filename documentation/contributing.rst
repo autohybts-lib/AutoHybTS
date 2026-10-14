@@ -158,6 +158,19 @@ A página do guia de uma estratégia nova traz:
 * exemplo executável com resultado real, nunca inventado;
 * links para o notebook, o teste de causalidade e a seção de benchmarks.
 
+Contribuições assistidas por IA
+-------------------------------
+
+O projeto é desenvolvido em coautoria com Claude e Codex (veja :doc:`about`), e
+contribuições feitas com assistentes de IA são bem-vindas nas mesmas condições das demais:
+
+* quem envia revisa e entende cada linha, e responde por ela no pull request;
+* a mudança passa pela mesma bateria (``ruff``, ``mypy``, testes de contrato, causalidade e
+  vazamento) e nenhuma invariante é afrouxada para acomodar código gerado: teste selado
+  intocado, resíduos causais, identidades estáveis;
+* a descrição do pull request diz o que foi feito com assistência e como foi verificado;
+* dados privados, credenciais e chaves nunca vão para um serviço de IA.
+
 Entrega
 -------
 
