@@ -1,6 +1,36 @@
 Version 1 and publishing
 ========================================
 
+1.0.0rc4 — SQLite tracking, MLOps and exogenous variables, October 14, 2026
+---------------------------------------------------------------------------
+
+Compatible additions: without ``X`` and without a database, candidate IDs, the default
+protocol hash and the model persistence schema do not change.
+
+* **SQLite tracking:** ``ExperimentStore`` writes experiments (candidates, per-layer and
+  per-origin metrics, decisions, champion, external evaluation) and answers read-only SQL
+  queries; series values only with ``values=True``.
+* **MLOps in the same database:** model registry with the artifact's SHA-256, promotion with
+  stage history, ``load`` with ``trusted=True``, logged forecasts, observations and
+  covariates, ``monitor`` (rolling MAE against the reference, with alerts); synthetic series
+  ``commodity_price_daily``.
+* **Exogenous variables:** ``fit(y, X)`` with ``past`` columns (lagged by the horizon) and
+  declared ``future`` columns, ARIMAX, SARIMAX, lag models and hybrids with covariates, an
+  ``exogenous`` family decided by the acceptance rule, forecasting with ``X_future``,
+  streaming, persistence and panels of series.
+* **Automatic choice of covariates:** ``exog_selection`` (``ccf``, ``granger``, ``lasso``,
+  ``stepwise_bic``, ``mutual_info``, ``vote``, ``auto``), ``exp.exog_report()`` and
+  ``exp.compare_exog()`` (Wilcoxon and Diebold–Mariano).
+* **Datasets with covariates:** ``list_exog_datasets()`` and ``load_exog_dataset()``
+  (seatbelts, bjsales, uschange, insurance, elecdaily, vic_elec_daily).
+* **Documentation:** guides on SQLite tracking, MLOps and covariates; notebooks 18 (analysis
+  with SQL), 19 (MLOps flow), 20 (covariates on benchmarks) and 21 (MLOps with covariates on
+  real electricity demand); co-authorship with AI (Claude and Codex) on the *About* page.
+
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc4"
+
 1.0.0rc3 — series diagnostics and preprocessing, October 14, 2026
 -----------------------------------------------------------------
 

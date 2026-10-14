@@ -10,7 +10,7 @@ Installation
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[nixtla-stats]==1.0.0rc3"
+   python -m pip install "autohybts[nixtla-stats]==1.0.0rc4"
 
 Current StatsForecast versions (2.1) require ``pandas<3``: the extra installs pandas
 2.x, which AutoHybTS supports (floor 2.1). In an environment with pandas 3, keep a
