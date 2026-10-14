@@ -252,4 +252,6 @@ Tabelas sem coluna de data, como ``airquality`` (só ``Month`` e ``Day``), são 
 
 .. seealso::
 
+   Séries com covariáveis (``load_exog_dataset``): veja :doc:`exogenous`.
+
    Tutoriais: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/17_benchmark_study`.

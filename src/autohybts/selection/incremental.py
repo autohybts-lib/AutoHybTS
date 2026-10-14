@@ -3,7 +3,8 @@
 1. Finalists: for each family, the best structure found on ``V_search`` (ranking
    convention v1). They are re-evaluated on ``V_select``; the search never saw those
    targets.
-2. The initial champion is the best standalone finalist with full ``V_select`` coverage.
+2. The initial champion is the best standalone finalist with full ``V_select`` coverage
+   (never one with exogenous covariates).
 3. Families are visited in ``family_order``; each family's finalist challenges the
    *current* champion and replaces it only if every enabled predicate passes. Rejections
    are recorded with their reasons; the champion is never replaced by default.
@@ -271,8 +272,15 @@ class IncrementalSelector:
     def _initial_champion(
         self, structures: dict[str, RankedStructure], finalists: dict[str, EvaluationResult]
     ) -> EvaluationResult:
+        # A model with covariates is never the initial champion: it must beat a model without
+        # them under the acceptance rule (ADR-0011).
         standalone = sorted(
-            (s for s in structures.values() if s.representative.candidate.strategy == "standalone"),
+            (
+                s
+                for s in structures.values()
+                if s.representative.candidate.strategy == "standalone"
+                and not s.representative.candidate.exog
+            ),
             key=RankedStructure.order,
         )
         for structure in standalone:

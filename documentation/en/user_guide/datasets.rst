@@ -253,4 +253,6 @@ assembled by hand from the raw table:
 
 .. seealso::
 
+   Series with covariates (``load_exog_dataset``): see :doc:`exogenous`.
+
    Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/17_benchmark_study`.

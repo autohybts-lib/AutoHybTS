@@ -74,6 +74,7 @@ strategies for building hybrid systems together in a single workflow:
 
    user_guide/datasets
    user_guide/panels
+   user_guide/exogenous
 
 .. toctree::
    :maxdepth: 1

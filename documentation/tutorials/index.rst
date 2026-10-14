@@ -23,6 +23,7 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
 * :doc:`notebooks/17_benchmark_study`: 17 séries clássicas em três classes, cinco modelos (com o híbrido ARIMA–ANN), protocolos A e B, 3, 6 e 12 lags e horizontes até 12 (baixa dados na primeira execução).
 * :doc:`notebooks/18_sql_analysis`: experimentos gravados em SQLite e analisados com consultas SQL.
 * :doc:`notebooks/19_mlops_flow`: fluxo de MLOps com o preço de uma commodity: registro, promoção, previsões diárias, monitoramento e retreino com portão.
+* :doc:`notebooks/20_exogenous`: séries com variáveis exógenas: past × future, oráculo, seleção automática e com × sem exógenas em benchmarks (baixa dados na primeira execução).
 
 .. toctree::
    :hidden:
@@ -46,3 +47,4 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
    notebooks/17_benchmark_study
    notebooks/18_sql_analysis
    notebooks/19_mlops_flow
+   notebooks/20_exogenous
