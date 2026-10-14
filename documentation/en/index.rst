@@ -101,6 +101,7 @@ strategies for building hybrid systems together in a single workflow:
    user_guide/comparison
    user_guide/persistence
    user_guide/tracking
+   user_guide/mlops
 
 .. toctree::
    :maxdepth: 1

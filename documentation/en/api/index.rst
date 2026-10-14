@@ -60,7 +60,8 @@ Finalized models and persistence
 .. autofunction:: autohybts.read_manifest
 
 .. autoclass:: autohybts.ExperimentStore
-   :members: log, query, runs, delete_run, tables
+   :members: log, query, runs, delete_run, tables, register_model, promote, registry,
+      load, log_forecasts, log_actuals, monitor
 
 Results
 -------
