@@ -6,6 +6,10 @@ candidates that share an origin (standalone, hybrids, out-of-fold prefixes) esti
 the ARIMA once. Forecasting from a different context re-runs the state-space
 filter on the observed values with the fitted parameters fixed (``apply(refit=False)``),
 so new observations update the state without re-estimation.
+
+With exogenous features (ADR-0011) the model is a regression with ARIMA errors (ARIMAX):
+``d`` is chosen on the residuals of the regression of ``y`` on the features, as
+``auto.arima`` does, and the features of the horizon enter the forecast.
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ _Item = TypeVar("_Item")
 
 
 class ArimaForecaster(ForecasterBase):
+    accepts_exog = True
+
     def __init__(
         self,
         order: tuple[int, int, int] | str = "auto",
@@ -95,6 +101,14 @@ class ArimaForecaster(ForecasterBase):
         return np.asarray(path, dtype=np.float64)
 
     def _fit(self, y: FloatArray) -> None:
+        self.train_exog_: FloatArray | None = None
+        self._fit_arima(y)
+
+    def _fit_exog(self, y: FloatArray, X: FloatArray) -> None:
+        self.train_exog_ = X.copy()
+        self._fit_arima(y)
+
+    def _fit_arima(self, y: FloatArray) -> None:
         arima = _arima_class()
         self.fit_warnings_: list[str] = []
         key = self._cache_key(y)
@@ -104,14 +118,14 @@ class ArimaForecaster(ForecasterBase):
             order, params, fit_warnings = cached
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                model = arima(y, order=order, trend=TREND_BY_D[order[1]])
+                model = arima(y, exog=self.train_exog_, order=order, trend=TREND_BY_D[order[1]])
                 self.result_ = model.filter(params)
             self.order_ = order
             self.fit_warnings_ = list(fit_warnings)
             self.train_ = y.copy()
             return
         if isinstance(self.order, str):
-            d = self._choose_d(y)
+            d = self._choose_d(self._exog_residuals(y))
             grid = itertools.product(range(self.max_p + 1), range(self.max_q + 1))
             orders = [(p, d, q) for p, q in grid]
         else:
@@ -136,8 +150,31 @@ class ArimaForecaster(ForecasterBase):
         )
 
     def _cache_key(self, y: FloatArray) -> str:
-        digest = hashlib.sha256(np.ascontiguousarray(y, dtype=np.float64).tobytes()).hexdigest()
+        digest = _digest(y, getattr(self, "train_exog_", None))
         return f"{digest}|{self.order}|{self.max_p}|{self.max_d}|{self.max_q}"
+
+    def _exog_residuals(self, y: FloatArray) -> FloatArray:
+        """``y`` without its regression on the exogenous features (``y`` itself without them)."""
+
+        exog = getattr(self, "train_exog_", None)
+        if exog is None:
+            return y
+        design = np.column_stack([np.ones(y.size), exog])
+        coefficients, *_ = np.linalg.lstsq(design, y, rcond=None)
+        return np.asarray(y - design @ coefficients, dtype=np.float64)
+
+    def _predict_exog(
+        self, horizon: int, history: FloatArray, exog_history: FloatArray, exog_future: FloatArray
+    ) -> FloatArray:
+        result = self.result_
+        same = history.shape == self.train_.shape and np.array_equal(history, self.train_)
+        if not (same and np.array_equal(exog_history, self.train_exog_)):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = result.apply(history, exog=exog_history, refit=False)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return np.asarray(result.forecast(horizon, exog=exog_future), dtype=np.float64)
 
     def _predict(self, horizon: int, history: FloatArray) -> FloatArray:
         result = self.result_
@@ -150,7 +187,7 @@ class ArimaForecaster(ForecasterBase):
     def _fit_one(self, arima: Any, y: FloatArray, order: tuple[int, int, int]) -> Any:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = arima(y, order=order, trend=TREND_BY_D[order[1]]).fit()
+            result = arima(y, exog=self.train_exog_, order=order, trend=TREND_BY_D[order[1]]).fit()
         self.fit_warnings_.extend(f"{order}: {w.message}" for w in caught)
         return result
 
@@ -169,6 +206,14 @@ class ArimaForecaster(ForecasterBase):
                 return d
             series = np.diff(series)
         raise AssertionError("unreachable: the loop returns at d == max_d")  # pragma: no cover
+
+
+def _digest(y: FloatArray, exog: FloatArray | None) -> str:
+    digest = hashlib.sha256(np.ascontiguousarray(y, dtype=np.float64).tobytes())
+    if exog is not None:
+        digest.update(b"|exog|")
+        digest.update(np.ascontiguousarray(exog, dtype=np.float64).tobytes())
+    return digest.hexdigest()
 
 
 class _BoundedCache(Generic[_Item]):

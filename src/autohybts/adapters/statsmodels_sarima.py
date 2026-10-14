@@ -15,7 +15,6 @@ residuals never re-estimate the model.
 
 from __future__ import annotations
 
-import hashlib
 import warnings
 from typing import Any, Final
 
@@ -27,6 +26,7 @@ from autohybts.adapters.statsmodels_arima import (
     ArimaForecaster,
     _arima_class,
     _BoundedCache,
+    _digest,
 )
 from autohybts.data.seasonality import detect_seasonality
 from autohybts.exceptions import (
@@ -105,7 +105,7 @@ class SarimaForecaster(ArimaForecaster):
         (p, d, _), (big_p, big_d, _, m) = self.orders_
         return p + d + (big_p + big_d) * m + 1
 
-    def _fit(self, y: FloatArray) -> None:
+    def _fit_arima(self, y: FloatArray) -> None:
         if self.season_length > MAX_SEASON_LENGTH:
             raise UnsupportedCapabilityError(
                 f"SARIMA com season_length={self.season_length} é lento demais para a busca "
@@ -125,8 +125,9 @@ class SarimaForecaster(ArimaForecaster):
             return
         m = self.season_length
         if self.order == "auto":
-            big_d = self._choose_big_d(y) if m > 1 else 0
-            d = self._choose_d(_seasonal_difference(y, m, big_d))
+            level = self._exog_residuals(y)
+            big_d = self._choose_big_d(level) if m > 1 else 0
+            d = self._choose_d(_seasonal_difference(level, m, big_d))
             orders, result = self._stepwise(arima, y, d, big_d)
         else:
             p, d, q = (int(v) for v in self.order)
@@ -151,7 +152,7 @@ class SarimaForecaster(ArimaForecaster):
         self.train_ = y.copy()
 
     def _cache_key(self, y: FloatArray) -> str:
-        digest = hashlib.sha256(np.ascontiguousarray(y, dtype=np.float64).tobytes()).hexdigest()
+        digest = _digest(y, getattr(self, "train_exog_", None))
         settings = (
             self.season_length,
             self.order,
@@ -233,7 +234,7 @@ class SarimaForecaster(ArimaForecaster):
     def _model(self, arima: Any, y: FloatArray, orders: Orders) -> Any:
         order, seasonal = orders
         trend = TREND_BY_D[min(order[1] + seasonal[1], 2)]
-        return arima(y, order=order, seasonal_order=seasonal, trend=trend)
+        return arima(y, exog=self.train_exog_, order=order, seasonal_order=seasonal, trend=trend)
 
     def _fit_orders(self, arima: Any, y: FloatArray, orders: Orders) -> Any:
         with warnings.catch_warnings(record=True) as caught:

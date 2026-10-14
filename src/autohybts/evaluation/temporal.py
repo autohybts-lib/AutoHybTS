@@ -15,6 +15,7 @@ from typing import Any, Final
 
 import autohybts
 from autohybts.adapters.base import BaseForecaster, FloatArray
+from autohybts.data.exog import ExogFrame, minimum_lag
 from autohybts.data.panel import PanelPlan
 from autohybts.data.splitter import (
     CrossValidationPlan,
@@ -22,6 +23,7 @@ from autohybts.data.splitter import (
     TemporalPlan,
     ensure_not_sealed,
 )
+from autohybts.domain.context import TemporalContext
 from autohybts.domain.fit_count import count_fits
 from autohybts.domain.identity import derive_seed
 from autohybts.domain.results import (
@@ -62,6 +64,8 @@ class TemporalEvaluator:
         seasonal_period: ``m`` of the MASE scale.
         session_seed: root of the per-(candidate, fold) seeds given to stochastic models.
         residual_settings: residual generation shared by every hybrid candidate.
+        exog: covariates of the series (ADR-0011), used by candidates with ``exog``
+            features; ``None`` when the experiment has none.
     """
 
     registry: ModelRegistry
@@ -69,6 +73,7 @@ class TemporalEvaluator:
     seasonal_period: int = 1
     session_seed: int = 42
     residual_settings: ResidualSettings = field(default_factory=ResidualSettings)
+    exog: ExogFrame | None = None
 
     def __post_init__(self) -> None:
         resolve_metrics(self.metrics)
@@ -213,6 +218,8 @@ class TemporalEvaluator:
         try:
             self._check_variant(candidate)
             self._check_capabilities(candidate, origin.horizon)
+            if candidate.exog:
+                return self._fit_and_forecast_exog(candidate, model, plan, origin)
             model.fit(train)
             fitted = time.perf_counter()
             if candidate.variant == "B":
@@ -235,6 +242,58 @@ class TemporalEvaluator:
         except Exception as error:  # a third-party model outside ForecasterBase
             return error
         return forecast, fitted, done
+
+    def _fit_and_forecast_exog(
+        self,
+        candidate: CandidateSpec,
+        model: BaseForecaster,
+        plan: TemporalPlan | CrossValidationPlan,
+        origin: Origin,
+    ) -> tuple[FloatArray, float, float]:
+        """Fit and forecast with the exogenous features of ``candidate``.
+
+        Leading rows where a lagged feature is not defined yet are left out of the model's
+        training vector; metrics still use the origin's full training vector (same MASE
+        scale as candidates without covariates).
+        """
+
+        if self.exog is None:
+            raise ConfigurationError("A candidata usa exógenas, mas o experimento não tem X.")
+        step = minimum_lag(candidate.variant, origin.horizon)
+        design = self.exog.design(candidate.exog, plan.history.timestamps, step)
+        first = design.first_complete(origin.train_start)
+        end = origin.origin_index + 1
+        if first >= end:
+            raise InsufficientHistoryError("Nenhuma linha de treino com todas as exógenas.")
+        train = plan.history.values[first:end]
+        rows = design.rows(first, end + origin.horizon)
+        model.fit(train, rows[: train.size])
+        fitted = time.perf_counter()
+        if candidate.variant == "B":
+            forecast = rolling_one_step(
+                model,
+                train,
+                plan.target_values(origin),
+                origin_index=origin.origin_index,
+                series_id=origin.series_id,
+                frequency=plan.history.frequency,
+                exog=rows,
+                exog_max_ahead=design.max_ahead,
+            )
+        else:
+            context = TemporalContext(
+                series_id=origin.series_id,
+                frequency=plan.history.frequency,
+                origin_index=origin.origin_index,
+                origin_time=origin.origin_time,
+                observed=train,
+                observed_start=first,
+                exog=rows,
+                exog_ahead=origin.horizon,
+                exog_max_ahead=design.max_ahead,
+            )
+            forecast = model.predict(origin.horizon, context)
+        return forecast, fitted, time.perf_counter()
 
     def _check_variant(self, candidate: CandidateSpec) -> None:
         if candidate.variant != "B":
@@ -264,6 +323,8 @@ class TemporalEvaluator:
                 raise UnsupportedCapabilityError(
                     f"{name} é {capabilities.target_mode}; a busca é univariada, sem covariáveis."
                 )
+            if candidate.exog and kind == "base" and not capabilities.accepts_exog:
+                raise UnsupportedCapabilityError(f"{name} não aceita exógenas.")
             if capabilities.output_type != "point":
                 raise UnsupportedCapabilityError(
                     f"{name} produz {capabilities.output_type}; a busca compara previsões pontuais."
@@ -285,6 +346,8 @@ class TemporalEvaluator:
         external = self.registry.external()
         if external:  # only when present, so keys of built-in models do not change
             protocol["external_models"] = external
+        if self.exog is not None:  # likewise: experiments without covariates keep their keys
+            protocol["exog"] = self.exog.describe()
         return protocol
 
 

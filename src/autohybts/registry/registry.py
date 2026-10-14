@@ -374,18 +374,18 @@ def default_registry() -> ModelRegistry:
         "arima",
         lambda p: ArimaForecaster(**p),
         family="statistical",
-        capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats"),
-        description="ARIMA (statsmodels); ordem automática por KPSS e AIC.",
+        capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats", accepts_exog=True),
+        description="ARIMA (statsmodels); ordem automática por KPSS e AIC; ARIMAX com exógenas.",
     )
     # Opt-in (DS1): out of the default search space until measured on M3/M4.
     registry.register_base(
         "sarima",
         lambda p: SarimaForecaster(**p),
         family="statistical",
-        capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats"),
+        capabilities=Capabilities(in_sample_fitted=True, requires_extra="stats", accepts_exog=True),
         description=(
             "ARIMA sazonal (statsmodels); D pela força sazonal, d por KPSS, "
-            "(p, q, P, Q) por AICc em busca stepwise."
+            "(p, q, P, Q) por AICc em busca stepwise; SARIMAX com exógenas."
         ),
     )
     lag_models = {
@@ -418,6 +418,7 @@ def default_registry() -> ModelRegistry:
             capabilities=Capabilities(
                 deterministic=deterministic,
                 requires_extra="boosting" if name in BOOSTING_EXTRA else None,
+                accepts_exog=True,
             ),
             description=description,
         )
