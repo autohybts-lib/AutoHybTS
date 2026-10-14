@@ -25,6 +25,7 @@ from autohybts.domain.results import EvaluationResult
 from autohybts.domain.specs import CandidateSpec
 from autohybts.evaluation.temporal import TemporalEvaluator
 from autohybts.exceptions import ConfigurationError, CoverageError
+from autohybts.progress import NullProgress, Progress
 from autohybts.search.ledger import SearchResult
 from autohybts.selection.policy import SelectionPolicy, paired_comparison, paired_p_value
 from autohybts.selection.rank import RANKING_CONVENTION, RankedStructure, RankingConvention
@@ -206,10 +207,12 @@ class IncrementalSelector:
         evaluator: TemporalEvaluator,
         policy: SelectionPolicy,
         ranking: RankingConvention = RANKING_CONVENTION,
+        progress: Progress | None = None,
     ) -> None:
         self.evaluator = evaluator
         self.policy = policy
         self.ranking = ranking
+        self.progress: Progress = progress or NullProgress()
 
     @property
     def metric(self) -> str:
@@ -225,10 +228,11 @@ class IncrementalSelector:
             )
         structures = self._finalists(search)
         finalists_search = {family: s.representative for family, s in structures.items()}
-        finalists = {
-            family: self._evaluate_select(structure, plan)
-            for family, structure in structures.items()
-        }
+        finalists = {}
+        with self.progress.bar(len(structures), "seleção V_select") as bar:
+            for family, structure in structures.items():
+                finalists[family] = self._evaluate_select(structure, plan)
+                bar.update()
 
         initial = self._initial_champion(structures, finalists)
         champion, decisions = run_chain(initial, finalists, self.policy, self.metric)

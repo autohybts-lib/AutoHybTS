@@ -11,11 +11,11 @@ from __future__ import annotations
 import math
 import time
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final, Literal, cast, overload
+from typing import Any, Final, Literal, TypeVar, cast, overload
 
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ from autohybts.data.characterization import decompose_series, ljung_box, station
 from autohybts.data.exog import ExogFrame, ExogPanel, ExogState
 from autohybts.data.panel import PanelFrame, PanelPlan, plan_panel, split_panel_sealed_test
 from autohybts.data.profiling import profile_series
-from autohybts.data.schema import SeriesFrame
+from autohybts.data.schema import SINGLE_SERIES_ID, SeriesFrame
 from autohybts.data.seasonality import detect_seasonality
 from autohybts.data.splitter import (
     CrossValidationPlan,
@@ -51,6 +51,7 @@ from autohybts.exceptions import (
 from autohybts.forecasting.finalized import FinalizedForecaster, PanelForecaster, refit
 from autohybts.forecasting.rolling_one_step_b import rolling_one_step
 from autohybts.models.requirements import framework_versions
+from autohybts.progress import LOGGER, make_progress
 from autohybts.registry.capabilities import Capabilities
 from autohybts.registry.registry import ModelRegistry, default_registry
 from autohybts.reporting.comparison import ComparisonResult, diebold_mariano, holm
@@ -88,6 +89,7 @@ _INCLUDE: Final = (
     "ensemble",
 )
 _DEFAULT_INCLUDE: Final = ("standalone", "residual")
+_T = TypeVar("_T")
 # Origins per validation layer of fold='auto': the acceptance rule's calibration
 # (D5, ADR-0008) met its error targets with 7 units on one series.
 AUTO_FOLD: Final = 7
@@ -237,6 +239,10 @@ class AutoHybridExperiment(Parametrized):
             acceptance rule, whether any covariate enters. Methods run on the data before
             the first ``V_select`` origin, as tuning does on ``V_search``; ``V_select``
             and the sealed test never reach them (``exog_report()``).
+        progress: ``True`` shows tqdm progress bars for each search stage, the finalists on
+            ``V_select``, the choice of exogenous features and the outer folds of the nested
+            cross-validation (extra ``progress``). Reporting only: nothing evaluated changes.
+            Events also go to the ``logging`` logger ``"autohybts"`` either way.
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
@@ -278,6 +284,7 @@ class AutoHybridExperiment(Parametrized):
         exog_future: Sequence[str] = (),
         exog_lags: Mapping[str, Sequence[int]] | None = None,
         exog_selection: str | Sequence[str] | None = None,
+        progress: bool = False,
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
@@ -316,6 +323,7 @@ class AutoHybridExperiment(Parametrized):
         self.exog_future = exog_future
         self.exog_lags = exog_lags
         self.exog_selection = exog_selection
+        self.progress = progress
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
@@ -348,6 +356,7 @@ class AutoHybridExperiment(Parametrized):
         """
 
         started = time.perf_counter()
+        self._progress = make_progress(self.progress)
         if self.variant not in ("A", "B"):
             raise ConfigurationError(f"variant deve ser 'A' ou 'B'; recebido {self.variant!r}.")
         if self.missing not in ("reject", "ffill"):
@@ -541,7 +550,13 @@ class AutoHybridExperiment(Parametrized):
             values = series.values[: first + 1]
             results: dict[str, ExogSelection] = {}
             # The vote reuses the other methods when they ran too.
-            for method in sorted(methods, key=lambda m: m == "vote"):
+            ordered = sorted(methods, key=lambda m: m == "vote")
+            label = (
+                "exógenas"
+                if series.series_id == SINGLE_SERIES_ID
+                else f"exógenas {series.series_id}"
+            )
+            for method in self._track(ordered, label):
                 if method == "vote" and set(BASE_METHODS) <= set(results):
                     results[method] = vote_selection([results[m] for m in BASE_METHODS])
                     continue
@@ -937,17 +952,17 @@ class AutoHybridExperiment(Parametrized):
         started = time.perf_counter()
         space = self._space(with_residuals="residual" in include, include=include)
         guard = self._guard()
-        search = SearchEngine(self.evaluator_, space, guard, max_workers=self.n_jobs).run(
-            self.work_plan_
-        )
+        search = SearchEngine(
+            self.evaluator_, space, guard, max_workers=self.n_jobs, progress=self._progress
+        ).run(self.work_plan_)
         self._event(
             "search.finished", f"{search.trial_count} tentativas ({search.stop_reason})", started
         )
         started = time.perf_counter()
         self.policy_ = replace(self.policy_, family_order=self._family_order(include))
-        selection = IncrementalSelector(self.evaluator_, self.policy_).select(
-            search, self.work_plan_
-        )
+        selection = IncrementalSelector(
+            self.evaluator_, self.policy_, progress=self._progress
+        ).select(search, self.work_plan_)
         champion = selection.champion
         self._event("selection.finished", f"campeão: {champion.label}", started)
         self.state_ = "SELECTED"
@@ -1526,7 +1541,7 @@ class AutoHybridExperiment(Parametrized):
         started = time.perf_counter()
         candidates = self._candidates(models)
         results = []
-        for candidate in candidates:
+        for candidate in self._track(candidates, "validação cruzada"):
             key = (candidate.candidate_id, plan.fingerprint)
             if key not in self._cv_evaluations:
                 self._cv_evaluations[key] = self.evaluator_.evaluate(candidate, plan)
@@ -1560,7 +1575,7 @@ class AutoHybridExperiment(Parametrized):
             raise ConfigurationError("Sem teste selado (test_size=0): nada para comparar.")
         candidates = self._candidates(models)
         externals = []
-        for candidate in candidates:
+        for candidate in self._track(candidates, "teste externo"):
             final = self.finalize_model(candidate)
             stored = self._external.get(final.model_id)
             externals.append(stored or self.evaluate_external(final))
@@ -1626,7 +1641,12 @@ class AutoHybridExperiment(Parametrized):
         )
         outer = TemporalCrossValidation(horizon=self.fh, n_folds=outer_folds, step=self.fh)
         outer_plan = plan_panel(outer, self.panel_)
-        params = {**self._public_params(), "test_size": 0, "registry": self.registry}
+        params = {
+            **self._public_params(),
+            "test_size": 0,
+            "registry": self.registry,
+            "progress": False,  # one bar for the outer folds, not one per inner search
+        }
         if budget is not None:
             params["budget"] = budget
         metrics = resolve_metrics(self.evaluator_.metrics)
@@ -1636,7 +1656,7 @@ class AutoHybridExperiment(Parametrized):
         started = time.perf_counter()
         series_ids = self.panel_.series_ids
         fold_ids = [o.fold_id for o in outer_plan[series_ids[0]].origins()]
-        for fold_id in fold_ids:
+        for fold_id in self._track(fold_ids, "CV aninhada"):
             # Each series is cut at its own origin of this outer fold.
             origins = {
                 sid: next(o for o in outer_plan[sid].origins() if o.fold_id == fold_id)
@@ -2184,9 +2204,20 @@ class AutoHybridExperiment(Parametrized):
                 f"Chame {step} primeiro."
             )
 
+    def _track(self, items: Sequence[_T], description: str) -> Iterator[_T]:
+        """Iterate ``items`` with a progress bar (nothing visible unless ``progress=True``)."""
+
+        progress = getattr(self, "_progress", None) or make_progress(False)
+        with progress.bar(len(items), description) as bar:
+            for item in items:
+                yield item
+                bar.update()
+
     def _event(self, kind: str, message: str, started: float | None) -> None:
         duration = None if started is None else (time.perf_counter() - started) * 1000
         self.events_.append(Event(kind, message, datetime.now(UTC), duration))
+        timing = "" if duration is None else f" ({duration / 1000:.1f} s)"
+        LOGGER.info("%s: %s%s", kind, message, timing)
 
     def __repr__(self) -> str:
         return (

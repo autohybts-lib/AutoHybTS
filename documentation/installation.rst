@@ -59,7 +59,9 @@ Combine os extras entre colchetes, preservando a versão. Por exemplo:
    * - ``plot``
      - Gráficos com matplotlib
    * - ``notebook``
-     - Kernel e execução dos tutoriais Jupyter
+     - Kernel e execução dos tutoriais Jupyter (inclui o tqdm)
+   * - ``progress``
+     - Barras de progresso das etapas (``progress=True``, tqdm)
    * - ``torch`` / ``tensorflow``
      - Modelos próprios nesses frameworks
    * - ``boosting``
