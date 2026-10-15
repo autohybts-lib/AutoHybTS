@@ -24,6 +24,7 @@ English copies of the tutorials in `notebooks/` (Portuguese), cell by cell, with
 | [19_mlops_flow](19_mlops_flow.ipynb) | MLOps flow with a commodity price: registration, promotion, daily forecasts, monitoring and gated retraining | `stats` and `plot` extras |
 | [20_exogenous](20_exogenous.ipynb) | Series with exogenous variables: past × future, oracle, automatic selection and with × without covariates on benchmarks | `stats` and `plot` extras; network on first run |
 | [21_mlops_exogenous](21_mlops_exogenous.ipynb) | MLOps with covariates on real data: Victoria electricity demand with weather forecast, holiday and weekend | `stats` and `plot` extras; network on first run |
+| [22_m4_development_pilot](22_m4_development_pilot.ipynb) | A daily M4 project on official training data only: guarded selection against lowest error, logging and resume in SQLite and cost | `stats` and `plot` extras; network on first run |
 
 ## How to run
 

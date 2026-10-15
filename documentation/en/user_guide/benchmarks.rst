@@ -241,4 +241,5 @@ no test partition. The default ``with_test=True`` preserves existing behaviour.
 
 .. seealso::
 
-   Executable pilot notebook: :doc:`../tutorials/notebooks/22_m4_development_pilot`.
+   The same scope (daily M4, official training data only) as a project on the public API:
+   :doc:`../tutorials/notebooks/22_m4_development_pilot`.

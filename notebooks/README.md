@@ -23,6 +23,7 @@ Notebooks no estilo dos tutoriais do PyCaret 4: curtos, numerados, um tema por n
 | [19_mlops_flow](19_mlops_flow.ipynb) | Fluxo de MLOps com o preço de uma commodity: registro, promoção, previsões diárias, monitoramento e retreino com portão | extras `stats` e `plot` |
 | [20_exogenous](20_exogenous.ipynb) | Séries com variáveis exógenas: past × future, oráculo, seleção automática e com × sem exógenas em benchmarks | extras `stats` e `plot`; rede na primeira execução |
 | [21_mlops_exogenous](21_mlops_exogenous.ipynb) | MLOps com exógenas em dados reais: demanda elétrica de Victoria com previsão do tempo, feriado e fim de semana | extras `stats` e `plot`; rede na primeira execução |
+| [22_m4_development_pilot](22_m4_development_pilot.ipynb) | Projeto com o M4 diário só no treino oficial: seleção guardada contra o menor erro, registro e retomada no SQLite e custo | extras `stats` e `plot`; rede na primeira execução |
 | [05_benchmark_m4](05_benchmark_m4.ipynb) | M4 com o teste oficial selado, painel do M3 e Rdatasets (baixa os dados na primeira execução) | rede na 1ª vez; extra `datasets` para o M3 |
 
 ## Como executar
