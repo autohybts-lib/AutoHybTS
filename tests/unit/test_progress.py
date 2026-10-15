@@ -6,6 +6,7 @@ import importlib
 import logging
 import subprocess
 import sys
+import warnings
 
 import pandas as pd
 import pytest
@@ -44,6 +45,24 @@ def test_missing_tqdm_gives_an_install_hint(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(importlib, "import_module", without_tqdm)
     with pytest.raises(UnsupportedCapabilityError, match=r"autohybts\[progress\]"):
         TqdmProgress()
+
+
+def test_bars_without_ipywidgets_do_not_warn() -> None:
+    pytest.importorskip("tqdm")
+
+    class NotebookBarWithoutWidgets:
+        def __init__(self, **kwargs: object) -> None:
+            warnings.warn("IProgress not found.", stacklevel=2)
+
+        def close(self) -> None:
+            pass
+
+    progress = TqdmProgress()
+    progress._tqdm = NotebookBarWithoutWidgets
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with progress.bar(3, "busca"):
+            pass
 
 
 def test_bars_never_change_the_results(capsys: pytest.CaptureFixture[str]) -> None:

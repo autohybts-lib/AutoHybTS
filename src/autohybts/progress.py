@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Protocol
@@ -55,12 +56,22 @@ class NullProgress:
         yield _NullBar()
 
 
+@contextmanager
+def _without_ipywidgets_warning() -> Iterator[None]:
+    # Without ipywidgets, tqdm.auto falls back to text bars in a notebook and warns (on import
+    # and per bar) with the absolute path of the user's environment; text bars are enough.
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="IProgress not found")
+        yield
+
+
 class TqdmProgress:
     """tqdm bars (``tqdm.auto``); ``leave`` keeps finished bars on screen."""
 
     def __init__(self, leave: bool = True) -> None:
         try:
-            tqdm = importlib.import_module("tqdm.auto").tqdm
+            with _without_ipywidgets_warning():
+                tqdm = importlib.import_module("tqdm.auto").tqdm
         except ModuleNotFoundError as error:
             raise UnsupportedCapabilityError(
                 'progress=True requer o tqdm: pip install "autohybts[progress]".'
@@ -70,7 +81,8 @@ class TqdmProgress:
 
     @contextmanager
     def bar(self, total: int, description: str) -> Iterator[ProgressBar]:
-        bar = self._tqdm(total=total, desc=description, leave=self.leave, unit="cand")
+        with _without_ipywidgets_warning():
+            bar = self._tqdm(total=total, desc=description, leave=self.leave, unit="cand")
         try:
             yield bar
         finally:
