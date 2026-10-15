@@ -1,8 +1,8 @@
 Versão 1 e publicação
 =====================
 
-Alterações em desenvolvimento para o estudo IJF
------------------------------------------------
+Melhorias de reprodutibilidade e publicação
+-------------------------------------------
 
 A branch de desenvolvimento acrescenta configurações JSON de ablação, retomada
 compatível em SQLite, contabilização de falhas e cobertura pareada, snapshots internos
