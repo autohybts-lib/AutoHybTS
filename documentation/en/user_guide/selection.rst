@@ -143,3 +143,8 @@ Resolved values enter the policy, snapshots and selection protocol hash. They
 propagate to nested searches and ``AutoHybridForecaster``. Changing them does not
 change the search protocol itself or access the sealed test. Fix them before external
 evaluation; calibration evidence for the defaults does not certify custom values.
+
+.. seealso::
+
+   Executable M4 pilot tutorial: audit, cost and resume.
+   :doc:`../tutorials/notebooks/22_m4_development_pilot`.

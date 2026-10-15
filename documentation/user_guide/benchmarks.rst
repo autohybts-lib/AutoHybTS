@@ -236,3 +236,7 @@ protocolo antes do estudo principal e não escolha seus parâmetros pelo teste o
 
 Para carregar treino diretamente, ``M4Provider.load(..., with_test=False)`` retorna
 sem partição de teste. O default ``with_test=True`` preserva o comportamento anterior.
+
+.. seealso::
+
+   Notebook executável do piloto: :doc:`../tutorials/notebooks/22_m4_development_pilot`.

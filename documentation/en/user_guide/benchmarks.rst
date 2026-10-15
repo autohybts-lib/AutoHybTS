@@ -238,3 +238,7 @@ before the main study and do not use official test outcomes to choose its settin
 
 For loading training data directly, ``M4Provider.load(..., with_test=False)`` returns
 no test partition. The default ``with_test=True`` preserves existing behaviour.
+
+.. seealso::
+
+   Executable pilot notebook: :doc:`../tutorials/notebooks/22_m4_development_pilot`.
