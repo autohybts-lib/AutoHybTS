@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from numbers import Real
 from typing import Final, Literal, TypeAlias
 
 import numpy as np
@@ -41,6 +42,17 @@ DEFAULT_FAMILY_ORDER: Final = (
 Direction: TypeAlias = Literal["gte", "lte"]
 
 
+def _require_finite(name: str, value: object) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ConfigurationError(f"{name} deve ser um número real finito, sem booleanos.")
+    try:
+        finite = math.isfinite(float(value))
+    except OverflowError:
+        finite = False
+    if not finite:
+        raise ConfigurationError(f"{name} deve ser um número real finito.")
+
+
 @dataclass(frozen=True, slots=True)
 class VariabilityCriterion:
     """Variability predicate of R09 as a named, versioned plugin (ADR-0003).
@@ -57,6 +69,9 @@ class VariabilityCriterion:
     aggregation: str = "median"
 
     def __post_init__(self) -> None:
+        _require_finite("variability_threshold", self.threshold)
+        if self.threshold < 0:
+            raise ConfigurationError("variability_threshold deve ser não negativo.")
         if self.direction not in ("gte", "lte"):
             raise ConfigurationError("direction deve ser 'gte' ou 'lte'.")
         if self.aggregation != "median":
@@ -154,6 +169,12 @@ class SelectionPolicy:
     def __post_init__(self) -> None:
         if self.profile not in PROFILES:
             raise ConfigurationError(f"Perfil desconhecido {self.profile!r}; opções: {PROFILES}.")
+        for name in ("median_gain_threshold", "win_rate_threshold", "min_coverage", "epsilon"):
+            _require_finite(name, getattr(self, name))
+        if self.median_gain_threshold < 0:
+            raise ConfigurationError("median_gain_threshold deve ser não negativo.")
+        if self.significance_alpha is not None:
+            _require_finite("significance_alpha", self.significance_alpha)
         if not 0.0 < self.min_coverage <= 1.0:
             raise ConfigurationError("min_coverage deve estar em (0, 1].")
         if not 0.0 <= self.win_rate_threshold <= 1.0:

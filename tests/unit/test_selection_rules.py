@@ -426,3 +426,14 @@ def test_decisions_keep_the_paired_errors_and_gains_of_every_unit() -> None:
     assert units["gain"].median() == pytest.approx(decision.median_gain)
     assert units["win"].mean() == pytest.approx(decision.win_rate)  # ties are not wins
     assert set(units["series_id"]) == {"s"}  # unit ids are "series:fold"
+
+
+def test_public_gain_threshold_changes_acceptance():
+    from autohybts import AutoHybridExperiment
+
+    challenger = result(LINEAR, [0.9] * 5)
+    default = AutoHybridExperiment()._selection_policy()
+    conservative = AutoHybridExperiment(median_gain_threshold=0.2)._selection_policy()
+    assert decide("linear", CHAMPION, challenger, default, "MASE").accepted
+    rejected = decide("linear", CHAMPION, challenger, conservative, "MASE")
+    assert rejected.reason_codes == ("median_gain_below_threshold",)

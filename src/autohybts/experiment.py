@@ -74,7 +74,11 @@ from autohybts.search.runner import SearchEngine
 from autohybts.search.spaces import DEFAULT_BASES, SearchSpace
 from autohybts.search.tuning import Distribution, Tuner, TuningResult, default_space
 from autohybts.selection.incremental import IncrementalSelector
-from autohybts.selection.policy import DEFAULT_FAMILY_ORDER, SelectionPolicy
+from autohybts.selection.policy import (
+    DEFAULT_FAMILY_ORDER,
+    SelectionPolicy,
+    VariabilityCriterion,
+)
 from autohybts.types import Profile, ProtocolVariant
 
 __all__ = ["AutoHybridExperiment", "infer_seasonal_period"]
@@ -187,7 +191,7 @@ class AutoHybridExperiment(Parametrized):
             fewer cycles the period stays. ``seasonality_`` holds the test.
         test_size: points sealed at the end of the series; ``None`` means ``fh``, ``0``
             disables the sealed test (operational forecasting).
-        profile: ``"quickstart"`` (variability criterion off), ``"standard"``,
+        profile: ``"quickstart"`` (variability criterion off by default), ``"standard"``,
             ``"research_strict"`` or ``"exploratory"``.
         variant: forecasting protocol. ``"A"`` (default): each origin forecasts ``fh``
             steps at once, and a corrector's window is fed with its own predicted
@@ -273,6 +277,15 @@ class AutoHybridExperiment(Parametrized):
         metrics: evaluation metrics; the first one ranks and selects.
         n_jobs: threads used to evaluate candidates in parallel.
         registry: custom model registry (built-ins by default).
+        median_gain_threshold: minimum paired median gain, finite and nonnegative
+            (default 0.05). A protocol threshold, not a significance level.
+        win_rate_threshold: minimum share of strict wins, in [0, 1] (default 0.60).
+        variability_threshold: finite nonnegative correction variability threshold.
+            ``None`` inherits the profile: 0.05, or disabled in ``quickstart``.
+            An explicit number enables the criterion, including in ``quickstart``.
+        min_coverage: required valid-unit coverage in (0, 1]; ``research_strict``
+            requires 1.0. Lower coverage can change which units are compared.
+        epsilon: finite positive floor in the relative-gain denominator (default 1e-12).
     """
 
     def __init__(
@@ -315,6 +328,11 @@ class AutoHybridExperiment(Parametrized):
         metrics: Sequence[str] = DEFAULT_METRICS,
         n_jobs: int = 1,
         registry: ModelRegistry | None = None,
+        median_gain_threshold: float = 0.05,
+        win_rate_threshold: float = 0.60,
+        variability_threshold: float | None = None,
+        min_coverage: float = 1.0,
+        epsilon: float = 1e-12,
     ) -> None:
         self.fh = fh
         self.session_id = session_id
@@ -354,6 +372,11 @@ class AutoHybridExperiment(Parametrized):
         self.metrics = metrics
         self.n_jobs = n_jobs
         self.registry = registry
+        self.median_gain_threshold = median_gain_threshold
+        self.win_rate_threshold = win_rate_threshold
+        self.variability_threshold = variability_threshold
+        self.min_coverage = min_coverage
+        self.epsilon = epsilon
         self.state_ = "CREATED"
         self.events_: list[Event] = []
 
@@ -2211,14 +2234,18 @@ class AutoHybridExperiment(Parametrized):
     def _selection_policy(self) -> SelectionPolicy:
         """Initial policy shared by fitting and configuration reporting."""
 
-        return (
-            SelectionPolicy.quickstart(significance_alpha=self.significance_alpha)
-            if self.profile == "quickstart"
-            else SelectionPolicy(
-                profile=self.profile,
-                family_order=DEFAULT_FAMILY_ORDER,
-                significance_alpha=self.significance_alpha,
-            )
+        variability = None if self.profile == "quickstart" else VariabilityCriterion()
+        if self.variability_threshold is not None:
+            variability = VariabilityCriterion(threshold=self.variability_threshold)
+        return SelectionPolicy(
+            profile=self.profile,
+            family_order=DEFAULT_FAMILY_ORDER,
+            significance_alpha=self.significance_alpha,
+            median_gain_threshold=self.median_gain_threshold,
+            win_rate_threshold=self.win_rate_threshold,
+            variability=variability,
+            min_coverage=self.min_coverage,
+            epsilon=self.epsilon,
         )
 
     def _guard(self) -> SearchGuardConfig:

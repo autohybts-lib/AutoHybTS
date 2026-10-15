@@ -20,7 +20,7 @@ Famílias sem finalista (não pedidas no ``include`` ou sem candidata válida) s
 Regra de aceite
 ---------------
 
-O desafiante substitui o campeão só se, nas mesmas unidades (origens):
+Com os parâmetros padrão, o desafiante substitui o campeão só se, nas mesmas unidades (origens):
 
 * tiver cobertura completa e métricas finitas;
 * **ganho mediano** pareado ``(E_campeão − E_desafiante) / |E_campeão|`` ≥ 5 %;
@@ -90,7 +90,7 @@ Perfis
 ------
 
 ``quickstart``
-   critério de variabilidade desligado (e dito explicitamente).
+   critério de variabilidade desligado por padrão (e dito explicitamente).
 ``standard``
    regra completa (padrão).
 ``research_strict``
@@ -118,3 +118,26 @@ promediados.
 .. seealso::
 
    Tutoriais: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/09_ablation`, :doc:`../tutorials/notebooks/11_calibration`.
+
+Limiares configuráveis
+----------------------
+
+Os parâmetros públicos abaixo também funcionam em ``space`` no JSON da ablação.
+Os defaults permanecem: ganho mediano 0,05, vitórias 0,60, cobertura completa e epsilon
+1e-12. ``variability_threshold=None`` herda o perfil (0,05, ou desligado em
+``quickstart``); um valor numérico explícito liga o critério, inclusive em
+``quickstart``. ``research_strict`` continua exigindo cobertura completa.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(
+       median_gain_threshold=0.05, win_rate_threshold=0.60,
+       variability_threshold=0.05, min_coverage=1.0, epsilon=1e-12,
+   )
+
+Os limiares devem ser números finitos, sem booleanos. Ganho e variabilidade são
+não negativos; vitórias ficam em [0, 1], cobertura em (0, 1] e epsilon é positivo.
+Os valores efetivos entram na política, nos snapshots e no hash do protocolo de
+seleção. Propagam-se às buscas aninhadas e ao ``AutoHybridForecaster``. Sua alteração
+não muda o protocolo da busca nem acessa o teste selado. Fixe-os antes da avaliação
+externa; a calibração dos defaults não certifica valores customizados.
