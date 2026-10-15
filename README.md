@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
   <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/v/autohybts.svg" alt="PyPI"></a>
-  <a href="https://autohybts.readthedocs.io/"><img src="https://readthedocs.org/projects/autohybts/badge/?version=latest" alt="Documentação"></a>
+  <a href="https://autohybts.readthedocs.io/"><img src="https://img.shields.io/readthedocs/autohybts/latest" alt="Documentação"></a>
   <a href="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg" alt="Licença MIT"></a>
 </p>
