@@ -1,6 +1,21 @@
 Version 1 and publishing
 ========================================
 
+Development changes for the IJF study
+-------------------------------------
+
+The development branch adds JSON ablation configurations, compatible SQLite resume,
+failure and paired coverage accounting, dated inner snapshots, explicit standalone
+reference rules and correct variant-B outer forecasts. The corrected ablation uses
+``ablation/3``; historical ``ablation/2`` results must be rerun. The evidence bundle
+uses ``autohybts-evidence/2`` with file hashes and explicit inclusion of previously
+computed external/nested results. Export now requires an empty directory.
+
+Tutorial 09 is an executed, short smoke demonstration using the current 5% rule,
+not a performance study. Tag publication is consolidated in ``release.yml`` and
+requires the full release CI; update the PyPI Trusted Publisher before the next tag
+(see :doc:`maintainers`). No new package version or real-data study is released here.
+
 1.0.0rc4 — SQLite tracking, MLOps and exogenous variables, October 14, 2026
 ---------------------------------------------------------------------------
 

@@ -70,10 +70,29 @@ seleção) em cada dobra externa e mede quanto a escolha automática generaliza.
    nested.cost       # por dobra: candidatas, unidades, orçamento, parada, segundos
 
 Sem ``include``, as buscas internas repetem as famílias do último ``compare_models``:
-é esse o procedimento que se quer estimar. A linha ``best_standalone`` é a melhor base
-**da seleção interna** de cada dobra, escolhida sem o bloco externo; é a referência
-justa para dizer se a hibridação compensa. ``nested.total_candidates`` e
+é esse o procedimento que se quer estimar. A linha ``best_standalone`` identifica a
+referência individual interna. Por padrão, ``standalone_reference="initial_champion"``
+usa o campeão inicial da cadeia, ordenado pela busca e com cobertura suficiente na
+seleção. Com ``standalone_reference="lowest_select_error"``, usa o finalista individual
+sem exógenas de menor erro válido em ``V_select`` (desempate por ID). As duas regras
+podem escolher modelos diferentes; nenhuma usa o bloco externo. A tabela registra
+``standalone_reference_rule``, ``champion_id`` e ``best_standalone_id``.
+``nested.total_candidates`` e
 ``nested.total_seconds`` somam o trabalho de todas as dobras.
+
+Na variante A, o bloco externo é previsto de uma vez. Na variante B, cada observação
+só é revelada após sua previsão de um passo, sem reajustar parâmetros. Esse protocolo
+vale para o campeão, a referência individual e os baselines fixos, inclusive em painel.
+
+Para obter uma referência da comparação corrente e finalizá-la:
+
+.. code-block:: python
+
+   spec = exp.get_standalone_reference("lowest_select_error")
+   reference = exp.finalize_model(spec)
+
+Em painel, a finalização de cada finalista preserva suas configurações por série,
+mesmo quando ele não é o campeão final.
 
 .. seealso::
 

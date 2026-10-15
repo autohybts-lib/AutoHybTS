@@ -66,6 +66,22 @@ mean complexity, validation–test gap, mean rank, spread across seeds, coverage
 cost. ``ablation_uncertainty`` summarizes each series (median across seeds) before
 resampling series: seeds of the same series are not independent units.
 
+Non-finite gains (``NaN`` or infinity) do not enter the better, tied or worse shares.
+The report includes ``n_rows``, ``n_paired``, ``n_invalid_gain`` and ``paired_coverage``
+for the supplied rows; these counts do not include planned cases absent from the table.
+The existing ``coverage`` column still describes validation coverage. In uncertainty
+reports, ``n_series`` counts the series present, while ``n_paired_series``,
+``n_invalid_series`` and ``paired_series_coverage`` identify series with a finite gain
+after aggregating valid seeds. Without valid pairs, estimates and intervals remain
+undefined instead of being reported as zero.
+
+``ablation_protocol`` records metrics, the initial policy and budget limits from the
+configuration supplied through ``space``, including profile, significance and budget
+overrides. Per-series resolved origins and effective family order belong to comparison
+snapshots; generating this protocol performs no searches and does not open the external
+test. The report's median gain aggregates series × seed rows, whereas the interval
+aggregates seeds within each series before resampling.
+
 .. warning::
 
    The external test is for reporting only: do not pick the "winning" procedure with
@@ -110,3 +126,82 @@ of the rates per number of origins.
 
    Tutorials: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`,
    :doc:`../tutorials/notebooks/17_benchmark_study`.
+
+Standalone reference and procedure version
+------------------------------------------------------------
+
+Schema ``ablation/3`` uses ``lowest_select_error`` for both the nested CV reference
+and the ``guarded_nested`` fallback: the non-exogenous standalone finalist with the
+lowest valid ``V_select`` error and sufficient coverage. Rows record
+``standalone_reference_rule``, ``best_base_id`` and ``initial_champion_id``.
+The initial champion follows search ranking and may differ from this reference.
+Previous schema ``ablation/2`` used the initial champion within nested CV and another
+rule for fallback. The schemas evaluate different procedures and must be identified
+separately; relabeling old result files is not sufficient.
+
+Configurable protocol and resume
+------------------------------------------------------------
+
+The CLI accepts JSON schema ``autohybts-ablation-config/1``. The supplied
+``tools/protocols/ablation_demo.json`` uses synthetic data and a demonstration budget:
+
+.. code-block:: bash
+
+   python -m autohybts.benchmarks.ablation --config tools/protocols/ablation_demo.json --checkpoint artifacts/demo.sqlite --out artifacts/demo.csv
+   python -m autohybts.benchmarks.ablation --config tools/protocols/ablation_demo.json --checkpoint artifacts/demo.sqlite --resume --out artifacts/demo.csv
+
+``preset="demo"`` keeps two origins per layer and the ``smoke`` budget. ``research``
+uses ``fold="auto"`` and ``small``; it is a configuration starting point, not an approved
+scientific protocol or a guarantee of seven origins on short series. ``space`` accepts
+experiment parameters such as models, residual sources, grids, metrics, profile and
+origins. Horizons, test sizes and dataset identities come from cases and cannot be
+overridden in ``space``. Official benchmark tests are preserved. Descriptor seasonality
+is carried into each case; root-level ``seasonal_period`` provides an explicit override
+(``null`` requests inference).
+
+For benchmarks, ``series_ids`` fixes an explicit list, or ``series`` and ``sampling_seed``
+define a sample. Sampling uses a different seed from model ``seeds``. Do not combine
+explicit IDs with a count, or ``--config`` with scientific CLI overrides. Without JSON,
+``--fold``, ``--sampling-seed`` and ``--series-ids`` are also available. Requesting more
+series than available raises an error rather than silently shrinking the sample.
+
+The Python API accepts the same cases, seeds and parameters:
+
+.. code-block:: python
+
+   table = run_ablation(
+       synthetic_cases(2), seeds=(0, 1), space={"fold": "auto"},
+       checkpoint="artifacts/study.sqlite", on_error="record",
+   )
+   table = run_ablation(
+       synthetic_cases(2), seeds=(0, 1), space={"fold": "auto"},
+       checkpoint="artifacts/study.sqlite", resume=True, on_error="record",
+   )
+   table.attrs["coverage"]   # planned denominator and case states
+   table.attrs["cases"]      # attempts, reasons, timings and case snapshots
+   table.attrs["protocol"]   # configuration, data, environment and code identity
+
+The SQLite checkpoint atomically saves all four procedures of each series × seed.
+``SUCCEEDED`` cases are never rerun. Interrupted cases restart from the beginning; ``FAILED``
+and ``SKIPPED`` cases require ``--retry-failed`` or ``retry_failed=True`` together with
+explicit resume. Errors still stop by default; ``--on-error record`` continues after
+case failures. Configuration and temporal leakage errors always stop execution.
+
+The study hash includes configuration, data values and dates, versions and installed
+Python sources, including uncommitted edits. Incompatible studies cannot resume.
+An OS lock admits one writer per file and is released on process exit; the ``.lock``
+file may remain on disk. Raw series values are not stored. Checkpoints never supply
+trials to model search or selection.
+
+``full`` and ``simple`` phases retain resolved snapshots; ``nested`` retains inner-search
+snapshots, actual splits, errors and costs by outer fold. Interrupted attempts keep
+their history; an unknown duration after abrupt process exit is ``null``. CSV contains
+completed results; failed cases remain in the checkpoint and ``<out>.protocol.json``,
+alongside coverage and snapshots. This JSON is required to reconstruct the planned
+denominator, which a success-only CSV does not contain.
+``coverage.procedures`` distinguishes planned, completed, metric-valid and paired-gain
+cases for each procedure. Completing a case does not imply that every metric is defined.
+Undefined values are ``null`` in JSON and ``NaN`` in reconstructed tables.
+``n_attempts`` and ``known_seconds_total`` include previous attempts; durations lost to
+abrupt process termination are counted in ``n_unknown_duration_attempts``. Partial
+snapshots from earlier attempts are preserved when a case is retried.

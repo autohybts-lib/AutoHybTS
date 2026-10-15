@@ -64,6 +64,22 @@ média, lacuna validação–teste, posto médio, dispersão entre sementes, cob
 ``ablation_uncertainty`` resume cada série (mediana entre sementes) antes de reamostrar
 séries: sementes de uma mesma série não são unidades independentes.
 
+Ganhos não finitos (``NaN`` ou infinito) não entram nas frações de melhora, empate e
+piora. O relatório informa ``n_rows``, ``n_paired``, ``n_invalid_gain`` e
+``paired_coverage`` sobre as linhas fornecidas; esses valores não representam casos
+planejados que não chegaram à tabela. A coluna ``coverage`` continua sendo a cobertura
+de validação. Na incerteza, ``n_series`` conta as séries presentes, e
+``n_paired_series``, ``n_invalid_series`` e ``paired_series_coverage`` identificam as
+séries com ganho finito após agregar as sementes válidas. Sem pares válidos, estimativas
+e intervalos ficam indefinidos, em vez de serem apresentados como zero.
+
+``ablation_protocol`` registra as métricas, a política inicial e os limites de orçamento
+da configuração recebida em ``space``, incluindo perfil, significância e sobrescritas
+de orçamento. O número de origens resolvido por série e a ordem de famílias efetiva
+pertencem aos snapshots da comparação; gerar esse protocolo não executa buscas nem
+abre o teste externo. O ganho mediano do relatório agrega linhas série × semente,
+enquanto o intervalo agrega sementes dentro de cada série antes de reamostrar.
+
 .. warning::
 
    O teste externo só relata: não escolha o procedimento "vencedor" com ele.
@@ -106,3 +122,84 @@ um gráfico das taxas por número de origens.
 
    Tutoriais: :doc:`../tutorials/notebooks/05_benchmark_m4`, :doc:`../tutorials/notebooks/09_ablation`,
    :doc:`../tutorials/notebooks/17_benchmark_study`.
+
+Referência individual e versão do procedimento
+------------------------------------------------------------
+
+O esquema ``ablation/3`` usa ``lowest_select_error`` tanto na referência individual
+da CV aninhada quanto no recuo de ``guarded_nested``: o finalista individual sem
+exógenas de menor erro válido em ``V_select``, com cobertura suficiente. As linhas
+registram ``standalone_reference_rule``, ``best_base_id`` e ``initial_champion_id``.
+O campeão inicial segue a ordem da busca e pode ser diferente dessa referência.
+O esquema anterior ``ablation/2`` usava o campeão inicial dentro da CV e outra regra
+no recuo. Os resultados dos dois esquemas avaliam procedimentos diferentes e devem
+ser identificados separadamente; não basta alterar o rótulo dos arquivos anteriores.
+
+Protocolo configurável e retomada
+------------------------------------------------------------
+
+A CLI aceita um arquivo JSON com esquema ``autohybts-ablation-config/1``. O exemplo
+``tools/protocols/ablation_demo.json`` usa dados sintéticos e orçamento de demonstração:
+
+.. code-block:: bash
+
+   python -m autohybts.benchmarks.ablation --config tools/protocols/ablation_demo.json --checkpoint artifacts/demo.sqlite --out artifacts/demo.csv
+   python -m autohybts.benchmarks.ablation --config tools/protocols/ablation_demo.json --checkpoint artifacts/demo.sqlite --resume --out artifacts/demo.csv
+
+``preset="demo"`` mantém duas origens por camada e orçamento ``smoke``. O preset
+``research`` usa ``fold="auto"`` e orçamento ``small``; é um ponto de configuração,
+não um protocolo científico aprovado ou uma garantia de sete origens em séries curtas.
+``space`` aceita os parâmetros do experimento, como modelos, fontes residuais, grades,
+métricas, perfil e número de origens. Horizonte, tamanho do teste e identificação dos
+dados vêm dos casos; não podem ser sobrescritos por ``space``. O teste oficial dos
+benchmarks é preservado. O período sazonal do descriptor é transportado para o caso;
+``seasonal_period`` na raiz do JSON permite uma escolha explícita (``null`` infere).
+
+Para benchmarks, ``series_ids`` fixa a lista, ou ``series`` e ``sampling_seed`` definem
+uma amostra. A semente da amostragem é diferente de ``seeds``, que controla os modelos.
+Não combine IDs explícitos com uma contagem, nem ``--config`` com alterações científicas
+na CLI. Sem JSON, ``--fold``, ``--sampling-seed`` e ``--series-ids`` também estão disponíveis.
+Solicitar mais séries que as disponíveis gera erro, em vez de reduzir a amostra em silêncio.
+
+Na API Python, use os mesmos casos, sementes e parâmetros:
+
+.. code-block:: python
+
+   table = run_ablation(
+       synthetic_cases(2), seeds=(0, 1), space={"fold": "auto"},
+       checkpoint="artifacts/study.sqlite", on_error="record",
+   )
+   table = run_ablation(
+       synthetic_cases(2), seeds=(0, 1), space={"fold": "auto"},
+       checkpoint="artifacts/study.sqlite", resume=True, on_error="record",
+   )
+   table.attrs["coverage"]   # denominador planejado e estados dos casos
+   table.attrs["cases"]      # tentativas, motivos, tempos e snapshots por caso
+   table.attrs["protocol"]   # configuração, dados, ambiente e identidade do código
+
+O checkpoint SQLite salva atomicamente o conjunto dos quatro procedimentos de cada
+série × semente. Casos ``SUCCEEDED`` não são executados novamente. Casos interrompidos
+são reexecutados por inteiro na retomada; ``FAILED`` e ``SKIPPED`` só são repetidos com ``--retry-failed`` ou
+``retry_failed=True``, junto de retomada explícita. O padrão continua sendo parar em
+erro; ``--on-error record`` permite continuar após falhas de caso. Erros de configuração
+e vazamento temporal sempre interrompem a execução.
+
+O hash do estudo inclui configuração, dados (valores e datas), versões e fontes Python
+instaladas, inclusive alterações não commitadas. Uma incompatibilidade impede a retomada.
+Um lock do sistema operacional admite um escritor por arquivo e é liberado também após
+encerramento do processo; o arquivo ``.lock`` pode permanecer no disco. Não são gravados
+valores brutos das séries. O checkpoint não alimenta busca nem seleção.
+
+As fases ``full`` e ``simple`` registram snapshots resolvidos, e ``nested`` conserva os
+snapshots das buscas internas, divisões efetivas, erros e custos por dobra. Tentativas
+interrompidas mantêm seu histórico; após encerramento abrupto, a duração desconhecida
+fica ``null``. A tabela CSV contém resultados concluídos; os casos que falharam permanecem
+no checkpoint e no ``<out>.protocol.json``, junto da cobertura e dos snapshots. Esse JSON
+é necessário para reconstruir o denominador, que o CSV de sucessos sozinho não contém.
+``coverage.procedures`` separa, para cada procedimento, casos planejados, concluídos,
+com métrica válida e com ganho pareado válido. Concluir uma execução não implica que
+todas as métricas estejam definidas. Valores indefinidos são ``null`` no JSON e ``NaN``
+na tabela reconstruída.
+``n_attempts`` e ``known_seconds_total`` incluem tentativas anteriores; durações perdidas
+após encerramento abrupto são contadas em ``n_unknown_duration_attempts``. Snapshots
+parciais de tentativas anteriores são preservados quando um caso é repetido.

@@ -1,6 +1,23 @@
 Versão 1 e publicação
 =====================
 
+Alterações em desenvolvimento para o estudo IJF
+-----------------------------------------------
+
+A branch de desenvolvimento acrescenta configurações JSON de ablação, retomada
+compatível em SQLite, contabilização de falhas e cobertura pareada, snapshots internos
+datados, regras explícitas para a referência individual e previsões externas corretas
+na variante B. A ablação corrigida usa ``ablation/3``; resultados de ``ablation/2``
+precisam ser reexecutados. O pacote de evidências usa ``autohybts-evidence/2``, com
+hashes dos arquivos e inclusão explícita de resultados externos/aninhados já
+calculados. A exportação passa a exigir uma pasta vazia.
+
+O tutorial 09 é uma demonstração smoke curta e executada com a regra atual de 5%,
+sem constituir estudo de desempenho. A publicação por tag fica concentrada em
+``release.yml``, condicionada ao CI completo de release; atualize o Trusted Publisher
+no PyPI antes da próxima tag (veja :doc:`maintainers`). Esta alteração não publica
+uma nova versão do pacote nem um estudo em dados reais.
+
 1.0.0rc4 — experimentos em SQLite, MLOps e variáveis exógenas, 14 de outubro de 2026
 ------------------------------------------------------------------------------------
 

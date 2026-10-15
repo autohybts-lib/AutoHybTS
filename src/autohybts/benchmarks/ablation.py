@@ -47,29 +47,39 @@ From the command line (``--out`` also writes the resolved protocol next to the C
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import time
-import warnings
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import nullcontext
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 import numpy as np
 import pandas as pd
 
+from autohybts.benchmarks.checkpoint import (
+    Checkpoint,
+    series_fingerprint,
+)
 from autohybts.datasets import get_data, load_benchmark
 from autohybts.datasets.descriptor import BenchmarkDataset
+from autohybts.domain.identity import stable_hash
 from autohybts.domain.specs import CandidateSpec
-from autohybts.evaluation.temporal import DEFAULT_METRICS
-from autohybts.exceptions import ConfigurationError
+from autohybts.evaluation.metrics import resolve_metrics
+from autohybts.exceptions import (
+    ConfigurationError,
+    DataValidationError,
+    TemporalLeakageError,
+    UnsupportedCapabilityError,
+)
 from autohybts.experiment import AutoHybridExperiment
-from autohybts.persistence.manifest import environment, utc_now
+from autohybts.persistence.manifest import environment, json_safe, source_fingerprint, utc_now
 from autohybts.reporting.strategies import complexity
 from autohybts.results import CompareResult
 from autohybts.search.budgets import PRESETS, BudgetPreset
-from autohybts.selection.policy import SelectionPolicy
 
 __all__ = [
     "ABLATION_SCHEMA",
@@ -86,7 +96,8 @@ __all__ = [
 
 # Version of the table layout; 2 added the cost breakdown and the naive references, and
 # ``candidates``/``seconds`` of ``guarded_nested`` now include the nested CV's own work.
-ABLATION_SCHEMA: Final = "ablation/2"
+ABLATION_SCHEMA: Final = "ablation/3"
+# Version 3 aligns the nested guard's reference with its lowest-select-error fallback.
 PROCEDURES: Final = ("lowest_error", "incremental", "incremental_simple", "guarded_nested")
 ALL_FAMILIES: Final = ("standalone", "residual", "multistage", "decomposition", "combination")
 SIMPLE_FAMILIES: Final = ("standalone", "residual")
@@ -111,6 +122,7 @@ class AblationCase:
     seasonal_period: int | None = None
     # Group for stratified reports: residual predictability, benchmark subset ...
     stratum: str = ""
+    source: dict[str, Any] = field(default_factory=dict)
 
 
 def synthetic_cases(n_series: int, n: int = 400, horizon: int = 14) -> Iterator[AblationCase]:
@@ -122,7 +134,14 @@ def synthetic_cases(n_series: int, n: int = 400, horizon: int = 14) -> Iterator[
         yield AblationCase(f"syn{index}-phi{phi}", y, horizon, horizon, 7, f"phi={phi}")
 
 
-def benchmark_cases(name: str, subset: str, n_series: int, seed: int = 0) -> Iterator[AblationCase]:
+def benchmark_cases(
+    name: str,
+    subset: str,
+    n_series: int,
+    seed: int = 0,
+    *,
+    series_ids: Sequence[str] | None = None,
+) -> Iterator[AblationCase]:
     """A random sample of an official benchmark (downloads on first use).
 
     The sample is reproducible: ``seed`` draws ``n_series`` ids without replacement from
@@ -133,8 +152,17 @@ def benchmark_cases(name: str, subset: str, n_series: int, seed: int = 0) -> Ite
     if not isinstance(bench, BenchmarkDataset):  # pragma: no cover - guaranteed without series_id
         raise ConfigurationError("load_benchmark devolveu uma série; esperado um conjunto.")
     ids = list(bench.series_ids)
+    if series_ids is None and n_series > len(ids):
+        raise ConfigurationError("Mais séries solicitadas do que disponíveis no benchmark.")
     rng = np.random.default_rng(seed)
-    for sid in rng.choice(ids, size=min(n_series, len(ids)), replace=False):
+    chosen = (
+        list(series_ids)
+        if series_ids is not None
+        else rng.choice(ids, size=min(n_series, len(ids)), replace=False).tolist()
+    )
+    if len(set(chosen)) != len(chosen) or any(sid not in ids for sid in chosen):
+        raise ConfigurationError("IDs de séries duplicados ou ausentes no benchmark.")
+    for sid in chosen:
         series = bench.series(str(sid))
         assert series.test is not None
         yield AblationCase(
@@ -142,7 +170,9 @@ def benchmark_cases(name: str, subset: str, n_series: int, seed: int = 0) -> Ite
             series.full(),
             len(series.test),
             len(series.test),
+            seasonal_period=series.descriptor.extra.get("seasonal_period"),
             stratum=f"{name}-{subset} h={len(series.test)}",
+            source={**series.descriptor.to_dict(), "sampling_seed": seed},
         )
 
 
@@ -195,6 +225,8 @@ def run_case(
     budget: BudgetPreset = "smoke",
     space: dict[str, Any] | None = None,
     outer_folds: int = 2,
+    *,
+    snapshot_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, object]]:
     """The four procedures on one series and seed; one row per procedure."""
 
@@ -208,18 +240,54 @@ def run_case(
         "seasonal_period": case.seasonal_period,
     }
     full = _search("full", common, case.values, ALL_FAMILIES)
+    if snapshot_callback is not None:
+        snapshot_callback(
+            json_safe(
+                {
+                    "phase": "full",
+                    "snapshot": full.compare.snapshot,
+                    "splits": full.experiment.splits.reset_index().to_dict(orient="records"),
+                }
+            )
+        )
     exp = full.experiment
     metric = full.compare.search.metric
     finalists = list(full.compare.selection.finalists)
-    standalone = [r for r in finalists if r.candidate.strategy == "standalone"]
-    best_base = min(standalone, key=lambda r: (r.mean(metric), r.candidate_id)).candidate
+    best_base = exp.get_standalone_reference("lowest_select_error")
+    initial = exp.get_standalone_reference("initial_champion")
     lowest = min(finalists, key=lambda r: (r.mean(metric), r.candidate_id)).candidate
 
     simple = _search("simple", common, case.values, SIMPLE_FAMILIES)
+    if snapshot_callback is not None:
+        snapshot_callback(
+            json_safe(
+                {
+                    "phase": "simple",
+                    "snapshot": simple.compare.snapshot,
+                    "splits": simple.experiment.splits.reset_index().to_dict(orient="records"),
+                }
+            )
+        )
 
     started = time.perf_counter()
-    nested = exp.nested_cross_validate(outer_folds=outer_folds, baselines=(), include=ALL_FAMILIES)
+    nested = exp.nested_cross_validate(
+        outer_folds=outer_folds,
+        baselines=(),
+        include=ALL_FAMILIES,
+        standalone_reference="lowest_select_error",
+    )
     nested_seconds = time.perf_counter() - started
+    if snapshot_callback is not None:
+        snapshot_callback(
+            json_safe(
+                {
+                    "phase": "nested",
+                    "snapshots": nested.snapshots,
+                    "folds": nested.folds.reset_index().to_dict(orient="records"),
+                    "cost": nested.cost.reset_index().to_dict(orient="records"),
+                }
+            )
+        )
     means = nested.summary["mean"]
     procedure_score = float(means.get(f"autohybts_{metric}", np.inf))
     reference_score = float(means.get(f"best_standalone_{metric}", np.inf))
@@ -279,6 +347,10 @@ def run_case(
                 "complexity": complexity(candidate),
                 "test_score": score,
                 "best_base": best_base.name,
+                "best_base_id": best_base.candidate_id,
+                "initial_champion": initial.name,
+                "initial_champion_id": initial.candidate_id,
+                "standalone_reference_rule": "lowest_select_error",
                 "best_base_test": base_test,
                 **references,
                 "gain_vs_base": (base_test - score) / abs(base_test) if base_test else np.nan,
@@ -315,16 +387,229 @@ def run_ablation(
     space: dict[str, Any] | None = None,
     progress: Callable[[str], None] | None = None,
     outer_folds: int = 2,
+    *,
+    checkpoint: str | Path | None = None,
+    resume: bool = False,
+    retry_failed: bool = False,
+    on_error: Literal["raise", "record"] = "raise",
+    configuration: Mapping[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Every case × seed × procedure, one row each (see ``run_case``)."""
+    """Run a fixed case/seed plan, optionally checkpointing complete cases atomically.
 
-    rows: list[dict[str, object]] = []
-    for case in cases:
-        for seed in seeds:
-            rows.extend(run_case(case, seed, budget, space, outer_folds))
-            if progress is not None:
-                progress(f"{case.series_id} seed={seed}")
-    return pd.DataFrame(rows)
+    ``resume`` requires the same protocol, data hashes, environment and source code.
+    Successful cases are never rerun. Interrupted cases resume automatically; failed
+    or skipped cases require ``retry_failed=True``. ``on_error="record"`` continues
+    after case failures, but configuration and temporal leakage errors always stop.
+    The returned table's attrs contain ``protocol``, ``cases`` and study ``coverage``.
+    """
+
+    cases = list(cases)
+    seeds = tuple(seeds)
+    if any(isinstance(seed, bool) or not isinstance(seed, int) for seed in seeds):
+        raise ConfigurationError("Sementes devem ser inteiros.")
+    if isinstance(outer_folds, bool) or not isinstance(outer_folds, int) or outer_folds < 1:
+        raise ConfigurationError("outer_folds deve ser inteiro positivo.")
+    if not cases or not seeds:
+        raise ConfigurationError("Informe ao menos uma série e uma semente.")
+    if len({case.series_id for case in cases}) != len(cases) or len(set(seeds)) != len(seeds):
+        raise ConfigurationError("Séries e sementes não podem conter duplicatas.")
+    if on_error not in ("raise", "record"):
+        raise ConfigurationError("on_error deve ser 'raise' ou 'record'.")
+    if (resume and checkpoint is None) or (retry_failed and not resume):
+        raise ConfigurationError("Retomada exige checkpoint; retry_failed exige resume=True.")
+    if space and space.get("registry") is not None and checkpoint is not None:
+        raise ConfigurationError(
+            "Checkpoint não admite registry customizado sem identidade de código."
+        )
+    protocol = json_safe(ablation_protocol(cases, seeds, budget, space, outer_folds))
+    if configuration is not None:
+        protocol["configuration"] = json_safe(configuration)
+    protocol["source_fingerprint"] = source_fingerprint()
+    identity = stable_hash({k: v for k, v in protocol.items() if k != "created_at"})
+    protocol["study_id"] = identity
+    manager = (
+        Checkpoint(checkpoint, identity, protocol, resume) if checkpoint else nullcontext(None)
+    )
+    with manager as store:
+        if store:
+            protocol = store.protocol
+        states = store.read() if store else {}
+        plan = {
+            (case.series_id, seed): stable_hash([case.series_id, seed])
+            for case in cases
+            for seed in seeds
+        }
+        if set(states) - set(plan.values()):
+            raise ConfigurationError("Checkpoint contém casos fora do plano.")
+        for (sid, seed), key in plan.items():
+            if key not in states:
+                states[key] = {
+                    "series_id": sid,
+                    "seed": seed,
+                    "status": "PENDING",
+                    "history": [],
+                    "rows": [],
+                    "snapshots": [],
+                    "columns": [],
+                }
+                if store:
+                    store.write(key, states[key])
+            state = states[key]
+            if (
+                state["series_id"] != sid
+                or state["seed"] != seed
+                or state["status"]
+                not in ("PENDING", "RUNNING", "SUCCEEDED", "FAILED", "SKIPPED", "INTERRUPTED")
+            ):
+                raise ConfigurationError("Identidade ou estado de caso inválido no checkpoint.")
+            if state["status"] == "SUCCEEDED" and (
+                len(state["rows"]) != len(PROCEDURES)
+                or {row["procedure"] for row in state["rows"]} != set(PROCEDURES)
+                or any(row["series_id"] != sid or row["seed"] != seed for row in state["rows"])
+            ):
+                raise ConfigurationError("Resultado concluído incompleto no checkpoint.")
+        for case in cases:
+            for seed in seeds:
+                key = plan[case.series_id, seed]
+                state = states[key]
+                status = state["status"]
+                if status == "SUCCEEDED" or (status in ("FAILED", "SKIPPED") and not retry_failed):
+                    continue
+                if status == "RUNNING":
+                    state["history"][-1].update(
+                        status="INTERRUPTED", reason="process exited", seconds=None
+                    )
+                if state["history"] and state["snapshots"]:
+                    state["history"][-1]["snapshots"] = state["snapshots"]
+                state.update(status="RUNNING", snapshots=[], rows=[])
+                state["history"].append({"status": "RUNNING", "started_at": utc_now()})
+                if store:
+                    store.write(key, state)
+                started = time.perf_counter()
+
+                def collect(
+                    snapshot: dict[str, Any],
+                    unit_state: dict[str, Any] = state,
+                    unit_key: str = key,
+                ) -> None:
+                    unit_state["snapshots"].append(snapshot)
+                    if store:
+                        store.write(unit_key, unit_state)
+
+                try:
+                    rows = run_case(
+                        case, seed, budget, space, outer_folds, snapshot_callback=collect
+                    )
+                    if {row["procedure"] for row in rows} != set(PROCEDURES) or len(rows) != 4:
+                        raise ConfigurationError("Caso não produziu os quatro procedimentos.")
+                    state.update(status="SUCCEEDED", rows=json_safe(rows), columns=list(rows[0]))
+                except BaseException as error:
+                    interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
+                    skipped = isinstance(error, UnsupportedCapabilityError)
+                    state["status"] = (
+                        "INTERRUPTED" if interrupted else "SKIPPED" if skipped else "FAILED"
+                    )
+                    state["history"][-1]["reason"] = f"{type(error).__name__}: {error}"
+                    fatal = isinstance(
+                        error, (ConfigurationError, TemporalLeakageError)
+                    ) and not isinstance(error, DataValidationError)
+                    if (
+                        interrupted
+                        or fatal
+                        or on_error == "raise"
+                        or not isinstance(error, Exception)
+                    ):
+                        raise
+                finally:
+                    state["history"][-1].update(
+                        status=state["status"],
+                        finished_at=utc_now(),
+                        seconds=time.perf_counter() - started,
+                    )
+                    if store:
+                        store.write(key, state)
+                if progress is not None:
+                    progress(f"{case.series_id} seed={seed}: {state['status']}")
+        ordered = [states[key] for key in plan.values()]
+        rows = [row for state in ordered for row in state["rows"]]
+        columns = [
+            "series_id",
+            "seed",
+            "procedure",
+            "test_score",
+            "gain_vs_base",
+            "is_hybrid",
+            "complexity",
+            "gap",
+            "coverage",
+            "seconds",
+            "candidates",
+            "units",
+        ]
+        column_order = next((state["columns"] for state in ordered if state["rows"]), columns)
+        table = pd.DataFrame(rows, columns=column_order)
+        numeric = {
+            "test_score",
+            "gain_vs_base",
+            "validation_score",
+            "best_base_test",
+            "naive_test",
+            "seasonal_naive_test",
+            "gap",
+            "coverage",
+            "complexity",
+            "candidates",
+            "search_candidates",
+            "nested_candidates",
+            "units",
+            "fits",
+            "max_trials_total",
+            "pruned_candidates",
+        }
+        for column in table.columns:
+            if column in numeric or column.startswith("seconds"):
+                table[column] = pd.to_numeric(table[column], errors="raise")
+        per_procedure = {}
+        for procedure in PROCEDURES:
+            completed = table.loc[table["procedure"] == procedure]
+            valid = int(np.isfinite(completed["test_score"]).sum())
+            paired = int(np.isfinite(completed["gain_vs_base"]).sum())
+            per_procedure[procedure] = {
+                "n_planned": len(plan),
+                "n_succeeded": len(completed),
+                "n_metric_valid": valid,
+                "n_paired": paired,
+                "metric_coverage": valid / len(plan),
+                "paired_coverage": paired / len(plan),
+            }
+        counts = Counter(state["status"] for state in states.values())
+        table.attrs.update(
+            protocol=protocol,
+            cases=ordered,
+            coverage={
+                "n_planned_cases": len(plan),
+                "n_planned_procedures": len(plan) * len(PROCEDURES),
+                "n_succeeded_cases": counts["SUCCEEDED"],
+                "n_failed_cases": counts["FAILED"],
+                "n_skipped_cases": counts["SKIPPED"],
+                "n_result_rows": len(rows),
+                "n_interrupted_cases": counts["INTERRUPTED"],
+                "case_coverage": counts["SUCCEEDED"] / len(plan),
+                "procedures": per_procedure,
+                "n_attempts": sum(len(state["history"]) for state in ordered),
+                "known_seconds_total": sum(
+                    attempt.get("seconds") or 0.0
+                    for state in ordered
+                    for attempt in state["history"]
+                ),
+                "n_unknown_duration_attempts": sum(
+                    attempt.get("seconds") is None
+                    for state in ordered
+                    for attempt in state["history"]
+                ),
+            },
+        )
+        return table
 
 
 def ablation_protocol(
@@ -334,7 +619,11 @@ def ablation_protocol(
     space: dict[str, Any] | None = None,
     outer_folds: int = 2,
 ) -> dict[str, Any]:
-    """Resolved settings of a run, to save next to its table.
+    """Configured settings of a run, to save next to its table.
+
+    Metrics, initial selection policy and budget overrides follow the experiment's
+    configuration. Per-series resolved folds and family order remain in the comparison
+    snapshots; this metadata does not perform a search or read the external test.
 
     Local changes not committed cannot be detected without running ``git``; record them
     by hand when the working tree is not clean.
@@ -342,6 +631,12 @@ def ablation_protocol(
 
     if budget not in PRESETS:
         raise ConfigurationError(f"Preset desconhecido {budget!r}; opções: {sorted(PRESETS)}.")
+    settings = {**DEFAULT_SPACE, **(space or {}), "budget": budget}
+    experiment = AutoHybridExperiment(**settings)
+    metrics = [metric.name for metric in resolve_metrics(experiment.metrics)]
+    guard = experiment._guard().describe()
+    if guard["max_wall_time_s"] is None:
+        del guard["max_wall_time_s"]
     return {
         "schema": ABLATION_SCHEMA,
         "created_at": utc_now(),
@@ -349,10 +644,11 @@ def ablation_protocol(
         "procedures": list(PROCEDURES),
         "families": {"full": list(ALL_FAMILIES), "simple": list(SIMPLE_FAMILIES)},
         "references": list(REFERENCES),
-        "budget": {"preset": budget, "guard": dict(PRESETS[budget]["guard"])},
-        "metrics": list(DEFAULT_METRICS),
-        "ranking_metric": DEFAULT_METRICS[0],
-        "selection_policy": SelectionPolicy().describe(),
+        "standalone_reference_rule": "lowest_select_error",
+        "budget": {"preset": budget, "guard": guard},
+        "metrics": metrics,
+        "ranking_metric": metrics[0],
+        "selection_policy": experiment._selection_policy().describe(),
         "cache": "sem cache de tentativas entre buscas; ajustes ARIMA memoizados por vetor de "
         "treino (só o tempo muda, nunca o resultado)",
         "space": {k: _jsonable(v) for k, v in {**DEFAULT_SPACE, **(space or {})}.items()},
@@ -366,6 +662,8 @@ def ablation_protocol(
                 "test_size": case.test_size,
                 "seasonal_period": case.seasonal_period,
                 "stratum": case.stratum,
+                "data_fingerprint": series_fingerprint(case.values),
+                "source": case.source,
             }
             for case in cases
         ],
@@ -376,8 +674,24 @@ def _jsonable(value: Any) -> Any:
     return list(value) if isinstance(value, tuple) else value
 
 
+def _finite_gains(gains: pd.Series) -> pd.Series:
+    return gains.where(np.isfinite(gains))
+
+
+def _gain_share(gains: pd.Series, outcome: str) -> float:
+    valid = gains.dropna()
+    if valid.empty:
+        return float("nan")
+    outcomes = {"better": valid > 0, "tie": valid == 0, "worse": valid < 0}
+    return float(outcomes[outcome].mean())
+
+
 def ablation_report(table: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
     """Per procedure: gain vs best base, wins/ties/losses, hybrids, gap, rank, seed spread, cost.
+
+    Gain statistics use finite paired gains only. ``n_rows`` counts supplied case/seed
+    rows, not the study's planned cases; ``n_paired`` and ``paired_coverage`` identify
+    the denominator of wins, ties and losses. Without valid gains their shares are NaN.
 
     ``by`` (e.g. ``"stratum"``) adds an outer level: one block per group.
     """
@@ -388,15 +702,19 @@ def ablation_report(table: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
         blocks = {key: ablation_report(group) for key, group in table.groupby(by, sort=True)}
         return pd.concat(blocks, names=[by])
     table = table.copy()
+    table["gain_vs_base"] = _finite_gains(table["gain_vs_base"])
+    table["test_score"] = table["test_score"].where(np.isfinite(table["test_score"]))
     table["rank"] = table.groupby(["series_id", "seed"])["test_score"].rank(method="average")
     per_seed = table.groupby(["procedure", "seed"])["gain_vs_base"].median()
     report = (
         table.groupby("procedure")
         .agg(
             median_gain_vs_base=("gain_vs_base", "median"),
-            beats_base_share=("gain_vs_base", lambda g: float((g > 0).mean())),
-            ties_base_share=("gain_vs_base", lambda g: float((g == 0).mean())),
-            worse_than_base_share=("gain_vs_base", lambda g: float((g < 0).mean())),
+            beats_base_share=("gain_vs_base", lambda g: _gain_share(g, "better")),
+            ties_base_share=("gain_vs_base", lambda g: _gain_share(g, "tie")),
+            worse_than_base_share=("gain_vs_base", lambda g: _gain_share(g, "worse")),
+            n_rows=("gain_vs_base", "size"),
+            n_paired=("gain_vs_base", "count"),
             hybrid_share=("is_hybrid", "mean"),
             mean_complexity=("complexity", "mean"),
             mean_gap=("gap", "mean"),
@@ -408,6 +726,8 @@ def ablation_report(table: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
         )
         .join(per_seed.groupby("procedure").std().rename("seed_std_of_median_gain"))
     )
+    report["n_invalid_gain"] = report["n_rows"] - report["n_paired"]
+    report["paired_coverage"] = report["n_paired"] / report["n_rows"]
     return report.loc[[p for p in PROCEDURES if p in report.index]]
 
 
@@ -418,38 +738,193 @@ def ablation_uncertainty(
 
     Seeds of one series are not independent: each series' gain is first summarized (median
     over its seeds), then series are resampled with replacement. Also reports the share
-    of series where the procedure is better/worse than the base, with the same resampling.
+    of series where the procedure is better/worse than the base. Non-finite gains are
+    excluded before aggregation; series without any finite gain remain in ``n_series``
+    but not in ``n_paired_series`` or the bootstrap. Their absence is reported explicitly.
     """
 
+    if isinstance(n_boot, bool) or not isinstance(n_boot, int) or n_boot < 1:
+        raise ConfigurationError("n_boot deve ser inteiro positivo.")
+    if not 0 < level < 1:
+        raise ConfigurationError("level deve estar em (0, 1).")
+    table = table.copy()
+    table["gain_vs_base"] = _finite_gains(table["gain_vs_base"])
     per_series = table.groupby(["procedure", "series_id"])["gain_vs_base"].median()
     rng = np.random.default_rng(seed)
     alpha = (1 - level) / 2
     rows = []
     for procedure in [p for p in PROCEDURES if p in per_series.index.get_level_values(0)]:
-        gains = per_series.loc[procedure].to_numpy(dtype=float)
-        draws = gains[rng.integers(0, gains.size, (n_boot, gains.size))]
-        medians = np.median(draws, axis=1)
+        series_gains = per_series.loc[procedure]
+        gains = series_gains.dropna().to_numpy(dtype=float)
+        if gains.size:
+            draws = gains[rng.integers(0, gains.size, (n_boot, gains.size))]
+            medians = np.median(draws, axis=1)
+            median = float(np.median(gains))
+            ci_low = float(np.quantile(medians, alpha))
+            ci_high = float(np.quantile(medians, 1 - alpha))
+        else:
+            median = ci_low = ci_high = float("nan")
         rows.append(
             {
                 "procedure": procedure,
-                "n_series": int(gains.size),
-                "median_gain_vs_base": float(np.median(gains)),
-                "ci_low": float(np.quantile(medians, alpha)),
-                "ci_high": float(np.quantile(medians, 1 - alpha)),
-                "better_share": float(np.mean(gains > 0)),
-                "worse_share": float(np.mean(gains < 0)),
+                "n_series": int(series_gains.size),
+                "n_paired_series": int(gains.size),
+                "n_invalid_series": int(series_gains.size - gains.size),
+                "paired_series_coverage": float(gains.size / series_gains.size),
+                "median_gain_vs_base": median,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
+                "better_share": float(np.mean(gains > 0)) if gains.size else float("nan"),
+                "worse_share": float(np.mean(gains < 0)) if gains.size else float("nan"),
             }
         )
-    return pd.DataFrame(rows).set_index("procedure")
+    columns = [
+        "procedure",
+        "n_series",
+        "n_paired_series",
+        "n_invalid_series",
+        "paired_series_coverage",
+        "median_gain_vs_base",
+        "ci_low",
+        "ci_high",
+        "better_share",
+        "worse_share",
+    ]
+    return pd.DataFrame(rows, columns=columns).set_index("procedure")
+
+
+CONFIG_SCHEMA: Final = "autohybts-ablation-config/1"
+
+
+def _study_config(raw: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "schema",
+        "preset",
+        "dataset",
+        "series",
+        "series_ids",
+        "sampling_seed",
+        "seeds",
+        "budget",
+        "outer_folds",
+        "space",
+        "seasonal_period",
+    }
+    if set(raw) - allowed:
+        raise ConfigurationError(
+            f"Campos desconhecidos no protocolo: {sorted(set(raw) - allowed)}."
+        )
+    if raw.get("schema", CONFIG_SCHEMA) != CONFIG_SCHEMA:
+        raise ConfigurationError("Esquema de configuração de ablação desconhecido.")
+    preset = raw.get("preset", "demo")
+    if preset not in ("demo", "research"):
+        raise ConfigurationError("preset deve ser 'demo' ou 'research'.")
+    space = raw.get("space", {})
+    if not isinstance(space, dict):
+        raise ConfigurationError("space deve ser um objeto JSON.")
+    reserved = {
+        "fh",
+        "test_size",
+        "session_id",
+        "budget",
+        "seasonal_period",
+        "registry",
+        "progress",
+    }
+    accepted = set(inspect.signature(AutoHybridExperiment).parameters) - reserved
+    if set(space) - accepted:
+        raise ConfigurationError(f"Parâmetros inválidos em space: {sorted(set(space) - accepted)}.")
+    config = {
+        "schema": CONFIG_SCHEMA,
+        "preset": preset,
+        "dataset": "synthetic",
+        "series": 6,
+        "sampling_seed": 0,
+        "seeds": [0],
+        "outer_folds": 2,
+        "budget": "small" if preset == "research" else "smoke",
+        **raw,
+        "space": {**DEFAULT_SPACE, "fold": "auto" if preset == "research" else 2, **space},
+    }
+    fold = config["space"]["fold"]
+    if not (fold == "auto" or (isinstance(fold, int) and not isinstance(fold, bool) and fold > 0)):
+        raise ConfigurationError("fold deve ser auto ou inteiro positivo.")
+    if config["dataset"] not in ("synthetic", "m4-daily", "m3-monthly"):
+        raise ConfigurationError("dataset deve ser synthetic, m4-daily ou m3-monthly.")
+    for name in ("series", "outer_folds"):
+        value = config[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ConfigurationError(f"{name} deve ser inteiro positivo.")
+    seeds = config["seeds"]
+    if (
+        not isinstance(seeds, list)
+        or not seeds
+        or any(isinstance(seed, bool) or not isinstance(seed, int) for seed in seeds)
+        or len(set(seeds)) != len(seeds)
+    ):
+        raise ConfigurationError("seeds deve conter inteiros distintos.")
+    sample_seed = config["sampling_seed"]
+    if isinstance(sample_seed, bool) or not isinstance(sample_seed, int) or sample_seed < 0:
+        raise ConfigurationError("sampling_seed deve ser inteiro não negativo.")
+    ids = config.get("series_ids")
+    if ids is not None:
+        if config["dataset"] == "synthetic" or "series" in raw:
+            raise ConfigurationError(
+                "series_ids requer benchmark e não pode ser combinado com series."
+            )
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or any(not isinstance(sid, str) for sid in ids)
+            or len(set(ids)) != len(ids)
+        ):
+            raise ConfigurationError("series_ids deve conter IDs distintos.")
+        config["series"] = len(ids)
+    if "seasonal_period" in config:
+        period = config["seasonal_period"]
+        if period is not None and (
+            isinstance(period, bool) or not isinstance(period, int) or period < 1
+        ):
+            raise ConfigurationError("seasonal_period deve ser positivo ou null para inferir.")
+    ablation_protocol([], seeds, config["budget"], config["space"], config["outer_folds"])
+    return config
+
+
+def _configured_cases(config: dict[str, Any]) -> list[AblationCase]:
+    if config["dataset"] == "synthetic":
+        cases = list(synthetic_cases(config["series"]))
+    else:
+        name, subset = config["dataset"].split("-")
+        cases = list(
+            benchmark_cases(
+                name,
+                subset,
+                config["series"],
+                config["sampling_seed"],
+                series_ids=config.get("series_ids"),
+            )
+        )
+    if "seasonal_period" in config:
+        cases = [replace(case, seasonal_period=config["seasonal_period"]) for case in cases]
+    return cases
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Ablação do procedimento de seleção.")
-    parser.add_argument("--dataset", default="synthetic", help="synthetic, m4-daily, m3-monthly")
-    parser.add_argument("--series", type=int, default=6)
-    parser.add_argument("--seeds", type=int, nargs="+", default=[0])
-    parser.add_argument("--budget", default="smoke")
-    parser.add_argument("--outer-folds", type=int, default=2)
+    parser.add_argument("--config", type=Path, help="Protocolo JSON versionado")
+    parser.add_argument("--preset", choices=("demo", "research"))
+    parser.add_argument("--dataset", help="synthetic, m4-daily, m3-monthly")
+    parser.add_argument("--series", type=int)
+    parser.add_argument("--series-ids", nargs="+")
+    parser.add_argument("--sampling-seed", type=int)
+    parser.add_argument("--seeds", type=int, nargs="+")
+    parser.add_argument("--budget")
+    parser.add_argument("--outer-folds", type=int)
+    parser.add_argument("--fold", help="auto ou número de origens por camada")
+    parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument("--on-error", choices=("raise", "record"), default="raise")
     parser.add_argument(
         "--out",
         default=None,
@@ -457,28 +932,64 @@ def main(argv: Sequence[str] | None = None) -> None:
         "<out>.protocol.json",
     )
     args = parser.parse_args(argv)
-    warnings.filterwarnings("ignore")
-    if args.dataset == "synthetic":
-        cases = list(synthetic_cases(args.series))
+    if (args.resume and args.checkpoint is None) or (args.retry_failed and not args.resume):
+        raise ConfigurationError("--resume exige --checkpoint; --retry-failed exige --resume.")
+    names = (
+        "preset",
+        "dataset",
+        "series",
+        "series_ids",
+        "sampling_seed",
+        "seeds",
+        "budget",
+        "outer_folds",
+    )
+    raw = {name: getattr(args, name) for name in names if getattr(args, name) is not None}
+    if args.config is not None:
+        if raw or args.fold is not None:
+            raise ConfigurationError("Não combine --config com alterações de protocolo na CLI.")
+        raw = json.loads(args.config.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ConfigurationError("O protocolo deve ser um objeto JSON.")
     else:
-        name, subset = args.dataset.split("-")
-        cases = list(benchmark_cases(name, subset, args.series))
+        if args.fold is not None:
+            try:
+                fold = "auto" if args.fold == "auto" else int(args.fold)
+            except ValueError as error:
+                raise ConfigurationError("--fold deve ser auto ou inteiro.") from error
+            raw["space"] = {"fold": fold}
+    config = _study_config(raw)
+    cases = _configured_cases(config)
     table = run_ablation(
         cases,
-        args.seeds,
-        args.budget,
+        config["seeds"],
+        config["budget"],
+        config["space"],
         progress=lambda m: print(m, flush=True),
-        outer_folds=args.outer_folds,
+        outer_folds=config["outer_folds"],
+        checkpoint=args.checkpoint,
+        resume=args.resume,
+        retry_failed=args.retry_failed,
+        on_error=args.on_error,
+        configuration=config,
     )
     if args.out:
         table.to_csv(args.out, index=False)
-        protocol = ablation_protocol(cases, args.seeds, args.budget, outer_folds=args.outer_folds)
-        protocol["dataset"] = args.dataset
+        protocol = {
+            **table.attrs["protocol"],
+            "dataset": config["dataset"],
+            "configuration": config,
+            "resolved_cases": table.attrs["cases"],
+            "coverage": table.attrs["coverage"],
+        }
         Path(f"{args.out}.protocol.json").write_text(
-            json.dumps(protocol, indent=2, ensure_ascii=False, default=str), encoding="utf-8"
+            json.dumps(json_safe(protocol), indent=2, ensure_ascii=False, allow_nan=False),
+            encoding="utf-8",
         )
+    print(json.dumps(table.attrs["coverage"], ensure_ascii=False))
     with pd.option_context("display.width", 200, "display.max_columns", 20):
-        print(ablation_report(table).round(4))
+        if not table.empty:
+            print(ablation_report(table).round(4))
 
 
 if __name__ == "__main__":

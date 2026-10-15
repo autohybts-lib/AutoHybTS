@@ -2,19 +2,39 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import platform
 import re
 import sys
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 import autohybts
+from autohybts.domain.identity import stable_hash
+from autohybts.exceptions import ConfigurationError
 
-__all__ = ["environment", "git_commit", "utc_now"]
+__all__ = ["environment", "git_commit", "json_safe", "source_fingerprint", "utc_now"]
 
-_PACKAGES = ("numpy", "pandas", "scikit-learn", "statsmodels", "scipy")
+_PACKAGES = (
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "statsmodels",
+    "scipy",
+    "statsforecast",
+    "optuna",
+    "torch",
+    "tensorflow",
+    "keras",
+    "lightgbm",
+    "xgboost",
+    "catboost",
+)
 _SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _REF = re.compile(r"refs/[A-Za-z0-9._/+-]+")
 
@@ -87,3 +107,36 @@ def _git_dir(start: Path) -> Path | None:
                 return (folder / text[7:].strip()).resolve()
             return None
     return None
+
+
+def json_safe(value: Any) -> Any:
+    """JSON representation for reporting, with undefined numbers explicitly null."""
+
+    if isinstance(value, Mapping):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return json_safe(value.item())
+    if isinstance(value, np.ndarray):
+        return json_safe(value.tolist())
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    raise ConfigurationError(f"Tipo não serializável no protocolo: {type(value).__name__}.")
+
+
+def source_fingerprint() -> str:
+    """Hash the installed package's Python sources, including uncommitted edits."""
+
+    root = Path(autohybts.__file__).resolve().parent
+    files = sorted(root.rglob("*.py"))
+    return stable_hash(
+        [
+            (file.relative_to(root).as_posix(), hashlib.sha256(file.read_bytes()).hexdigest())
+            for file in files
+        ]
+    )

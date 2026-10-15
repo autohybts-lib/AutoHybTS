@@ -89,7 +89,7 @@ def main() -> None:
     if args.github_output is not None:
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"version={version}\nprerelease={str(prerelease).lower()}\n")
-    print(f"Verified {args.tag}; target={'TestPyPI' if prerelease else 'PyPI'}")
+    print(f"Verified {args.tag}; target=PyPI; prerelease={str(prerelease).lower()}")
 
 
 if __name__ == "__main__":

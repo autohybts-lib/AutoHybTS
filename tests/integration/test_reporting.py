@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -182,11 +183,17 @@ def test_evidence_bundle_without_raw_values(experiment, tmp_path: Path) -> None:
         "snapshot.json",
         "splits.json",
         "trials.csv",
+        "decisions.csv",
+        "decision_units.csv",
     }
     assert set(bundle.files) == expected
     manifest = json.loads((bundle.path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["experiment_id"] == result.audit.protocol_hash == bundle.experiment_id
     assert manifest["raw_series_values_included"] is False
+    assert manifest["schema"] == "autohybts-evidence/2"
+    assert len(manifest["source_fingerprint"]) == 64
+    for name, digest in manifest["sha256"].items():
+        assert hashlib.sha256((bundle.path / name).read_bytes()).hexdigest() == digest
     text = "".join(
         (bundle.path / name).read_text(encoding="utf-8")
         for name in expected
@@ -196,6 +203,52 @@ def test_evidence_bundle_without_raw_values(experiment, tmp_path: Path) -> None:
         assert f"{value:.8f}"[:10] not in text
     decisions = json.loads((bundle.path / "selection_history.json").read_text(encoding="utf-8"))
     assert len(decisions) == len(result.selection.decisions)
+
+
+@needs_matplotlib
+def test_evidence_reuses_external_and_nested_results(tmp_path, monkeypatch):
+    exp = AutoHybridExperiment(**FAST).fit(get_data("synthetic_daily", n=240))
+    result = exp.compare_models()
+    external = exp.evaluate_external(exp.finalize_model(result.best))
+    nested = exp.nested_cross_validate(outer_folds=1, budget="smoke")
+    accessed = set(exp._externally_evaluated)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("export must not evaluate or refit")
+
+    monkeypatch.setattr(exp, "evaluate_external", refuse)
+    monkeypatch.setattr(exp, "nested_cross_validate", refuse)
+    monkeypatch.setattr(exp, "finalize_model", refuse)
+    bundle = exp.export_evidence(
+        tmp_path / "report",
+        external=(external,),
+        nested=nested,
+        plots=("selection_trace",),
+        figure_formats=("pdf", "svg"),
+    )
+    assert exp._externally_evaluated == accessed
+    assert "external_0_metrics.csv" in bundle.files
+    assert "external_0_predictions.csv" not in bundle.files
+    assert "nested_cost.csv" in bundle.files
+    assert "nested_protocol.json" in bundle.files
+    assert (bundle.path / "plot_selection_trace.pdf").read_bytes().startswith(b"%PDF")
+    assert "<svg" in (bundle.path / "plot_selection_trace.svg").read_text()
+    explicit = exp.export_evidence(
+        tmp_path / "explicit",
+        external=(external,),
+        include_predictions=True,
+    )
+    manifest = json.loads((explicit.path / "manifest.json").read_text())
+    first = json.loads((bundle.path / "manifest.json").read_text())
+    assert manifest["run_id"] == first["run_id"]
+    assert manifest["export_id"] != first["export_id"]
+    assert manifest["raw_series_values_included"] is True
+    actual = pd.read_csv(explicit.path / "external_0_predictions.csv", index_col=0)
+    np.testing.assert_allclose(actual["y_true"], external.predictions["y_true"])
+    with pytest.raises(ConfigurationError, match="vazia"):
+        exp.export_evidence(bundle.path)
+    with pytest.raises(ConfigurationError, match="formatos"):
+        exp.export_evidence(tmp_path / "invalid", figure_formats=("jpg",))
 
 
 def test_forecasting_works_without_matplotlib(monkeypatch: pytest.MonkeyPatch) -> None:
