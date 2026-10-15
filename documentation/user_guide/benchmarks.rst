@@ -239,4 +239,5 @@ sem partição de teste. O default ``with_test=True`` preserva o comportamento a
 
 .. seealso::
 
-   Notebook executável do piloto: :doc:`../tutorials/notebooks/22_m4_development_pilot`.
+   O mesmo recorte (M4 diário, só o treino oficial) como projeto com a API pública:
+   :doc:`../tutorials/notebooks/22_m4_development_pilot`.

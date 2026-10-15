@@ -25,7 +25,7 @@ Notebooks curtos, um tema cada, no estilo dos tutoriais do PyCaret. Estão em
 * :doc:`notebooks/19_mlops_flow`: fluxo de MLOps com o preço de uma commodity: registro, promoção, previsões diárias, monitoramento e retreino com portão.
 * :doc:`notebooks/20_exogenous`: séries com variáveis exógenas: past × future, oráculo, seleção automática e com × sem exógenas em benchmarks (baixa dados na primeira execução).
 * :doc:`notebooks/21_mlops_exogenous`: MLOps com exógenas em dados reais: demanda elétrica diária de Victoria com previsão do tempo, feriado e fim de semana (baixa dados na primeira execução).
-* :doc:`notebooks/22_m4_development_pilot`: piloto M4 diário somente no treino oficial, com auditoria, custos, checkpoint e retomada verificada.
+* :doc:`notebooks/22_m4_development_pilot`: projeto com o M4 diário só no treino oficial: seleção guardada contra o menor erro, registro e retomada no SQLite e custo (baixa dados na primeira execução).
 
 .. toctree::
    :hidden:
