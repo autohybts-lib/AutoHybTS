@@ -1,0 +1,18 @@
+{
+  "schema": "autohybts-ablation-config/1",
+  "preset": "demo",
+  "dataset": "synthetic",
+  "series": 1,
+  "sampling_seed": 0,
+  "seeds": [0],
+  "budget": "smoke",
+  "outer_folds": 1,
+  "space": {
+    "fold": 2,
+    "base_models": ["naive", "linear"],
+    "correctors": ["linear"],
+    "residual_windows": [7],
+    "alphas": [1.0],
+    "metrics": ["MASE", "RMSE"]
+  }
+}

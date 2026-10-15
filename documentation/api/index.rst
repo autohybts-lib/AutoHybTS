@@ -12,7 +12,7 @@ Experimento
 .. autoclass:: autohybts.AutoHybridExperiment
    :members: fit, splits, models, register_model, create_model, create_ensemble, create_hybrid,
              create_decomposition,
-             create_combination, tune_model, compare_models, finalize_model, predict_model,
+             create_combination, tune_model, compare_models, get_standalone_reference, finalize_model, predict_model,
              evaluate_external, cross_validate, compare_external, nested_cross_validate,
              data_profile, seasonality_report, characterize, stationarity_report,
              decompose, residual_diagnostics, plot_data, plot_model, plot_characterization, get_metrics, export_evidence,

@@ -16,6 +16,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, TypeVar, cast, overload
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -137,6 +138,32 @@ def _initial_champion(compare: CompareResult) -> CandidateSpec:
         else selection.champion.candidate_id
     )
     return next(r.candidate for r in selection.finalists if r.candidate_id == initial)
+
+
+def _check_standalone_reference(rule: str) -> None:
+    if rule not in ("initial_champion", "lowest_select_error"):
+        raise ConfigurationError(
+            "Referência individual deve ser 'initial_champion' ou 'lowest_select_error'."
+        )
+
+
+def _standalone_reference(compare: CompareResult, rule: str) -> CandidateSpec:
+    _check_standalone_reference(rule)
+    if rule == "initial_champion":
+        return _initial_champion(compare)
+    metric = compare.search.metric
+    coverage = float(compare.snapshot["policy"]["min_coverage"])
+    eligible = [
+        result
+        for result in compare.selection.finalists
+        if result.candidate.strategy == "standalone"
+        and not result.candidate.exog
+        and result.coverage(metric) >= coverage
+        and math.isfinite(result.mean(metric))
+    ]
+    if not eligible:
+        raise CoverageError("Nenhum finalista individual válido para a referência em V_select.")
+    return min(eligible, key=lambda r: (r.mean(metric), r.candidate_id)).candidate
 
 
 class AutoHybridExperiment(Parametrized):
@@ -356,6 +383,7 @@ class AutoHybridExperiment(Parametrized):
         """
 
         started = time.perf_counter()
+        self._run_id = uuid4().hex
         self._progress = make_progress(self.progress)
         if self.variant not in ("A", "B"):
             raise ConfigurationError(f"variant deve ser 'A' ou 'B'; recebido {self.variant!r}.")
@@ -421,15 +449,7 @@ class AutoHybridExperiment(Parametrized):
             residual_settings=ResidualSettings(),
             exog=self.exog_,
         )
-        self.policy_ = (
-            SelectionPolicy.quickstart(significance_alpha=self.significance_alpha)
-            if self.profile == "quickstart"
-            else SelectionPolicy(
-                profile=self.profile,
-                family_order=DEFAULT_FAMILY_ORDER,
-                significance_alpha=self.significance_alpha,
-            )
-        )
+        self.policy_ = self._selection_policy()
         self._externally_evaluated: set[str] = set()
         # Evaluations already computed, per (candidate_id, layer), reused by plots and tables.
         self._evaluations: dict[tuple[str, str | None], EvaluationResult] = {}
@@ -991,14 +1011,32 @@ class AutoHybridExperiment(Parametrized):
         )
         return self.compare_
 
+    def get_standalone_reference(self, rule: str = "initial_champion") -> CandidateSpec:
+        """Return a standalone reference from the last comparison, without accessing test data.
+
+        Args:
+            rule: ``initial_champion`` returns the chain's initial standalone, ranked
+                on search with sufficient selection coverage. ``lowest_select_error``
+                chooses the non-exogenous standalone finalist with the lowest finite
+                selection error and sufficient coverage; candidate ID breaks ties.
+
+        The returned candidate can be finalized. In a panel its per-series configurations
+        are preserved, as for the final champion.
+        """
+
+        self._require("SELECTED")
+        if self.compare_ is None:
+            raise ConfigurationError("Chame compare_models antes de obter a referência.")
+        return _standalone_reference(self.compare_, rule)
+
     def finalize_model(
         self, candidate: CandidateSpec | ModelResult
     ) -> FinalizedForecaster | PanelForecaster:
         """Refit the frozen candidate on the history before the sealed test.
 
         In a panel each series is refitted with the configuration the selection chose for
-        it (the champion's best configuration per series) and a ``PanelForecaster`` is
-        returned.
+        it for a selected finalist, including a standalone reference, and a
+        ``PanelForecaster`` is returned.
         """
 
         self._require("VALIDATED")
@@ -1008,8 +1046,11 @@ class AutoHybridExperiment(Parametrized):
         if not self.is_panel:
             return self._finalize_series(spec, self.history_, self._sealed)
         per_series = dict.fromkeys(self.panel_.series_ids, spec)
-        if self.compare_ is not None and spec == self.compare_.best:
-            per_series.update(self.compare_.selection.champion_per_series)
+        if self.compare_ is not None:
+            selection = self.compare_.selection
+            per_series.update(selection.finalist_per_series.get(spec.candidate_id, {}))
+            if spec == self.compare_.best:
+                per_series.update(selection.champion_per_series)
         models = {
             sid: self._finalize_series(per_series[sid], self.panel_[sid], self._sealed_map.get(sid))
             for sid in self.panel_.series_ids
@@ -1164,10 +1205,7 @@ class AutoHybridExperiment(Parametrized):
         self._externally_evaluated.add(model.model_id)
         started = time.perf_counter()
         rows = self._exog_rows_for(model.history.series_id) if model.exog is not None else None
-        if model.variant == "B":
-            predictions = _rolling_table(model, test, rows)
-        else:
-            predictions = model.predict(len(test), rows)
+        predictions = _forecast_test(model, test, rows)
         predictions["y_true"] = test.values
         values = compute_metrics(
             resolve_metrics(self.evaluator_.metrics),
@@ -1468,11 +1506,21 @@ class AutoHybridExperiment(Parametrized):
         ]
         return pd.DataFrame(rows, columns=columns)
 
-    def export_evidence(self, path: str | Path, plots: Sequence[str] = ()) -> EvidenceBundle:
+    def export_evidence(
+        self,
+        path: str | Path,
+        plots: Sequence[str] = (),
+        *,
+        external: Sequence[ExternalResult] = (),
+        nested: NestedCVResult | None = None,
+        figure_formats: Sequence[str] = ("png",),
+        include_predictions: bool = False,
+    ) -> EvidenceBundle:
         """Tables, decisions, splits and manifest of the last ``compare_models``.
 
-        Raw series values are not written. ``plots`` adds model plots of the champion
-        (e.g. ``("selection_trace", "cv_forecasts")``).
+        ``external`` and ``nested`` are caller-supplied, already computed results;
+        exporting never evaluates or refits a model. External predictions and actuals
+        require ``include_predictions=True``. ``figure_formats`` accepts png/pdf/svg.
         """
 
         self._require("SELECTED")
@@ -1488,23 +1536,49 @@ class AutoHybridExperiment(Parametrized):
         gap = compare.audit.selection_gap
         if gap > 0:
             warnings.append(f"o vencedor piorou da busca para a seleção (gap {gap:+.3f})")
+        tables = {
+            "metrics": self.get_metrics(),
+            "leaderboard": compare.leaderboard,
+            "selection_leaderboard": compare.selection_leaderboard,
+            "trials": compare.search.ledger_frame(),
+            "decisions": compare.selection.decisions_frame(),
+            "decision_units": compare.selection.decision_units_frame(),
+        }
+        documents = {
+            "selection_history": [asdict(d) for d in compare.selection.decisions],
+            "splits": self.splits.reset_index().to_dict(orient="records"),
+            "snapshot": compare.snapshot,
+            "audit": {**asdict(compare.audit), "selection_gap": gap},
+        }
+        for i, result in enumerate(external):
+            tables[f"external_{i}_metrics"] = result.metrics
+            if include_predictions:
+                tables[f"external_{i}_predictions"] = result.predictions
+        if external:
+            documents["external_results"] = [
+                {"index": i, "model_label": r.model_label, "source": "caller_supplied"}
+                for i, r in enumerate(external)
+            ]
+        if nested is not None:
+            tables.update(
+                nested_folds=nested.folds, nested_summary=nested.summary, nested_cost=nested.cost
+            )
+            documents["nested_protocol"] = {
+                "metric": nested.metric,
+                "include": nested.include,
+                "snapshots": nested.snapshots,
+                "source": "caller_supplied",
+            }
         return write_evidence(
             path,
             experiment_id=compare.audit.protocol_hash,
-            tables={
-                "metrics": self.get_metrics(),
-                "leaderboard": compare.leaderboard,
-                "selection_leaderboard": compare.selection_leaderboard,
-                "trials": compare.search.ledger_frame(),
-            },
-            documents={
-                "selection_history": [asdict(d) for d in compare.selection.decisions],
-                "splits": self.splits.reset_index().to_dict(orient="records"),
-                "snapshot": compare.snapshot,
-                "audit": {**asdict(compare.audit), "selection_gap": gap},
-            },
+            tables=tables,
+            documents=documents,
             figures=figures,
             warnings=warnings,
+            figure_formats=figure_formats,
+            include_predictions=include_predictions and bool(external),
+            run_id=self._run_id,
         )
 
     # ------------------------------------------------------------------ comparison
@@ -1614,6 +1688,7 @@ class AutoHybridExperiment(Parametrized):
         baselines: Sequence[str] = ("naive", "seasonal_naive"),
         budget: BudgetPreset | None = None,
         include: Sequence[str] | None = None,
+        standalone_reference: str = "initial_champion",
     ) -> NestedCVResult:
         """Estimate how the whole automated procedure generalizes.
 
@@ -1621,8 +1696,15 @@ class AutoHybridExperiment(Parametrized):
         development history), a fresh experiment with these parameters searches and selects
         using only the history before that origin; its champion is refitted there and
         scored on the next block, side by side with fixed ``baselines`` and with
-        ``best_standalone``: the best standalone model *of that inner selection* (its
-        initial champion), chosen without the outer block.
+        ``best_standalone``: an inner standalone reference chosen without the outer
+        block. ``standalone_reference="initial_champion"`` keeps the chain's initial
+        champion (the compatible default); ``"lowest_select_error"`` chooses the
+        non-exogenous standalone finalist with the lowest valid inner selection error.
+        The folds table records ``standalone_reference_rule`` and candidate IDs.
+
+        Variant A forecasts the outer block at once. Variant B reveals each observation
+        only after its one-step forecast; all fitted parameters stay frozen. The same
+        information protocol applies to the champion, standalone reference and baselines.
 
         ``include`` are the families of the inner ``compare_models``; ``None`` repeats the
         ones of this experiment's last ``compare_models`` (the procedure being estimated),
@@ -1631,11 +1713,12 @@ class AutoHybridExperiment(Parametrized):
 
         In a panel every series is cut at its own outer origin, the inner experiment runs
         on the whole truncated panel and the folds table has one row per fold and series;
-        the summary averages over all of them. The inner reference then uses the
-        representative configuration of the standalone finalist in every series.
+        the summary averages over all of them. Each finalist's per-series configuration
+        is preserved when refitting the inner standalone reference.
         """
 
         self._require("VALIDATED")
+        _check_standalone_reference(standalone_reference)
         families = self._check_include(
             include if include is not None else getattr(self, "include_", _DEFAULT_INCLUDE)
         )
@@ -1653,6 +1736,7 @@ class AutoHybridExperiment(Parametrized):
         space = self._space(with_residuals=False)
         rows = []
         costs = []
+        snapshots: list[dict[str, Any]] = []
         started = time.perf_counter()
         series_ids = self.panel_.series_ids
         fold_ids = [o.fold_id for o in outer_plan[series_ids[0]].origins()]
@@ -1665,7 +1749,10 @@ class AutoHybridExperiment(Parametrized):
             inner = {
                 sid: self.panel_[sid].head(origins[sid].origin_index + 1) for sid in series_ids
             }
-            base_row: dict[str, Any] = {"fold_id": fold_id}
+            base_row: dict[str, Any] = {
+                "fold_id": fold_id,
+                "standalone_reference_rule": standalone_reference,
+            }
             cost: dict[str, Any] = {"fold_id": fold_id, "status": "SUCCEEDED"}
             fold_started = time.perf_counter()
             try:
@@ -1676,9 +1763,18 @@ class AutoHybridExperiment(Parametrized):
                     else AutoHybridExperiment(**params).fit(inner_input, self._exog_rows())  # type: ignore[arg-type]
                 )
                 inner_compare = inner_exp.compare_models(include=families)
+                snapshots.append(
+                    {
+                        "fold_id": fold_id,
+                        "snapshot": inner_compare.snapshot,
+                        "splits": inner_exp.splits.reset_index().to_dict(orient="records"),
+                    }
+                )
                 compared = time.perf_counter()
                 final = inner_exp.finalize_model(inner_compare.best)
-                reference = inner_exp.finalize_model(_initial_champion(inner_compare))
+                reference = inner_exp.finalize_model(
+                    inner_exp.get_standalone_reference(standalone_reference)
+                )
                 finalized = time.perf_counter()
             except (InsufficientHistoryError, CoverageError) as error:
                 for sid in series_ids:
@@ -1716,8 +1812,16 @@ class AutoHybridExperiment(Parametrized):
             for sid in series_ids:
                 history = inner[sid]
                 actual = outer_plan[sid].target_values(origins[sid])
+                test = SeriesFrame(
+                    self.panel_[sid].timestamps[origins[sid].target_slice],
+                    actual,
+                    history.frequency,
+                    sid,
+                )
                 member = final[sid] if isinstance(final, PanelForecaster) else final
-                forecast = member.predict(self.fh, self._exog_rows_for(sid))["y_pred"].to_numpy()
+                forecast = _forecast_test(member, test, self._exog_rows_for(sid))[
+                    "y_pred"
+                ].to_numpy()
                 scores = compute_metrics(
                     metrics, actual, forecast, history.values, self.seasonal_period_
                 )
@@ -1725,7 +1829,7 @@ class AutoHybridExperiment(Parametrized):
                 reference_scores = compute_metrics(
                     metrics,
                     actual,
-                    standalone.predict(self.fh, self._exog_rows_for(sid))["y_pred"].to_numpy(),
+                    _forecast_test(standalone, test, self._exog_rows_for(sid))["y_pred"].to_numpy(),
                     history.values,
                     self.seasonal_period_,
                 )
@@ -1735,15 +1839,20 @@ class AutoHybridExperiment(Parametrized):
                     "origin": origins[sid].origin_time,
                     "status": "SUCCEEDED",
                     "champion": member.spec.label,
+                    "champion_id": member.spec.candidate_id,
                     "strategy": member.spec.strategy,
                     "best_standalone": standalone.spec.label,
+                    "best_standalone_id": standalone.spec.candidate_id,
                     "inner_selection_gap": inner_compare.audit.selection_gap,
                     **{f"autohybts_{m}": v for m, v in scores.items()},
                     **{f"best_standalone_{m}": v for m, v in reference_scores.items()},
                 }
                 for name in baselines:
                     spec = CandidateSpec.standalone(
-                        name, space.default_params(name), family=self.registry_.entry(name).family
+                        name,
+                        space.default_params(name),
+                        family=self.registry_.entry(name).family,
+                        variant=self.variant,
                     )
                     model, _ = refit(
                         spec,
@@ -1753,7 +1862,7 @@ class AutoHybridExperiment(Parametrized):
                         residual_settings=self.evaluator_.residual_settings,
                     )
                     baseline = FinalizedForecaster(spec, model, history, None, {}, len(history))
-                    predicted = baseline.predict(self.fh)["y_pred"].to_numpy()
+                    predicted = _forecast_test(baseline, test)["y_pred"].to_numpy()
                     baseline_scores = compute_metrics(
                         metrics, actual, predicted, history.values, self.seasonal_period_
                     )
@@ -1788,7 +1897,7 @@ class AutoHybridExperiment(Parametrized):
                 for c in present
             ]
         cost_table = pd.DataFrame(costs).set_index("fold_id")
-        return NestedCVResult(folds_table, summary, metric, families, cost_table)
+        return NestedCVResult(folds_table, summary, metric, families, cost_table, tuple(snapshots))
 
     def _finalists_comparison(
         self, finalists: Sequence[EvaluationResult], champion: CandidateSpec
@@ -2099,6 +2208,19 @@ class AutoHybridExperiment(Parametrized):
             )
         return include
 
+    def _selection_policy(self) -> SelectionPolicy:
+        """Initial policy shared by fitting and configuration reporting."""
+
+        return (
+            SelectionPolicy.quickstart(significance_alpha=self.significance_alpha)
+            if self.profile == "quickstart"
+            else SelectionPolicy(
+                profile=self.profile,
+                family_order=DEFAULT_FAMILY_ORDER,
+                significance_alpha=self.significance_alpha,
+            )
+        )
+
     def _guard(self) -> SearchGuardConfig:
         overrides: dict[str, Any] = {"max_wall_time_s": self.max_wall_time_s}
         if self.max_trials is not None:
@@ -2234,6 +2356,16 @@ def _as_frame(y: object) -> SeriesFrame:
     if not isinstance(y, pd.Series):
         raise ConfigurationError(f"Esperada pd.Series ou SeriesFrame; recebido {type(y).__name__}.")
     return SeriesFrame.from_series(y)
+
+
+def _forecast_test(
+    model: FinalizedForecaster, test: SeriesFrame, rows: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Forecast a test block using the model's information protocol, without refitting."""
+
+    if model.variant == "B":
+        return _rolling_table(model, test, rows)
+    return model.predict(len(test), rows)
 
 
 def _rolling_table(

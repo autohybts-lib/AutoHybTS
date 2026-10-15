@@ -18,23 +18,23 @@ Install the published version directly from PyPI:
 The :doc:`installation` guide covers the core, extras, notebooks and the GitHub
 development option.
 
-The ``publish.yml`` workflow runs when a ``v*`` tag is pushed. It builds the wheel
-and source distribution, checks them with Twine and waits for approval of the
-``pypi`` environment before uploading. The Trusted Publisher registered on PyPI
-must match:
+The canonical ``release.yml`` workflow runs for ``v*`` tags, both RC and stable.
+It verifies the tag/version match, runs the reusable CI with all release checks
+(including tutorials and downloads), and only then builds and checks distributions.
+Uploading to PyPI requires approval of the ``pypi`` environment. No parallel workflow
+publishes tags and there is no automatic TestPyPI upload.
+
+Before the next tag, update the PyPI Trusted Publisher to match:
 
 * project: ``autohybts``;
 * owner and repository: ``jvataidee/AutoHybTS``;
-* workflow filename: ``publish.yml``;
+* workflow filename: ``release.yml`` (previously ``publish.yml``);
 * environment: ``pypi``.
 
-On GitHub, open the run, use **Review deployments**, select **pypi** and click
-**Approve and deploy**. Registering a publisher does not start an upload; pushing
-the tag and approving the environment are steps in the workflow.
-
-``release.yml`` retains a separate validation and TestPyPI workflow, which depends
-on its own Trusted Publisher. For future versions, run complete checks before
-tagging and choose a single publishing workflow for each index.
+Keep required reviewers on the GitHub ``pypi`` environment. After validation, use
+**Review deployments**, select **pypi** and **Approve and deploy**. This repository
+change does not update the external PyPI registration or publish a version. For
+validation without publication, dispatch ``ci`` with ``release-checks=true``.
 
 Each version uploaded to PyPI is immutable, including the README embedded in its
 metadata. Changes to the GitHub README and Read the Docs appear on PyPI only in

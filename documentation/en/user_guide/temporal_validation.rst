@@ -74,9 +74,28 @@ generalizes.
 
 Without ``include``, the inner searches repeat the families of the last
 ``compare_models``: that is the procedure being estimated. The ``best_standalone`` row
-is the best base **of the inner selection** of each fold, chosen without the outer
-block; it is the fair reference for saying whether hybridization pays off.
+identifies the inner standalone reference. By default,
+``standalone_reference="initial_champion"`` uses the chain's initial champion, ranked
+on search with sufficient selection coverage. ``standalone_reference="lowest_select_error"``
+uses the non-exogenous standalone finalist with the lowest valid ``V_select`` error
+(ties broken by ID). The rules can choose different models; neither uses the outer
+block. The folds table records ``standalone_reference_rule``, ``champion_id`` and
+``best_standalone_id``.
 ``nested.total_candidates`` and ``nested.total_seconds`` add up the work of all folds.
+
+Variant A forecasts the outer block at once. Variant B reveals each observation only
+after its one-step forecast, without refitting parameters. This protocol applies to
+the champion, standalone reference and fixed baselines, including panels.
+
+To retrieve and finalize a reference from the current comparison:
+
+.. code-block:: python
+
+   spec = exp.get_standalone_reference("lowest_select_error")
+   reference = exp.finalize_model(spec)
+
+In a panel, finalizing any finalist preserves its per-series configurations, even when
+it is not the final champion.
 
 .. seealso::
 

@@ -76,3 +76,21 @@ def test_matches_git_in_this_repository() -> None:
     if not expected:
         pytest.skip("not a git work tree")
     assert git_commit(root) == expected
+
+
+def test_source_identity_detects_uncommitted_edits(tmp_path, monkeypatch):
+    import autohybts
+    from autohybts.persistence.manifest import source_fingerprint
+
+    package = tmp_path / "package"
+    package.mkdir()
+    init = package / "__init__.py"
+    init.write_text("version = 1\n")
+    monkeypatch.setattr(autohybts, "__file__", str(init))
+    first = source_fingerprint()
+    init.write_text("version = 2\n")
+    assert source_fingerprint() != first
+    init.write_text("version = 1\n")
+    assert source_fingerprint() == first
+    (package / "additional.py").write_text("value = 1\n")
+    assert source_fingerprint() != first

@@ -39,3 +39,29 @@ seleção — sem valores brutos da série nem do teste selado.
 .. seealso::
 
    Tutoriais: :doc:`../tutorials/notebooks/03_finalize_and_persist`.
+
+Evidências para o artigo
+------------------------
+
+``export_evidence`` grava decisões e unidades pareadas, custos da busca no ledger,
+splits datados e o snapshot resolvido. Passe resultados já calculados para incluir
+métricas externas e dobras, custos e snapshots aninhados. Exportar não avalia nem
+reajusta modelos; cabe a quem chama associar os resultados fornecidos à execução.
+
+.. code-block:: python
+
+   external = exp.evaluate_external(exp.finalize_model(result.best))
+   nested = exp.nested_cross_validate(outer_folds=2)
+   exp.export_evidence(
+       "artifacts/evidence-nova", external=(external,), nested=nested,
+       plots=("selection_trace",), figure_formats=("png", "pdf", "svg"),
+   )
+
+Use uma pasta vazia. O manifesto ``autohybts-evidence/2`` registra SHA-256 por arquivo,
+versões de dependências opcionais, hash dos fontes incluindo alterações sem commit
+e IDs distintos de execução, exportação e protocolo. O ID de execução se mantém nas
+exportações após o mesmo ``fit``. Pacotes de versão 1 continuam legíveis como arquivos,
+sem os novos campos de integridade. Valores brutos ficam fora por padrão;
+``include_predictions=True`` inclui explicitamente previsões e observações externas,
+assinaladas no manifesto. Figuras podem revelar valores; use ``selection_trace`` para
+compartilhar apenas indicadores de seleção.

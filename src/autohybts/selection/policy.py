@@ -1,6 +1,6 @@
 """Acceptance policy: paired indicators, thresholds and profiles (§9.2, §9.3, §30.3).
 
-Defaults follow the received protocol: median gain >= 1 %, win rate >= 60 % and, when
+Defaults follow the calibrated protocol: median gain >= 5 %, win rate >= 60 % and, when
 enabled, variability >= 0.05 as defined in ADR-0003. These thresholds are protocol rules,
 not significance tests (§30.2).
 """

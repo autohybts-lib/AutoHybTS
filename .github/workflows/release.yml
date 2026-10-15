@@ -1,5 +1,5 @@
-# Register Trusted Publishers for release.yml and the environments testpypi / pypi.
-# Configure required reviewers on both environments before pushing a release tag.
+# Register a Trusted Publisher for release.yml and environment pypi.
+# Both RC and stable tags publish to PyPI after validation and environment approval.
 name: release
 
 on:
@@ -56,25 +56,8 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  testpypi:
-    needs: [version, build]
-    if: needs.version.outputs.prerelease == 'true'
-    runs-on: ubuntu-latest
-    environment: testpypi
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   pypi:
     needs: [version, build]
-    if: needs.version.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

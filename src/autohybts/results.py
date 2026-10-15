@@ -83,7 +83,7 @@ class CompareResult:
         audit: how adaptive the selection was (``SelectionAudit``).
         search: everything the search tried (``SearchResult``; ``ledger_frame()``).
         selection: the selection itself (``SelectionResult``; ``decision_units_frame()``
-            and, in a panel, ``champion_per_series``).
+            and, in a panel, ``champion_per_series`` and ``finalist_per_series``).
         snapshot: what must stay fixed to reproduce the selection (settings, splits,
             space, budget, policy, protocol hash, champion).
         comparison: statistical comparison of the finalists on ``V_select``
@@ -187,7 +187,7 @@ class NestedCVResult:
     families of the inner searches; ``cost`` has one row per outer fold with the work
     done there: candidates and units (origin x series) of the inner search and
     selection, configured budget, stop reason and seconds (search, selection, refit,
-    total).
+    total). ``snapshots`` records the resolved inner comparison configuration by fold.
     """
 
     folds: pd.DataFrame
@@ -195,6 +195,7 @@ class NestedCVResult:
     metric: str
     include: tuple[str, ...] = ()
     cost: pd.DataFrame = field(default_factory=pd.DataFrame)
+    snapshots: tuple[dict[str, Any], ...] = ()
 
     @property
     def total_candidates(self) -> int:

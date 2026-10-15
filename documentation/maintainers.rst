@@ -17,22 +17,24 @@ Instale a versão publicada diretamente pelo PyPI:
 O guia :doc:`installation` traz instalação do núcleo, extras, notebooks e a opção
 de desenvolvimento pelo GitHub.
 
-O workflow ``publish.yml`` é acionado ao enviar uma tag ``v*``. Ele gera o wheel e
-o pacote-fonte, confere-os com Twine e aguarda a aprovação do ambiente ``pypi``
-antes do envio. O Trusted Publisher cadastrado no PyPI deve corresponder a:
+O workflow canônico ``release.yml`` é acionado por tags ``v*``, tanto RC quanto
+estáveis. Ele confere a correspondência exata entre tag e versão, executa o CI
+reutilizável com todas as verificações de release (incluindo tutoriais e downloads)
+e só então gera e confere as distribuições. O envio ao PyPI depende da aprovação do
+ambiente ``pypi``. Não há publicação de tags por outro workflow nem envio automático
+ao TestPyPI.
+
+Antes da próxima tag, atualize o Trusted Publisher no PyPI para corresponder a:
 
 * projeto: ``autohybts``;
 * proprietário e repositório: ``jvataidee/AutoHybTS``;
-* arquivo de workflow: ``publish.yml``;
+* arquivo de workflow: ``release.yml`` (antes, ``publish.yml``);
 * ambiente: ``pypi``.
 
-No GitHub, abra a execução, use **Review deployments**, selecione **pypi** e clique
-em **Approve and deploy**. O cadastro de um publisher não inicia um envio; a tag
-e a aprovação do ambiente são etapas do fluxo.
-
-O ``release.yml`` mantém um fluxo separado de validação e TestPyPI, que depende de
-seu próprio Trusted Publisher. Para próximas versões, execute as verificações
-completas antes da tag e escolha um único workflow de publicação por índice.
+Mantenha revisores obrigatórios no ambiente ``pypi`` do GitHub. Após a validação,
+use **Review deployments**, selecione **pypi** e **Approve and deploy**. Esta alteração
+no repositório não atualiza o cadastro externo no PyPI nem publica uma versão. Para
+validar sem publicar, execute ``ci`` manualmente com ``release-checks=true``.
 
 Cada versão enviada ao PyPI é imutável, incluindo o README incorporado aos
 metadados. Mudanças no README do GitHub e no Read the Docs aparecem no PyPI apenas

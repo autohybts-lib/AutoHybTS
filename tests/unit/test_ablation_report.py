@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -12,6 +13,7 @@ from autohybts.benchmarks import (
     PROCEDURES,
     ablation_protocol,
     ablation_report,
+    ablation_uncertainty,
     synthetic_cases,
 )
 from autohybts.exceptions import ConfigurationError
@@ -77,8 +79,6 @@ def test_protocol_records_the_resolved_settings() -> None:
 
 
 def test_report_by_stratum_and_series_level_uncertainty() -> None:
-    from autohybts.benchmarks import ablation_uncertainty
-
     frame = table()
     frame["stratum"] = ["phi=0.0" if s == "s0" else "phi=0.8" for s in frame["series_id"]]
     stratified = ablation_report(frame, by="stratum")
@@ -100,3 +100,111 @@ def test_report_by_stratum_and_series_level_uncertainty() -> None:
         == 0.0
         == uncertainty.loc["guarded_nested", "ci_high"]
     )
+
+
+def test_protocol_uses_configured_metrics_policy_and_budget() -> None:
+    from autohybts import AutoHybridExperiment
+    from autohybts.benchmarks.ablation import DEFAULT_SPACE
+
+    cases = list(synthetic_cases(1, n=120))
+    space = {
+        "metrics": ("RMSE", "MAE"),
+        "profile": "quickstart",
+        "significance_alpha": 0.1,
+        "max_trials": 3,
+        "max_wall_time_s": 60.0,
+    }
+    protocol = ablation_protocol(cases, (0,), space=space)
+    experiment = AutoHybridExperiment(**{**DEFAULT_SPACE, **space}).fit(cases[0].values)
+    assert protocol["metrics"] == ["RMSE", "MAE"]
+    assert protocol["ranking_metric"] == "RMSE"
+    assert protocol["selection_policy"] == experiment.policy_.describe()
+    assert protocol["selection_policy"]["variability"] is None
+    assert protocol["selection_policy"]["significance"]["alpha"] == 0.1
+    assert protocol["budget"]["guard"]["max_trials_total"] == 3
+    assert protocol["budget"]["guard"]["max_wall_time_s"] == 60.0
+    json.dumps(protocol)
+
+
+@pytest.mark.parametrize("metrics", [(), ("unknown",), ("MAE", "MAE")])
+def test_protocol_refuses_invalid_metrics(metrics: tuple[str, ...]) -> None:
+    with pytest.raises(ConfigurationError):
+        ablation_protocol([], (0,), space={"metrics": metrics})
+
+
+def test_report_excludes_nonfinite_gains_and_records_the_denominator() -> None:
+    frame = table()
+    selected = frame["procedure"] == "lowest_error"
+    frame.loc[selected, "gain_vs_base"] = [0.1, np.nan, np.inf, -0.2]
+    original = frame.copy(deep=True)
+    lowest = ablation_report(frame).loc["lowest_error"]
+    assert lowest["n_rows"] == 4
+    assert lowest["n_paired"] == 2
+    assert lowest["n_invalid_gain"] == 2
+    assert lowest["paired_coverage"] == 0.5
+    assert lowest["median_gain_vs_base"] == pytest.approx(-0.05)
+    assert lowest["beats_base_share"] == 0.5
+    assert lowest["ties_base_share"] == 0.0
+    assert lowest["worse_than_base_share"] == 0.5
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_report_without_paired_gains_keeps_statistics_undefined() -> None:
+    frame = table()
+    frame["gain_vs_base"] = np.nan
+    report = ablation_report(frame)
+    assert (report["n_paired"] == 0).all()
+    assert (report["paired_coverage"] == 0).all()
+    assert (
+        report[
+            ["median_gain_vs_base", "beats_base_share", "ties_base_share", "worse_than_base_share"]
+        ]
+        .isna()
+        .all()
+        .all()
+    )
+
+
+def test_bootstrap_aggregates_finite_seeds_and_counts_unpaired_series() -> None:
+    frame = table()
+    frame = frame.loc[frame["procedure"] == "lowest_error"].copy()
+    frame["gain_vs_base"] = [0.1, np.nan, np.inf, -np.inf]
+    original = frame.copy(deep=True)
+    result = ablation_uncertainty(frame, n_boot=100).loc["lowest_error"]
+    assert result["n_series"] == 2
+    assert result["n_paired_series"] == 1
+    assert result["n_invalid_series"] == 1
+    assert result["paired_series_coverage"] == 0.5
+    assert result["median_gain_vs_base"] == pytest.approx(0.1)
+    assert result["ci_low"] == pytest.approx(0.1)
+    assert result["ci_high"] == pytest.approx(0.1)
+    assert result["better_share"] == 1.0
+    assert result["worse_share"] == 0.0
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_bootstrap_without_valid_series_returns_undefined_estimates() -> None:
+    frame = table()
+    frame["gain_vs_base"] = np.nan
+    result = ablation_uncertainty(frame, n_boot=100)
+    assert (result["n_series"] == 2).all()
+    assert (result["n_paired_series"] == 0).all()
+    assert (result["paired_series_coverage"] == 0).all()
+    assert (
+        result[["median_gain_vs_base", "ci_low", "ci_high", "better_share", "worse_share"]]
+        .isna()
+        .all()
+        .all()
+    )
+
+
+@pytest.mark.parametrize("n_boot", [0, -1, True, 1.5])
+def test_bootstrap_refuses_invalid_sample_counts(n_boot: object) -> None:
+    with pytest.raises(ConfigurationError, match="n_boot"):
+        ablation_uncertainty(table(), n_boot=n_boot)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("level", [0.0, 1.0, -0.1, np.nan])
+def test_bootstrap_refuses_invalid_confidence_levels(level: float) -> None:
+    with pytest.raises(ConfigurationError, match="level"):
+        ablation_uncertainty(table(), level=level)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -238,6 +239,112 @@ def test_nested_cv_runs_the_procedure_on_past_data_only(monkeypatch: pytest.Monk
     assert set(result.summary.index) == {"autohybts_MASE", "best_standalone_MASE", "naive_MASE"}
     # Default families: those of compare_models' default (it has not run here).
     assert result.include == ("standalone", "residual")
+
+
+@pytest.mark.parametrize(("variant", "expected"), [("A", 2.0), ("B", 1.0)])
+@pytest.mark.parametrize("panel", [False, True])
+def test_nested_outer_forecasts_use_the_declared_information_protocol(
+    variant: str, expected: float, panel: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autohybts.experiment as experiment_module
+    from autohybts.domain.fit_count import count_fits
+
+    index = pd.date_range("2020-01-01", periods=50, freq="D")
+    y = pd.Series(np.arange(50, dtype=float), index=index)
+    values = {"a": y, "b": 2 * y} if panel else y
+    exp = AutoHybridExperiment(
+        fh=3,
+        fold=2,
+        test_size=0,
+        variant=variant,
+        base_models=("naive",),
+        metrics=("MAE",),
+        budget="smoke",
+    ).fit(values)
+    original = experiment_module._forecast_test
+    predictions = []
+
+    def observed(model, test, rows=None):  # type: ignore[no-untyped-def]
+        with count_fits() as counter:
+            result = original(model, test, rows)
+        assert counter.total == 0
+        predictions.append(result)
+        return result
+
+    monkeypatch.setattr(experiment_module, "_forecast_test", observed)
+    result = exp.nested_cross_validate(
+        outer_folds=1,
+        baselines=("naive",),
+        include=("standalone",),
+        standalone_reference="lowest_select_error",
+    )
+    for _, row in result.folds.iterrows():
+        scale = 2 if panel and row.name[1] == "b" else 1
+        for column in ("autohybts_MAE", "best_standalone_MAE", "naive_MAE"):
+            assert row[column] == pytest.approx(expected * scale)
+        assert row["standalone_reference_rule"] == "lowest_select_error"
+    assert len(predictions) == (6 if panel else 3)
+    if variant == "B":
+        assert all(set(prediction["horizon"]) == {1} for prediction in predictions)
+
+
+def test_standalone_reference_rules_can_choose_different_finalists() -> None:
+    exp = AutoHybridExperiment(**FAST).fit(get_data("synthetic_daily", n=200))
+    result = exp.compare_models(include=("standalone",))
+    initial = exp.get_standalone_reference()
+    metric = result.search.metric
+    finalists = tuple(
+        replace(
+            evaluation,
+            trials=tuple(
+                replace(trial, metrics={metric: 10.0 if evaluation.candidate == initial else 1.0})
+                for trial in evaluation.trials
+            ),
+        )
+        for evaluation in result.selection.finalists
+    )
+    assert len(finalists) >= 2
+    exp.compare_ = replace(
+        result,
+        selection=replace(result.selection, finalists=finalists, decisions=(), champion=initial),
+    )
+    assert exp.get_standalone_reference("initial_champion") == initial
+    chosen = exp.get_standalone_reference("lowest_select_error")
+    assert chosen != initial
+    assert (
+        chosen
+        == min(
+            (f for f in finalists if f.candidate != initial), key=lambda f: f.candidate_id
+        ).candidate
+    )
+    assert not exp._externally_evaluated
+    with pytest.raises(ConfigurationError, match="Referência"):
+        exp.get_standalone_reference("external_oracle")
+
+    incomplete = tuple(
+        replace(
+            f,
+            trials=(replace(f.trials[0], status="FAILED", metrics={}), *f.trials[1:]),
+        )
+        if f.candidate != initial
+        else f
+        for f in finalists
+    )
+    exp.compare_ = replace(
+        exp.compare_, selection=replace(exp.compare_.selection, finalists=incomplete)
+    )
+    assert exp.get_standalone_reference("lowest_select_error") == initial
+
+
+def test_nested_refuses_unknown_reference_before_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    exp = AutoHybridExperiment(**FAST).fit(get_data("synthetic_daily", n=200))
+
+    def forbidden(*args, **kwargs):  # type: ignore[no-untyped-def]
+        pytest.fail("invalid reference must be rejected before searching")
+
+    monkeypatch.setattr(AutoHybridExperiment, "compare_models", forbidden)
+    with pytest.raises(ConfigurationError, match="Referência"):
+        exp.nested_cross_validate(standalone_reference="external_oracle")
 
 
 def test_nested_cv_repeats_the_families_and_reports_the_inner_cost(

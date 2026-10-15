@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -284,6 +285,40 @@ def test_nested_cv_runs_on_the_panel(
     # Each series is cut at its own origin; the outer block is never in the inner history.
     for (_, sid), row in folds.iterrows():
         assert row["origin"] < exp.panel_[sid].end
+
+
+def test_panel_finalization_preserves_nonchampion_reference_configurations() -> None:
+    exp = AutoHybridExperiment(**FAST).fit(panel_data())
+    result = exp.compare_models(include=("standalone",))
+    # Controlled per-series settings of the same finalist, while another finalist wins.
+    from autohybts.domain.specs import CandidateSpec
+
+    reference = CandidateSpec.standalone("knn", {"lags": 3}, family="kernel")
+    other = CandidateSpec.standalone("knn", {"lags": 7}, family="kernel")
+    configurations = {"a": reference, "b": other}
+    exp.compare_ = replace(
+        result,
+        selection=replace(
+            result.selection,
+            finalist_per_series={reference.candidate_id: configurations},
+        ),
+    )
+    assert reference != result.best
+    model = exp.finalize_model(reference)
+    assert isinstance(model, PanelForecaster)
+    assert {sid: model[sid].spec for sid in configurations} == configurations
+
+
+def test_panel_selection_retains_configurations_for_every_finalist() -> None:
+    exp = AutoHybridExperiment(**FAST).fit(panel_data())
+    result = exp.compare_models()
+    selection = result.selection
+    assert set(selection.finalist_per_series) == {f.candidate_id for f in selection.finalists}
+    assert all(
+        set(configurations) == {"a", "b"}
+        for configurations in selection.finalist_per_series.values()
+    )
+    assert selection.finalist_per_series[result.best.candidate_id] == selection.champion_per_series
 
 
 @pytest.mark.skipif(

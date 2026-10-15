@@ -112,7 +112,8 @@ class SelectionResult:
     ``decisions`` records every challenge, accepted or not, with per-unit errors and gains
     (``decisions_frame()`` and ``decision_units_frame()`` give them as tables); ``audit``
     is the ``SelectionAudit``; in a panel, ``champion_per_series`` holds the
-    configuration chosen for each series.
+    configuration chosen for each series. ``finalist_per_series`` preserves these
+    configurations for every finalist, keyed by its representative candidate ID.
     """
 
     champion: CandidateSpec
@@ -122,6 +123,8 @@ class SelectionResult:
     audit: SelectionAudit
     # Configuration of the champion structure in each series (best per series, ADR-0004).
     champion_per_series: Mapping[str, CandidateSpec] = field(default_factory=dict)
+    # Every finalist needs its own series configurations, including reference models.
+    finalist_per_series: Mapping[str, Mapping[str, CandidateSpec]] = field(default_factory=dict)
 
     def decisions_frame(self) -> pd.DataFrame:
         """One row per decision; models by short name, full label and ids at the end."""
@@ -246,6 +249,12 @@ class IncrementalSelector:
             decisions=tuple(decisions),
             audit=audit,
             champion_per_series=dict(winner.per_series_candidates),
+            finalist_per_series={
+                structure.representative.candidate.candidate_id: dict(
+                    structure.per_series_candidates
+                )
+                for structure in structures.values()
+            },
         )
 
     def _evaluate_select(
