@@ -1,8 +1,8 @@
 Version 1 and publishing
 ========================================
 
-Development changes for the IJF study
--------------------------------------
+Reproducibility and publishing improvements
+-------------------------------------------
 
 The development branch adds JSON ablation configurations, compatible SQLite resume,
 failure and paired coverage accounting, dated inner snapshots, explicit standalone
