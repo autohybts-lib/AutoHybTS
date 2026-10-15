@@ -25,6 +25,7 @@ Short notebooks, one topic each, in the style of the PyCaret tutorials. They liv
 * :doc:`notebooks/19_mlops_flow`: MLOps flow with a commodity price: registration, promotion, daily forecasts, monitoring and gated retraining.
 * :doc:`notebooks/20_exogenous`: series with exogenous variables: past × future, oracle, automatic selection and with × without covariates on benchmarks (downloads data on the first run).
 * :doc:`notebooks/21_mlops_exogenous`: MLOps with covariates on real data: daily electricity demand in Victoria with weather forecast, holiday and weekend (downloads data on the first run).
+* :doc:`notebooks/22_m4_development_pilot`: daily M4 pilot using official training data only, with audit, costs, checkpoint and verified resume.
 
 .. toctree::
    :hidden:
@@ -50,3 +51,4 @@ Short notebooks, one topic each, in the style of the PyCaret tutorials. They liv
    notebooks/19_mlops_flow
    notebooks/20_exogenous
    notebooks/21_mlops_exogenous
+   notebooks/22_m4_development_pilot

@@ -141,3 +141,8 @@ Os valores efetivos entram na política, nos snapshots e no hash do protocolo de
 seleção. Propagam-se às buscas aninhadas e ao ``AutoHybridForecaster``. Sua alteração
 não muda o protocolo da busca nem acessa o teste selado. Fixe-os antes da avaliação
 externa; a calibração dos defaults não certifica valores customizados.
+
+.. seealso::
+
+   Tutorial executável do piloto M4: auditoria, custo e retomada.
+   :doc:`../tutorials/notebooks/22_m4_development_pilot`.
