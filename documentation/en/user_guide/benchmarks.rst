@@ -205,3 +205,36 @@ Undefined values are ``null`` in JSON and ``NaN`` in reconstructed tables.
 ``n_attempts`` and ``known_seconds_total`` include previous attempts; durations lost to
 abrupt process termination are counted in ``n_unknown_duration_attempts``. Partial
 snapshots from earlier attempts are preserved when a case is retried.
+
+Development-only cost pilot
+---------------------------
+
+In a source checkout, ``tools/protocols/m4_daily_development_pilot.json`` provides a
+bounded workflow pilot: D1/D2/D3, one seed, smoke budget, variant A and at most the
+last 730 observations of each official training series. ``development_only=true``
+loads only M4 metadata and training data; the official test file is neither fetched
+nor read. The reported test block is the last 14 points of the retained training
+history, explicitly labelled ``development_tail`` in each case's provenance.
+
+.. code-block:: bash
+
+   # Optional: set AUTOHYBTS_DATA_DIR to a dedicated cache directory.
+   python tools/audit_development_pilot.py --config tools/protocols/m4_daily_development_pilot.json --outdir artifacts/pilot/audit --plot
+   python -m autohybts.benchmarks.ablation --config tools/protocols/m4_daily_development_pilot.json --checkpoint artifacts/pilot/state.sqlite --out artifacts/pilot/results.csv --on-error record
+
+The audit checks actual finite values, regular/unique ordered timestamps and main
+and earliest nested temporal plans without training models. Chronological dates
+follow the provider's source/synthetic index; a regular index does not establish
+that the source calendar is reliable. Each case records the data audit, source file
+checksums, original length and the explicit ``development_tail`` limit. An audit CSV
+is also written before model training when the ablation CLI has ``--out``.
+
+``fold="auto"`` uses up to 7 origins per layer. In this configuration D1/D2 allow 7;
+the shorter D3 allows 3 and its inner search 2. Warnings and resolved plans remain
+visible. This does not validate the default calibration on short histories. The
+pilot measures operation and cost under a bounded setup; it is neither the official
+M4 benchmark nor a representative performance comparison. Freeze a separate protocol
+before the main study and do not use official test outcomes to choose its settings.
+
+For loading training data directly, ``M4Provider.load(..., with_test=False)`` returns
+no test partition. The default ``with_test=True`` preserves existing behaviour.

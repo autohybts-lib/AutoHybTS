@@ -169,21 +169,28 @@ class M4Provider:
         ]
 
     def load(
-        self, cache: CacheManager, subset: str, series_id: str | None = None
+        self,
+        cache: CacheManager,
+        subset: str,
+        series_id: str | None = None,
+        *,
+        with_test: bool = True,
     ) -> BenchmarkDataset | BenchmarkSeries:
+        if not isinstance(with_test, bool):
+            raise ConfigurationError("with_test deve ser booleano.")
         subset = self._subset(subset)
         info = self.info(cache)
         name = _M4_SUBSETS[subset]
         train_path = self._fetch(cache, f"{name}-train.csv", "Train/")
-        test_path = self._fetch(cache, f"{name}-test.csv", "Test/")
+        test_path = self._fetch(cache, f"{name}-test.csv", "Test/") if with_test else None
         wanted = None if series_id is None else {series_id}
         train_rows = dict(_read_wide(train_path, wanted))
-        test_rows = dict(_read_wide(test_path, wanted))
+        test_rows = dict(_read_wide(test_path, wanted)) if test_path is not None else {}
         if series_id is not None and series_id not in train_rows:
             raise ConfigurationError(f"Série {series_id!r} não está no M4 {subset}.")
         frames_train, frames_test, meta = [], [], []
         for sid, train_values in train_rows.items():
-            test_values = test_rows[sid]
+            test_values = test_rows[sid] if with_test else []
             row = info.loc[sid]
             start = _m4_start(str(row["starting_date"]), subset)
             index, source = regular_index(subset, start, len(train_values) + len(test_values))
@@ -208,14 +215,14 @@ class M4Provider:
             target_name="value",
             time_col="timestamp",
             series_id_col="series_id",
-            split_kind="official",
+            split_kind="official" if with_test else "none",
             extra={
                 "seasonal_period": int(info[info["subset"] == subset]["seasonal_period"].iloc[0])
             },
         )
         dataset = BenchmarkDataset(
             pd.concat(frames_train, ignore_index=True),
-            pd.concat(frames_test, ignore_index=True),
+            pd.concat(frames_test, ignore_index=True) if with_test else None,
             pd.DataFrame(meta).set_index("series_id"),
             descriptor,
         )

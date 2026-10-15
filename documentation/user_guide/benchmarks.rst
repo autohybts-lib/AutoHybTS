@@ -203,3 +203,36 @@ na tabela reconstruída.
 ``n_attempts`` e ``known_seconds_total`` incluem tentativas anteriores; durações perdidas
 após encerramento abrupto são contadas em ``n_unknown_duration_attempts``. Snapshots
 parciais de tentativas anteriores são preservados quando um caso é repetido.
+
+Piloto de custo somente no desenvolvimento
+------------------------------------------
+
+Em um checkout dos fontes, ``tools/protocols/m4_daily_development_pilot.json`` oferece
+um piloto limitado do fluxo: D1/D2/D3, uma semente, orçamento smoke, variante A e até
+os últimos 730 pontos de cada série de treino oficial. ``development_only=true`` lê
+somente metadados e treino do M4; o arquivo de teste oficial não é baixado nem lido.
+O bloco de teste relatado são os últimos 14 pontos do treino retido, identificados
+como ``development_tail`` na proveniência de cada caso.
+
+.. code-block:: bash
+
+   # Opcional: defina AUTOHYBTS_DATA_DIR para um cache dedicado.
+   python tools/audit_development_pilot.py --config tools/protocols/m4_daily_development_pilot.json --outdir artifacts/pilot/audit --plot
+   python -m autohybts.benchmarks.ablation --config tools/protocols/m4_daily_development_pilot.json --checkpoint artifacts/pilot/state.sqlite --out artifacts/pilot/results.csv --on-error record
+
+A auditoria confere valores finitos, timestamps regulares/únicos/ordenados e os planos
+temporais principal e interno mais antigo, sem treinar modelos. As datas seguem o
+índice de origem ou sintético do provedor; a regularidade não certifica o calendário
+original. Cada caso registra a auditoria, hashes dos arquivos de origem, comprimento
+original e o limite explícito ``development_tail``. A CLI também grava um CSV de
+auditoria antes do treinamento quando ``--out`` é informado.
+
+``fold="auto"`` usa até 7 origens por camada. Nesta configuração D1/D2 comportam 7;
+a D3, mais curta, comporta 3 e sua busca interna 2. Os avisos e planos resolvidos
+permanecem visíveis. Isso não valida a calibração padrão em históricos curtos. O
+piloto mede funcionamento e custo sob uma configuração limitada; não constitui o
+benchmark oficial M4 nem comparação representativa de desempenho. Congele outro
+protocolo antes do estudo principal e não escolha seus parâmetros pelo teste oficial.
+
+Para carregar treino diretamente, ``M4Provider.load(..., with_test=False)`` retorna
+sem partição de teste. O default ``with_test=True`` preserva o comportamento anterior.

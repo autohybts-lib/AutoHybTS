@@ -65,7 +65,9 @@ from autohybts.benchmarks.checkpoint import (
     series_fingerprint,
 )
 from autohybts.datasets import get_data, load_benchmark
+from autohybts.datasets.cache import CacheManager
 from autohybts.datasets.descriptor import BenchmarkDataset
+from autohybts.datasets.providers import M4Provider
 from autohybts.domain.identity import stable_hash
 from autohybts.domain.specs import CandidateSpec
 from autohybts.evaluation.metrics import resolve_metrics
@@ -141,6 +143,8 @@ def benchmark_cases(
     seed: int = 0,
     *,
     series_ids: Sequence[str] | None = None,
+    development_only: bool = False,
+    development_tail: int | None = None,
 ) -> Iterator[AblationCase]:
     """A random sample of an official benchmark (downloads on first use).
 
@@ -148,6 +152,13 @@ def benchmark_cases(
     the benchmark's id list; the official test of each series is its sealed test.
     """
 
+    if development_only:
+        if name != "m4" or subset != "daily":
+            raise ConfigurationError("development_only está disponível somente para M4 diário.")
+        yield from _m4_development_cases(subset, n_series, seed, series_ids, development_tail)
+        return
+    if development_tail is not None:
+        raise ConfigurationError("development_tail exige development_only=True.")
     bench = load_benchmark(name, subset)
     if not isinstance(bench, BenchmarkDataset):  # pragma: no cover - guaranteed without series_id
         raise ConfigurationError("load_benchmark devolveu uma série; esperado um conjunto.")
@@ -174,6 +185,92 @@ def benchmark_cases(
             stratum=f"{name}-{subset} h={len(series.test)}",
             source={**series.descriptor.to_dict(), "sampling_seed": seed},
         )
+
+
+def _m4_development_cases(
+    subset: str,
+    n_series: int,
+    seed: int,
+    series_ids: Sequence[str] | None,
+    tail: int | None,
+) -> Iterator[AblationCase]:
+    """Cost pilot: fetch only official training data and reserve a development tail."""
+    if tail is not None and (isinstance(tail, bool) or not isinstance(tail, int) or tail < 1):
+        raise ConfigurationError("development_tail deve ser inteiro positivo.")
+    provider = M4Provider()
+    cache = CacheManager()
+    available = provider.list(cache, subset)["series_id"].tolist()
+    if series_ids is None and n_series > len(available):
+        raise ConfigurationError("Mais séries solicitadas do que disponíveis no benchmark.")
+    chosen = (
+        list(series_ids)
+        if series_ids is not None
+        else np.random.default_rng(seed).choice(available, size=n_series, replace=False).tolist()
+    )
+    if not chosen or len(set(chosen)) != len(chosen) or any(sid not in available for sid in chosen):
+        raise ConfigurationError("IDs de séries duplicados ou ausentes no benchmark.")
+    for sid in chosen:
+        series = provider.load(cache, subset, series_id=sid, with_test=False)
+        if isinstance(series, BenchmarkDataset):
+            raise ConfigurationError("Esperada uma série de treinamento do M4.")
+        original_length = len(series.train)
+        values = series.train if tail is None else series.train.iloc[-tail:]
+        horizon = series.descriptor.horizon
+        if horizon is None or len(values) <= horizon:
+            raise DataValidationError("Treino insuficiente para o bloco de desenvolvimento.")
+        audit = _development_audit(values)
+        source = {
+            **series.descriptor.to_dict(),
+            "sampling_seed": seed,
+            "official_test_accessed": False,
+            "evaluation_partition": "development_tail",
+            "original_train_length": original_length,
+            "development_tail": tail,
+            "data_audit": audit,
+            "source_files": {
+                name: cache.read_manifest("m4", name)
+                for name in ("M4-info.csv", f"{subset.title()}-train.csv")
+            },
+        }
+        yield AblationCase(
+            str(sid),
+            values,
+            horizon,
+            horizon,
+            seasonal_period=series.descriptor.extra.get("seasonal_period"),
+            stratum=f"m4-{subset}-development h={horizon}",
+            source=source,
+        )
+
+
+def _development_audit(values: pd.Series) -> dict[str, Any]:
+    """Actual finite-value and chronological checks before any pilot fitting."""
+    numbers = values.to_numpy(dtype=float)
+    index = pd.DatetimeIndex(values.index)
+    deltas = np.diff(index.to_numpy(dtype="datetime64[ns]").astype(np.int64))
+    regular = len(deltas) > 0 and bool(np.all(deltas == deltas[0])) and bool(deltas[0] > 0)
+    audit = {
+        "status": "READY",
+        "observations": len(values),
+        "missing": int(values.isna().sum()),
+        "nonfinite": int((~np.isfinite(numbers)).sum()),
+        "duplicate_timestamps": int(index.duplicated().sum()),
+        "chronological": bool(index.is_monotonic_increasing),
+        "regular": regular,
+        "start": str(index.min()),
+        "end": str(index.max()),
+        "constant": bool(np.ptp(numbers) == 0),
+    }
+    if (
+        audit["nonfinite"]
+        or audit["duplicate_timestamps"]
+        or not regular
+        or not audit["chronological"]
+    ):
+        raise DataValidationError(f"Auditoria dos dados de desenvolvimento bloqueada: {audit}.")
+    if audit["constant"]:
+        audit["status"] = "READY_WITH_WARNINGS"
+    return audit
 
 
 @dataclass(frozen=True)
@@ -809,6 +906,8 @@ def _study_config(raw: dict[str, Any]) -> dict[str, Any]:
         "outer_folds",
         "space",
         "seasonal_period",
+        "development_only",
+        "development_tail",
     }
     if set(raw) - allowed:
         raise ConfigurationError(
@@ -834,6 +933,7 @@ def _study_config(raw: dict[str, Any]) -> dict[str, Any]:
     accepted = set(inspect.signature(AutoHybridExperiment).parameters) - reserved
     if set(space) - accepted:
         raise ConfigurationError(f"Parâmetros inválidos em space: {sorted(set(space) - accepted)}.")
+    AutoHybridExperiment(**space)._selection_policy()
     config = {
         "schema": CONFIG_SCHEMA,
         "preset": preset,
@@ -851,6 +951,19 @@ def _study_config(raw: dict[str, Any]) -> dict[str, Any]:
         raise ConfigurationError("fold deve ser auto ou inteiro positivo.")
     if config["dataset"] not in ("synthetic", "m4-daily", "m3-monthly"):
         raise ConfigurationError("dataset deve ser synthetic, m4-daily ou m3-monthly.")
+    if "development_only" in config and not isinstance(config["development_only"], bool):
+        raise ConfigurationError("development_only deve ser booleano.")
+    if config.get("development_only") and config["dataset"] != "m4-daily":
+        raise ConfigurationError("O piloto development_only requer dataset m4-daily.")
+    if "development_tail" in config:
+        tail = config["development_tail"]
+        if (
+            not config.get("development_only")
+            or isinstance(tail, bool)
+            or not isinstance(tail, int)
+            or tail < 1
+        ):
+            raise ConfigurationError("development_tail exige development_only e inteiro positivo.")
     for name in ("series", "outer_folds"):
         value = config[name]
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -902,6 +1015,8 @@ def _configured_cases(config: dict[str, Any]) -> list[AblationCase]:
                 config["series"],
                 config["sampling_seed"],
                 series_ids=config.get("series_ids"),
+                development_only=config.get("development_only", False),
+                development_tail=config.get("development_tail"),
             )
         )
     if "seasonal_period" in config:
@@ -960,6 +1075,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             raw["space"] = {"fold": fold}
     config = _study_config(raw)
     cases = _configured_cases(config)
+    if config.get("development_only"):
+        print(
+            "Piloto de desenvolvimento: teste oficial não carregado; "
+            "métricas não são benchmark oficial.",
+            flush=True,
+        )
+        audits = pd.DataFrame(
+            [{"series_id": case.series_id, **case.source["data_audit"]} for case in cases]
+        )
+        print(audits.to_string(index=False), flush=True)
+        if args.out:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            audits.to_csv(f"{args.out}.audit.csv", index=False)
     table = run_ablation(
         cases,
         config["seeds"],

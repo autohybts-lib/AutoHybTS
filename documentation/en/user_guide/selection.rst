@@ -92,7 +92,7 @@ Profiles
 --------
 
 ``quickstart``
-   variability criterion off (and stated explicitly).
+   variability criterion off by default (and stated explicitly).
 ``standard``
    full rule (default).
 ``research_strict``
@@ -120,3 +120,26 @@ and averaged.
 .. seealso::
 
    Tutorials: :doc:`../tutorials/notebooks/02_hybrid_selection`, :doc:`../tutorials/notebooks/09_ablation`, :doc:`../tutorials/notebooks/11_calibration`.
+
+Configurable thresholds
+-----------------------
+
+The public experiment parameters below also work in an ablation JSON ``space``.
+Defaults are unchanged: median gain 0.05, wins 0.60, complete coverage and epsilon
+1e-12. ``variability_threshold=None`` inherits the profile (0.05, or disabled in
+``quickstart``); an explicit numeric threshold enables variability, including in
+``quickstart``. ``research_strict`` still requires complete coverage.
+
+.. code-block:: python
+
+   exp = AutoHybridExperiment(
+       median_gain_threshold=0.05, win_rate_threshold=0.60,
+       variability_threshold=0.05, min_coverage=1.0, epsilon=1e-12,
+   )
+
+Thresholds must be finite numbers, not booleans. Gain and variability are
+nonnegative; wins must be in [0, 1], coverage in (0, 1], and epsilon positive.
+Resolved values enter the policy, snapshots and selection protocol hash. They
+propagate to nested searches and ``AutoHybridForecaster``. Changing them does not
+change the search protocol itself or access the sealed test. Fix them before external
+evaluation; calibration evidence for the defaults does not certify custom values.

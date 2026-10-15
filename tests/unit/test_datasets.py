@@ -525,3 +525,55 @@ def test_m5_is_declared_unsupported_without_official_wrmsse() -> None:
             call()
     listed = catalog.list_datasets().set_index("provider")
     assert "WRMSSE" in listed.loc["m5", "kind"]
+
+
+def test_m4_training_only_does_not_fetch_official_test(tmp_path):
+    manager, opener = cache(tmp_path)
+    series = M4.load(manager, "daily", series_id="D1", with_test=False)
+    assert series.test is None
+    assert series.descriptor.split_kind == "none"
+    assert all("Test/" not in url for url in opener.calls)
+    assert not manager.path("m4", "Daily-test.csv").exists()
+
+
+def test_development_pilot_uses_only_official_train(tmp_path, monkeypatch):
+    from autohybts.benchmarks import ablation
+
+    manager, opener = cache(tmp_path)
+    monkeypatch.setattr(ablation, "M4Provider", lambda: M4)
+    monkeypatch.setattr(ablation, "CacheManager", lambda: manager)
+    config = ablation._study_config(
+        {
+            "dataset": "m4-daily",
+            "series_ids": ["D1"],
+            "development_only": True,
+            "development_tail": 40,
+        }
+    )
+    cases = ablation._configured_cases(config)
+    case = cases[0]
+    assert case.horizon == case.test_size == int(M4.info(manager).loc["D1", "horizon"])
+    assert len(case.values) <= 40
+    assert case.source["official_test_accessed"] is False
+    assert case.source["evaluation_partition"] == "development_tail"
+    assert case.source["data_audit"]["status"] in {"READY", "READY_WITH_WARNINGS"}
+    assert all("Test/" not in url for url in opener.calls)
+
+
+@pytest.mark.parametrize("bad", ["nonfinite", "duplicate", "unordered", "gap"])
+def test_development_audit_blocks_invalid_temporal_data(bad):
+    from autohybts.benchmarks.ablation import _development_audit
+    from autohybts.exceptions import DataValidationError
+
+    data = pd.Series(range(20), index=pd.date_range("2020-01-01", periods=20))
+    if bad == "nonfinite":
+        data = data.astype(float)
+        data.iloc[0] = float("inf")
+    elif bad == "duplicate":
+        data.index = data.index[:-1].append(data.index[-2:-1])
+    elif bad == "unordered":
+        data = data.iloc[::-1]
+    else:
+        data = data.drop(data.index[5])
+    with pytest.raises(DataValidationError, match="bloqueada"):
+        _development_audit(data)
