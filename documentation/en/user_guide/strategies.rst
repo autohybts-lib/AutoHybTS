@@ -19,6 +19,64 @@ Strategy                    Name                      Idea
 ``dynamic_selection``       ``dref(arima-mlp,knn)``   picks the corrector at each step (B only)
 ==========================  ========================  ============================================
 
+
+Supported combinations
+----------------------
+
+This table summarizes ``CandidateSpec`` contracts and the capabilities shown by
+``exp.models()``. Combinations still depend on the base, corrector, horizon and
+history; a row does not guarantee that every registered model supports it.
+Panels use local fits and separate origins for each series.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Strategy
+     - Variant
+     - Local panel
+     - Covariates
+     - Residual source
+   * - ``standalone``
+     - A/B
+     - Yes
+     - Base with ``accepts_exog``
+     - Not applicable
+   * - ``residual_additive`` / ``residual_multistage``
+     - A/B
+     - Yes
+     - Base with ``accepts_exog``
+     - Historical one-step, multi-step or ``in_sample``; with X, one-step only
+   * - ``decomposition``
+     - A/B for MA; A for STL
+     - Yes
+     - No
+     - Smooth/volatile components
+   * - ``fixed_combination``
+     - A/B
+     - Yes
+     - No
+     - Not applicable
+   * - ``residual_combination``
+     - A/B
+     - Yes
+     - No
+     - Historical one-step, multi-step or ``in_sample``
+   * - ``dynamic_selection``
+     - B
+     - Yes
+     - No
+     - Historical one-step, multi-step or ``in_sample``
+   * - ``ensemble`` / ``residual_composite``
+     - A/B, depending on components
+     - Yes
+     - No
+     - Component sources; composite correction also declares its source
+
+``in_sample`` requires base fitted values and is experimental; it is not equivalent
+to out-of-sample residuals. Sequence correctors have additional restrictions in
+:doc:`models`. Covariate availability follows :doc:`exogenous`; residual origins
+and tails are described in :doc:`temporal_validation`.
+
 Additive correction
 -------------------
 

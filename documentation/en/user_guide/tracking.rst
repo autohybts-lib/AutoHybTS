@@ -74,6 +74,21 @@ Logging the same experiment again with the same name replaces the run's rows: ``
 be called after ``compare_models`` and again after ``evaluate_external``. A different name
 creates another run; ``store.delete_run(run_id)`` removes one.
 
+Project continuity
+------------------
+
+Notebook 22 preserves its directory and records a case only after evaluating and
+saving its distinct choices. Parameters, data, environment and sources enter an
+identity checked before reusing a run. Models live in external artifacts; their
+hashes, choices, costs and warnings are stored in run tags. Metrics and forecasts
+enter SQLite through ``log(..., models=[...], values=True)``, after evaluation.
+This explicit inclusion records observations of the project's internal block.
+
+A new session reads SQLite and artifacts without in-memory search results. Cases
+interrupted before their final transaction are repeated. Use one writer per directory.
+The example checks forecast equivalence after saving/loading and in an independent
+process. For the ablation executor's failure states and checkpoint, see :doc:`benchmarks`.
+
 Queries
 -------
 

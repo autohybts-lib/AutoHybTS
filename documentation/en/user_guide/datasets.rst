@@ -243,8 +243,11 @@ assembled by hand from the raw table:
 
 .. note::
 
-   The library does not fill missing values. A series with ``NaN`` is refused at
-   ``fit`` (``DataValidationError``); handle missing values first.
+   By default, ``missing="reject"`` refuses missing values in ``fit``
+   (``DataValidationError``). Explicit causal filling with ``missing="ffill"``
+   uses only the last observed value; leading gaps without history remain invalid.
+   The interpolation above is a preparation choice that may use later values and
+   must not cross a validation origin. See :doc:`diagnostics` for the missing-data contract.
 
 .. warning::
 

@@ -243,3 +243,14 @@ no test partition. The default ``with_test=True`` preserves existing behaviour.
 
    The same scope (daily M4, official training data only) as a project on the public API:
    :doc:`../tutorials/notebooks/22_m4_development_pilot`.
+
+Gain statistic and intervals
+---------------------------------
+
+``ablation_report`` summarizes the median of ``gain_vs_base`` over series × seed rows.
+``ablation_uncertainty`` first takes each series' median across seeds, then the
+median across series; its bootstrap resamples series, not independent seeds.
+The estimates can differ with multiple seeds or unequal coverage. Its intervals
+refer to the per-series aggregate statistic. Report the point estimate from that
+same table with its interval and state the unit of analysis. Identify proportions
+as row-based or series-based as well; available functions do not fix an inferential design.

@@ -241,3 +241,15 @@ sem partição de teste. O default ``with_test=True`` preserva o comportamento a
 
    O mesmo recorte (M4 diário, só o treino oficial) como projeto com a API pública:
    :doc:`../tutorials/notebooks/22_m4_development_pilot`.
+
+Estatística dos ganhos e intervalos
+----------------------------------------
+
+``ablation_report`` resume a mediana de ``gain_vs_base`` das linhas série × semente.
+``ablation_uncertainty`` calcula primeiro a mediana das sementes de cada série e
+então a mediana entre séries; seu bootstrap reamostra séries, não sementes como
+unidades independentes. Essas estimativas podem diferir quando há várias sementes
+ou cobertura desigual. Os intervalos se referem à estatística agregada por série.
+Ao relatar um intervalo, use a estimativa pontual dessa mesma tabela e declare a
+unidade de análise. As proporções também devem ser identificadas como calculadas
+por linha ou por série; a disponibilidade de funções não fixa o desenho inferencial.
