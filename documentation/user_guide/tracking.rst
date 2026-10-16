@@ -75,6 +75,22 @@ execução: dá para chamar ``log`` depois de ``compare_models`` e outra vez dep
 ``evaluate_external``. Um nome diferente cria outra execução; ``store.delete_run(run_id)``
 apaga uma.
 
+Continuidade de um projeto
+--------------------------
+
+O notebook 22 preserva a pasta e registra um caso somente depois de avaliar e salvar
+as escolhas distintas. Os parâmetros, dados, ambiente e fontes entram numa identidade
+verificada antes de reutilizar uma execução. Os modelos ficam em artefatos externos;
+seus hashes, escolhas, custos e avisos ficam nas etiquetas do registro. As métricas e
+previsões entram no banco por ``log(..., models=[...], values=True)``, chamado após a
+avaliação. Essa inclusão explícita grava observações do bloco interno do projeto.
+
+Uma nova sessão lê o banco e os artefatos; não depende de resultados de busca em memória.
+Casos interrompidos antes do registro final são refeitos. Use um escritor por pasta.
+O exemplo verifica a equivalência das previsões após salvar/carregar e num processo
+independente. Para o executor de ablação com estados de falha e checkpoint próprio,
+veja :doc:`benchmarks`.
+
 Consultas
 ---------
 

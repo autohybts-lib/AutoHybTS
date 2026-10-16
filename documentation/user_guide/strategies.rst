@@ -17,6 +17,64 @@ Estratégia                  Nome                      Ideia
 ``dynamic_selection``       ``dref(arima-mlp,knn)``   escolhe o corretor a cada passo (só B)
 ==========================  ========================  ============================================
 
+
+Combinações suportadas
+----------------------
+
+A tabela resume os contratos de ``CandidateSpec`` e das capacidades consultadas em
+``exp.models()``. As combinações continuam sujeitas ao modelo-base, ao corretor,
+ao horizonte e ao histórico; uma linha não garante que todo modelo registrado
+possa executá-la. Painéis usam ajustes locais e origens próprias por série.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Estratégia
+     - Variante
+     - Painel local
+     - Covariáveis
+     - Fonte residual
+   * - ``standalone``
+     - A/B
+     - Sim
+     - Base com ``accepts_exog``
+     - Não se aplica
+   * - ``residual_additive`` / ``residual_multistage``
+     - A/B
+     - Sim
+     - Base com ``accepts_exog``
+     - Histórica de um passo, multipasso ou ``in_sample``; com X, só um passo
+   * - ``decomposition``
+     - A/B para MA; A para STL
+     - Sim
+     - Não
+     - Componentes suave/volátil
+   * - ``fixed_combination``
+     - A/B
+     - Sim
+     - Não
+     - Não se aplica
+   * - ``residual_combination``
+     - A/B
+     - Sim
+     - Não
+     - Histórica de um passo, multipasso ou ``in_sample``
+   * - ``dynamic_selection``
+     - B
+     - Sim
+     - Não
+     - Histórica de um passo, multipasso ou ``in_sample``
+   * - ``ensemble`` / ``residual_composite``
+     - A/B, conforme os componentes
+     - Sim
+     - Não
+     - Dos componentes; a correção composta também declara sua fonte
+
+``in_sample`` exige valores ajustados da base e é experimental; não equivale a
+resíduos fora da amostra. Corretores sequenciais têm restrições adicionais descritas
+em :doc:`models`. Para covariáveis, ``past`` e ``future`` seguem :doc:`exogenous`;
+para a origem e a cauda dos resíduos, veja :doc:`temporal_validation`.
+
 Correção aditiva
 ----------------
 

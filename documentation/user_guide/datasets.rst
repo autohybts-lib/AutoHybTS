@@ -242,8 +242,12 @@ Tabelas sem coluna de data, como ``airquality`` (só ``Month`` e ``Day``), são 
 
 .. note::
 
-   A biblioteca não preenche valores ausentes. Uma série com ``NaN`` é recusada no
-   ``fit`` (``DataValidationError``); trate os faltantes antes.
+   Por padrão, ``missing="reject"`` recusa valores ausentes no ``fit``
+   (``DataValidationError``). Para preenchimento causal explícito,
+   ``missing="ffill"`` usa somente o último valor observado; lacunas iniciais sem
+   histórico continuam inválidas. A interpolação acima é uma escolha de preparação,
+   que pode usar valores posteriores e não deve atravessar uma origem de validação.
+   Veja :doc:`diagnostics` para o contrato de tratamento de ausentes.
 
 .. warning::
 

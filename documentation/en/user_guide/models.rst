@@ -288,10 +288,13 @@ Capabilities
 ``online_state_update`` (variants A and B), ``training_scope`` (``local``,
 ``global``, ``pretrained``), ``output_type`` (``point``, ``quantile``, ``samples``,
 ``distribution``), ``target_mode`` (``univariate``, ``multivariate``, ``exogenous``),
-``horizon_strategy`` and ``max_horizon`` describe the model. The search is univariate,
-local, point-valued and without covariates: a model trained globally on a panel, with a
-non-point output, that forecasts several targets together, that needs covariates or
-whose maximum horizon is shorter than requested is ``SKIPPED`` without being fitted.
+``horizon_strategy`` and ``max_horizon`` describe the model. The search compares point forecasts per series with local fitting. Global
+models, non-point outputs, multiple targets and incompatible horizons are
+``SKIPPED`` without fitting. Covariates are supported when the experiment receives
+``X`` and the base declares ``accepts_exog=True``. This differs from
+``target_mode="exogenous"``, whose mandatory contract is not accepted by the current
+search. See :doc:`strategies` for strategy combinations and :doc:`exogenous` for
+temporal covariate availability.
 
 Metrics
 -------

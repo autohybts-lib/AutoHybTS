@@ -285,10 +285,13 @@ Capacidades
 ``online_state_update`` (variantes A e B), ``training_scope`` (``local``, ``global``,
 ``pretrained``), ``output_type`` (``point``, ``quantile``, ``samples``,
 ``distribution``), ``target_mode`` (``univariate``, ``multivariate``, ``exogenous``),
-``horizon_strategy`` e ``max_horizon`` descrevem o modelo. A busca é univariada, local,
-pontual e sem covariáveis: um modelo treinado globalmente num painel, com saída não
-pontual, que prevê vários alvos juntos, que precisa de covariáveis ou com horizonte
-máximo menor que o pedido é ``SKIPPED`` sem ser ajustado.
+``horizon_strategy`` e ``max_horizon`` descrevem o modelo. A busca compara previsões pontuais por série, com ajustes locais;
+modelos globais, saídas não pontuais, múltiplos alvos e horizontes incompatíveis
+são ``SKIPPED`` sem ajuste. Covariáveis são suportadas quando o experimento recebe
+``X`` e a base declara ``accepts_exog=True``. Isso é distinto de
+``target_mode="exogenous"``, cujo contrato obrigatório não é aceito pela busca atual.
+Consulte :doc:`strategies` para as combinações de estratégias e :doc:`exogenous`
+para disponibilidade temporal das covariáveis.
 
 Métricas
 --------

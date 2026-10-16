@@ -191,7 +191,7 @@ e **Build configuration file: `documentation/.readthedocs.yaml`**. O YAML da rai
 
 ## Limitações atuais
 
-- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada é só para uma série; a seleção dinâmica (`dynamic`) só existe na variante B.
+- Decomposição, combinação fixa e estágios múltiplos só entram na busca quando pedidos em `compare_models(include=...)`; a CV aninhada funciona em uma série ou em painel, preservando origens e configurações por série; a seleção dinâmica (`dynamic`) só existe na variante B.
 - `compare_models` com o orçamento padrão (`small`), o espaço completo e 7 origens por camada leva alguns minutos numa série de ~700 pontos, sobretudo por causa do ARIMA com ordem automática; use `budget="smoke"`, `fold=3` ou `base_models=[...]` para explorar.
 - A regra de aceite (ganho mediano ≥ 5 %, vitórias ≥ 60 %, variabilidade ≥ 0,05, com 7 origens por camada quando a série comporta) foi calibrada em controles sintéticos: aceitou estruturas espúrias em 2–4 % das séries de ruído branco e ganhos reais em 54–56 % das séries com resíduo previsível. Não é controle de erro estatístico; em séries curtas, com menos origens, a taxa de falso aceite é maior (veja o guia de seleção).
 
