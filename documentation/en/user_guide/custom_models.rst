@@ -23,8 +23,8 @@ temporal validation rules.
    )
    result = exp.fit(y).compare_models()
 
-Install from PyPI: ``python -m pip install "autohybts[torch]==1.0.0rc4"`` or
-``python -m pip install "autohybts[tensorflow]==1.0.0rc4"``. ``import autohybts`` never loads these
+Install from PyPI: ``python -m pip install "autohybts[torch]==1.0.0rc5"`` or
+``python -m pip install "autohybts[tensorflow]==1.0.0rc5"``. ``import autohybts`` never loads these
 libraries; they are imported when the model is fitted.
 
 Four ways to bring the model in

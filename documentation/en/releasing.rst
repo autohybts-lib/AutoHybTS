@@ -1,20 +1,31 @@
 Version 1 and publishing
 ========================================
 
-Reproducibility and publishing improvements
--------------------------------------------
+1.0.0rc5 — progress, configurable thresholds and reproducible ablation, October 30, 2026
+----------------------------------------------------------------------------------------
 
-The development branch adds JSON ablation configurations, compatible SQLite resume,
-failure and paired coverage accounting, dated inner snapshots, explicit standalone
-reference rules and correct variant-B outer forecasts. The corrected ablation uses
-``ablation/3``; historical ``ablation/2`` results must be rerun. The evidence bundle
-uses ``autohybts-evidence/2`` with file hashes and explicit inclusion of previously
-computed external/nested results. Export now requires an empty directory.
+* **Progress:** ``progress=True`` shows one bar (tqdm, ``progress`` extra) per search and
+  selection stage; events also go to ``logging``.
+* **Configurable selection thresholds:** ``median_gain_threshold``, ``win_rate_threshold``,
+  ``variability_threshold``, ``min_coverage`` and ``epsilon`` on ``AutoHybridExperiment``
+  and in ``space`` in the ablation JSON. Defaults are unchanged; the effective values enter
+  the snapshots and the selection protocol hash.
+* **Reproducible ablation:** JSON configurations, compatible SQLite resume, failure and
+  paired coverage accounting, dated inner snapshots, explicit standalone reference rules
+  and correct variant-B outer forecasts. The corrected ablation uses ``ablation/3``;
+  historical ``ablation/2`` results must be rerun. The evidence bundle uses
+  ``autohybts-evidence/2`` with file hashes and explicit inclusion of previously computed
+  external/nested results, and export now requires an empty directory.
+* **Publishing:** tag publication is consolidated in ``release.yml`` and requires the full
+  release CI (see :doc:`maintainers`).
+* **Documentation:** numbered notebook titles; progress bars in notebooks 02, 06, 07 and
+  08; notebook 22 (M4 project on training data only, resumable after a process restart);
+  tutorial 09 is a short smoke demonstration, not a performance study. The repository
+  moved to ``autohybts-lib/AutoHybTS``.
 
-Tutorial 09 is an executed, short smoke demonstration using the current 5% rule,
-not a performance study. Tag publication is consolidated in ``release.yml`` and
-requires the full release CI; update the PyPI Trusted Publisher before the next tag
-(see :doc:`maintainers`). No new package version or real-data study is released here.
+.. code-block:: bash
+
+   python -m pip install "autohybts[stats,plot]==1.0.0rc5"
 
 1.0.0rc4 — SQLite tracking, MLOps and exogenous variables, October 14, 2026
 ---------------------------------------------------------------------------
