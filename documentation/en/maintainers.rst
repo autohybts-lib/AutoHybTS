@@ -13,7 +13,7 @@ Install the published version directly from PyPI:
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[stats,plot]==1.0.0rc4"
+   python -m pip install "autohybts[stats,plot]==1.0.0rc5"
 
 The :doc:`installation` guide covers the core, extras, notebooks and the GitHub
 development option.
@@ -38,7 +38,7 @@ validation without publication, dispatch ``ci`` with ``release-checks=true``.
 
 Each version uploaded to PyPI is immutable, including the README embedded in its
 metadata. Changes to the GitHub README and Read the Docs appear on PyPI only in
-the next published version. ``1.0.0rc4`` includes this update; later changes require
+the next published version. ``1.0.0rc5`` includes this update; later changes require
 another version. Do not re-upload an already published version.
 
 Local checklist
@@ -54,9 +54,9 @@ Local checklist
    pytest -m network --run-network
    sphinx-build -W documentation documentation/_build/html
    sphinx-build -W documentation/en documentation/_build/html-en
-   python -m build --outdir dist/1.0.0rc4
-   python -m twine check dist/1.0.0rc4/*
-   python tools/check_release.py --tag v1.0.0rc4 --dist dist/1.0.0rc4
+   python -m build --outdir dist/1.0.0rc5
+   python -m twine check dist/1.0.0rc5/*
+   python tools/check_release.py --tag v1.0.0rc5 --dist dist/1.0.0rc5
 
 After installing the wheel in a clean environment without extras, run
 ``python tools/smoke_wheel.py`` using that environment's Python. CI also validates
