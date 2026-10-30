@@ -30,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jvataidee/AutoHybTS"
+Homepage = "https://github.com/autohybts-lib/AutoHybTS"
 Documentation = "https://autohybts.readthedocs.io/"
-Source = "https://github.com/jvataidee/AutoHybTS"
-Issues = "https://github.com/jvataidee/AutoHybTS/issues"
+Source = "https://github.com/autohybts-lib/AutoHybTS"
+Issues = "https://github.com/autohybts-lib/AutoHybTS/issues"
 
 [project.optional-dependencies]
 stats = ["statsmodels>=0.14"]

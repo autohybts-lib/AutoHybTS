@@ -19,7 +19,7 @@ Licença e autoria
 -----------------
 
 AutoHybTS é software livre sob a licença MIT (arquivo ``LICENSE`` do repositório), de
-João Ataíde. Código e issues: https://github.com/jvataidee/AutoHybTS.
+João Ataíde. Código e issues: https://github.com/autohybts-lib/AutoHybTS.
 
 Coautoria com IA
 ----------------
@@ -47,7 +47,7 @@ Cite a versão que você usou (``autohybts.__version__``):
      title   = {{AutoHybTS}: Automated Hybrid Time Series Forecasting},
      year    = {2026},
      version = {1.0.0rc4},
-     url     = {https://github.com/jvataidee/AutoHybTS},
+     url     = {https://github.com/autohybts-lib/AutoHybTS},
      note    = {Desenvolvido em coautoria com Claude (Anthropic) e Codex (OpenAI)}
    }
 

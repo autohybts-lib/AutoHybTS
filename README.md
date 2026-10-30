@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jvataidee/AutoHybTS/main/figures/AutoHybTS.png" alt="AutoHybTS" width="260">
+  <img src="https://raw.githubusercontent.com/autohybts-lib/AutoHybTS/main/figures/AutoHybTS.png" alt="AutoHybTS" width="260">
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
   <a href="https://pypi.org/project/autohybts/"><img src="https://img.shields.io/pypi/v/autohybts.svg" alt="PyPI"></a>
   <a href="https://autohybts.readthedocs.io/"><img src="https://img.shields.io/readthedocs/autohybts/latest" alt="Documentação"></a>
-  <a href="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/jvataidee/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg" alt="Licença MIT"></a>
+  <a href="https://github.com/autohybts-lib/AutoHybTS/actions/workflows/ci.yml"><img src="https://github.com/autohybts-lib/AutoHybTS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/autohybts-lib/AutoHybTS/blob/main/LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg" alt="Licença MIT"></a>
 </p>
 
 # AutoHybTS
@@ -175,7 +175,7 @@ valores ausentes: trate-os antes do `fit`.
 ## Documentação e tutoriais
 
 - Documentação: <https://autohybts.readthedocs.io/>
-- Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/jvataidee/AutoHybTS/tree/main/notebooks)
+- Tutoriais em notebook, salvos com as saídas: [`notebooks/`](https://github.com/autohybts-lib/AutoHybTS/tree/main/notebooks)
 
 Para configurar a publicação no Read the Docs, veja
 [`Publicação no Read the Docs`](https://autohybts.readthedocs.io/pt-br/latest/maintainers.html).
@@ -203,4 +203,4 @@ Desenvolvida por João Ataíde em coautoria com assistentes de IA: **Claude** (A
 
 ## Licença
 
-[MIT](https://github.com/jvataidee/AutoHybTS/blob/main/LICENSE) © João Ataíde.
+[MIT](https://github.com/autohybts-lib/AutoHybTS/blob/main/LICENSE) © João Ataíde.

@@ -27,7 +27,7 @@ publishes tags and there is no automatic TestPyPI upload.
 Before the next tag, update the PyPI Trusted Publisher to match:
 
 * project: ``autohybts``;
-* owner and repository: ``jvataidee/AutoHybTS``;
+* owner and repository: ``autohybts-lib/AutoHybTS``;
 * workflow filename: ``release.yml`` (previously ``publish.yml``);
 * environment: ``pypi``.
 
@@ -97,7 +97,7 @@ To publish the Portuguese documentation at
 
 1. Open the project that publishes Portuguese in the Read the Docs dashboard and
    go to **Admin → Settings** (or **Settings**).
-2. Check the repository: ``https://github.com/jvataidee/AutoHybTS``.
+2. Check the repository: ``https://github.com/autohybts-lib/AutoHybTS``.
 3. Set **Language** to **Portuguese (Brazil)**.
 4. Set **Build configuration file** to ``documentation/.readthedocs.yaml``.
    This field takes the YAML path; the ``conf.py`` path is already inside it.

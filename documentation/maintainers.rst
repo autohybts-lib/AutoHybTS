@@ -27,7 +27,7 @@ ao TestPyPI.
 Antes da próxima tag, atualize o Trusted Publisher no PyPI para corresponder a:
 
 * projeto: ``autohybts``;
-* proprietário e repositório: ``jvataidee/AutoHybTS``;
+* proprietário e repositório: ``autohybts-lib/AutoHybTS``;
 * arquivo de workflow: ``release.yml`` (antes, ``publish.yml``);
 * ambiente: ``pypi``.
 
@@ -97,7 +97,7 @@ Para publicar a documentação em
 
 1. Abra o projeto que publica o português no painel do Read the Docs e entre em
    **Admin → Settings** (ou **Settings**).
-2. Confira o repositório: ``https://github.com/jvataidee/AutoHybTS``.
+2. Confira o repositório: ``https://github.com/autohybts-lib/AutoHybTS``.
 3. Defina **Language** como **Portuguese (Brazil)**.
 4. Em **Build configuration file**, informe ``documentation/.readthedocs.yaml``.
    Esse campo recebe o YAML; o caminho do ``conf.py`` já está dentro dele.

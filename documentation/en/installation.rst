@@ -83,7 +83,7 @@ GitHub (requires Git):
 
 .. code-block:: bash
 
-   python -m pip install "autohybts[stats,plot] @ git+https://github.com/jvataidee/AutoHybTS.git"
+   python -m pip install "autohybts[stats,plot] @ git+https://github.com/autohybts-lib/AutoHybTS.git"
 
 To contribute from a local clone, use
 ``python -m pip install -e ".[dev,stats,notebook]"`` at the repository root.
