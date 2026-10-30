@@ -30,8 +30,8 @@ def settings(language: str) -> dict[str, Any]:
     release = autohybts.__version__
     return {
         "project": "AutoHybTS",
-        "author": "João Ataíde",
-        "copyright": "2026, João Ataíde",
+        "author": "AutoHybTS contributors",
+        "copyright": "2026, AutoHybTS contributors",
         "release": release,
         "version": release,
         "language": language,

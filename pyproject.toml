@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "João Ataíde" }]
+authors = [{ name = "AutoHybTS contributors" }]
 keywords = ["time series", "forecasting", "hybrid models", "residual correction", "automl"]
 classifiers = [
     "Development Status :: 4 - Beta",

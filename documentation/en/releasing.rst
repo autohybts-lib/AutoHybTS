@@ -40,7 +40,7 @@ protocol hash and the model persistence schema do not change.
   (seatbelts, bjsales, uschange, insurance, elecdaily, vic_elec_daily).
 * **Documentation:** guides on SQLite tracking, MLOps and covariates; notebooks 18 (analysis
   with SQL), 19 (MLOps flow), 20 (covariates on benchmarks) and 21 (MLOps with covariates on
-  real electricity demand); co-authorship with AI (Claude and Codex) on the *About* page.
+  real electricity demand).
 
 .. code-block:: bash
 
