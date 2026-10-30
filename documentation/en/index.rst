@@ -124,4 +124,3 @@ strategies for building hybrid systems together in a single workflow:
    contributing
    maintainers
    releasing
-   about

@@ -161,8 +161,8 @@ A página do guia de uma estratégia nova traz:
 Contribuições assistidas por IA
 -------------------------------
 
-O projeto é desenvolvido em coautoria com Claude e Codex (veja :doc:`about`), e
-contribuições feitas com assistentes de IA são bem-vindas nas mesmas condições das demais:
+Contribuições feitas com assistentes de IA são bem-vindas nas mesmas condições das
+demais:
 
 * quem envia revisa e entende cada linha, e responde por ela no pull request;
 * a mudança passa pela mesma bateria (``ruff``, ``mypy``, testes de contrato, causalidade e

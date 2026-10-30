@@ -123,4 +123,3 @@ estratégias de montar sistemas híbridos:
    contributing
    maintainers
    releasing
-   about

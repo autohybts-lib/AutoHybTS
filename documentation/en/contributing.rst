@@ -165,8 +165,7 @@ The guide page of a new strategy has:
 AI-assisted contributions
 -------------------------
 
-The project is developed in co-authorship with Claude and Codex (see :doc:`about`), and
-contributions made with AI assistants are welcome on the same terms as any other:
+Contributions made with AI assistants are welcome on the same terms as any other:
 
 * whoever sends it reviews and understands every line, and answers for it in the pull
   request;

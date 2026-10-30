@@ -42,7 +42,7 @@ protocolo padrão nem no esquema de persistência dos modelos.
   (seatbelts, bjsales, uschange, insurance, elecdaily, vic_elec_daily).
 * **Documentação:** guias de registro em SQLite, MLOps e exógenas; notebooks 18 (análise
   com SQL), 19 (fluxo de MLOps), 20 (exógenas em benchmarks) e 21 (MLOps com exógenas na
-  demanda elétrica real); coautoria com IA (Claude e Codex) na página *Sobre*.
+  demanda elétrica real).
 
 .. code-block:: bash
 
